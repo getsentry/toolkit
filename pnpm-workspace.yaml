@@ -45,6 +45,10 @@ overrides:
   undici: ^7.30.1
   # GHSA-mrhx-c7xc-m3w5: keep every zod copy at or above the patched release.
   zod: ^4.6.6
+  # @sentry/wizard publishes `sentry: >=0.52.0`, which the CLI's -dev version
+  # never satisfies, so link the workspace CLI here instead. `pnpm pack`
+  # ignores overrides, so the tarball keeps the range.
+  "@sentry/wizard>sentry": "workspace:*"
 
 catalog:
   "@ast-grep/cli": ^0.51.2

@@ -3,6 +3,8 @@ name: Release
 on:
   workflow_dispatch:
     inputs:
+      # Each product is the `.craft.yml` workspace `packages/<product>`. The
+      # `cli` release also publishes @sentry/mcp-server at the same version.
       product:
         description: Product to release
         required: true
@@ -11,6 +13,7 @@ on:
         options:
           - cli
           - logger
+          - wizard
       bump:
         description: "Version bump: auto (from commits), pre (next prerelease), or an explicit bump type"
         required: true
@@ -61,34 +64,12 @@ jobs:
         with:
           run_install: false
 
-      - name: Resolve release workspace
-        id: release
-        env:
-          PRODUCT: ${{ inputs.product }}
-        run: |
-          # Each product maps to a `.craft.yml` workspace. The `cli` release
-          # also publishes @sentry/mcp-server at the same version.
-          case "$PRODUCT" in
-            cli)
-              workspace=packages/cli
-              ;;
-            logger)
-              workspace=packages/logger
-              ;;
-            *)
-              echo "::error::Unsupported product: $PRODUCT"
-              exit 1
-              ;;
-          esac
-
-          echo "workspace=$workspace" >> "$GITHUB_OUTPUT"
-
       - name: Prepare release
         uses: getsentry/craft@v3
         env:
           GITHUB_TOKEN: ${{ steps.token.outputs.token }}
         with:
-          workspace: ${{ steps.release.outputs.workspace }}
+          workspace: packages/${{ inputs.product }}
           # An exact version wins over the bump. Craft bumps from the
           # workspace's latest release tag, or from its package.json version
           # before the first tag.

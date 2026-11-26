@@ -134,7 +134,10 @@ workspaces:
             end
           end
   # No preReleaseCommand: Craft bumps package.json through the npm target.
-  packages/logger:
+  # A package released on its own. Its tarball comes from the commit-SHA
+  # artifact that merge-jobs.yml uploads, which holds every such package; the
+  # name filters pick this workspace's own.
+  packages/logger: &standalone-package
     changelog:
       policy: auto
     releaseBranchPrefix: "release/{{workspaceName}}"
@@ -144,3 +147,7 @@ workspaces:
         includeNames: '/^{{packageSimpleName}}-\d.*\.tgz$/'
       - name: npm
         includeNames: '/^{{packageSimpleName}}-\d.*\.tgz$/'
+  # @sentry/wizard, the deprecated forwarder to `sentry wizard`. It has its own
+  # versions, from 10.0.0: npm's `latest` is the 9.x wizard, and the CLI's
+  # version would move it backwards. CLI releases don't bump or publish it.
+  packages/wizard: *standalone-package

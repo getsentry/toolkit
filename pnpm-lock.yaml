@@ -393,6 +393,7 @@ overrides:
   source-map-js: ^1.2.2
   undici: ^7.30.1
   zod: ^4.6.6
+  '@sentry/wizard>sentry': workspace:*
 
 packageExtensionsChecksum: sha256-PIoL2jn0sFpFHgcMKW97dNeqBXVNxH6qFIzsWIBFOMY=
 
@@ -1248,6 +1249,22 @@ importers:
       micromark-extension-gfm:
         specifier: 'catalog:'
         version: 3.0.0
+      typescript:
+        specifier: 'catalog:'
+        version: 7.0.2
+      vitest:
+        specifier: 'catalog:'
+        version: 5.0.5(@opentelemetry/api@1.9.1)(@types/node@22.20.3)(@vitest/coverage-v8@5.0.5)(jsdom@28.1.0(supports-color@10.1.0))(msw@2.15.0(@types/node@22.20.3)(typescript@7.0.2))(vite@8.3.8(@types/node@22.20.3)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.13)(yaml@2.9.1))
+
+  packages/wizard:
+    dependencies:
+      sentry:
+        specifier: workspace:*
+        version: link:../cli
+    devDependencies:
+      '@types/node':
+        specifier: 'catalog:'
+        version: 22.20.3
       typescript:
         specifier: 'catalog:'
         version: 7.0.2
