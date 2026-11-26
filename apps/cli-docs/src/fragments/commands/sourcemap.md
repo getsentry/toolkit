@@ -43,5 +43,6 @@ Sentry processes an upload after it accepts it, and processing can still
 fail. In CI, `sentry sourcemap upload` waits up to five minutes for
 processing to finish and exits with an error if it fails or times out.
 Outside CI it exits once Sentry accepts the upload. Pass `--wait` or
-`--no-wait` to choose, or `--wait-for <seconds>` to wait with a different
-limit.
+`--no-wait` to choose. `--wait <seconds>` sets a different limit, and
+`--wait 0` waits with no limit. Because `--wait` can take a value, put the
+directory before it (`sentry sourcemap upload ./dist --wait`).

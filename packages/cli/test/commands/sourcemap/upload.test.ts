@@ -8,6 +8,7 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { runInNewContext } from "node:vm";
+import { buildApplication, run } from "@stricli/core";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { injectCommand } from "../../../src/commands/sourcemap/inject.js";
 import { uploadCommand } from "../../../src/commands/sourcemap/upload.js";
@@ -15,6 +16,7 @@ import { uploadCommand } from "../../../src/commands/sourcemap/upload.js";
 import * as sourcemapsApi from "../../../src/lib/api/sourcemaps.js";
 import { setAuthToken } from "../../../src/lib/db/auth.js";
 import { setOrgRegion } from "../../../src/lib/db/regions.js";
+import { buildRouteMap } from "../../../src/lib/route-map.js";
 import { ApiError, ValidationError } from "../../../src/lib/errors.js";
 import { getDebugIdSnippet } from "../../../src/lib/sourcemap/debug-id.js";
 import { buildEmptyDiscoveryError } from "../../../src/lib/sourcemap/inject.js";
@@ -37,8 +39,9 @@ type UploadFuncArgs = {
   "strip-common-prefix"?: boolean;
   "no-rewrite"?: boolean;
   "allow-empty"?: boolean;
-  wait?: boolean;
-  "wait-for"?: number;
+  /** Parsed `--wait` limit in milliseconds. */
+  wait?: number;
+  "no-wait"?: boolean;
 };
 type CmdFunc<A> = (this: unknown, flags: A, dir: string) => Promise<unknown>;
 
@@ -404,12 +407,12 @@ describe("sourcemap upload command — --allow-empty behavior", () => {
     [
       "in CI with --no-wait",
       { GITHUB_ACTIONS: "true" },
-      { wait: false },
+      { "no-wait": true },
       false,
       300_000,
     ],
-    ["outside CI with --wait", {}, { wait: true }, true, 300_000],
-    ["outside CI with --wait-for", {}, { "wait-for": 30 }, true, 30_000],
+    ["outside CI with --wait", {}, { wait: 300_000 }, true, 300_000],
+    ["outside CI with --wait 30", {}, { wait: 30_000 }, true, 30_000],
   ])(
     "waits for processing %s",
     async (_name, env, flags, expectedWait, expectedMaxWaitMs) => {
@@ -1155,15 +1158,75 @@ describe("sourcemap upload command — waiting for processing", () => {
     expect(assembleCalls()).toBe(1);
   });
 
-  test.each<UploadFuncArgs>([
-    { wait: true, "wait-for": 30 },
-    { wait: false, "wait-for": 30 },
-  ])("rejects --wait-for with --wait or --no-wait (%o)", async (flags) => {
+  test("rejects --wait with --no-wait", async () => {
     const assembleCalls = serveAssembleStates([{ state: "ok" }]);
 
-    await expect(func.call(makeContext(), flags, dir)).rejects.toThrow(
-      "--wait-for cannot be combined with --wait or --no-wait",
-    );
+    await expect(
+      func.call(makeContext(), { wait: 30_000, "no-wait": true }, dir),
+    ).rejects.toThrow("--wait cannot be combined with --no-wait");
     expect(assembleCalls()).toBe(0);
+  });
+
+  describe("--wait argument", () => {
+    const app = buildApplication(
+      buildRouteMap({
+        routes: { upload: uploadCommand },
+        docs: { brief: "Test app" },
+      }),
+      { name: "test" },
+    );
+
+    /** Run `upload <argv>` and return the options passed to the uploader. */
+    async function uploadWith(argv: string[], env: NodeJS.ProcessEnv = {}) {
+      const stderr: string[] = [];
+      const uploadSpy = vi
+        .spyOn(sourcemapsApi, "uploadSourcemaps")
+        .mockResolvedValue(undefined);
+      try {
+        const write = (s: string) => {
+          stderr.push(s);
+          return true;
+        };
+        const ctx = {
+          process: { stdout: { write: () => true }, stderr: { write } },
+          stdout: { write: () => true },
+          stderr: { write },
+          cwd: dir,
+          env,
+        };
+        await run(app, ["upload", ...argv], ctx as never);
+        return {
+          options: uploadSpy.mock.calls[0]?.[0],
+          stderr: stderr.join(""),
+        };
+      } finally {
+        uploadSpy.mockRestore();
+      }
+    }
+
+    test.each<[string[], number]>([
+      [["--wait"], 300_000],
+      [["--wait", "30"], 30_000],
+      [["--wait=0"], Number.POSITIVE_INFINITY],
+    ])("%o waits with limit %d ms", async (flags, maxWaitMs) => {
+      const { options } = await uploadWith([dir, ...flags]);
+      expect(options).toMatchObject({ wait: true, maxWaitMs });
+    });
+
+    test("bare --wait before another flag keeps the default limit", async () => {
+      const { options } = await uploadWith([dir, "--wait", "--allow-empty"]);
+      expect(options).toMatchObject({ wait: true, maxWaitMs: 300_000 });
+    });
+
+    test("--no-wait skips waiting in CI", async () => {
+      const { options } = await uploadWith([dir, "--no-wait"], { CI: "true" });
+      expect(options).toMatchObject({ wait: false });
+    });
+
+    test("--wait followed by the directory explains the mix-up", async () => {
+      const { options, stderr } = await uploadWith(["--wait", dir]);
+      expect(options).toBeUndefined();
+      expect(stderr).toContain("--wait takes a number of seconds");
+    });
   });
 });
