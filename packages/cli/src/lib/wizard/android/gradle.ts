@@ -21,7 +21,6 @@ import {
 import { execute } from "../utils/bash.js";
 import { debug } from "../utils/debug.js";
 import { Sentry } from "../telemetry.js";
-import { reportCliError } from "../../error-reporting.js";
 import { clack } from "../utils/clack/prompts.js";
 import chalk from "chalk";
 import { fetchSdkVersion } from "../utils/release-registry.js";
@@ -197,10 +196,10 @@ export async function addGradlePlugin(
       ),
     );
   } catch (error) {
-    // The caller tells the user to add the plugin by hand.
+    // A failed sync is a problem with the user's build: the caller stops
+    // the wizard with a message instead of reporting it.
     debug(error);
-    buildSpinner.stop();
-    reportCliError(new Error("Gradle Sync failed"));
+    buildSpinner.stop("./gradlew failed.");
     return false;
   }
 
@@ -229,7 +228,6 @@ export function getNamespace(appFile: string): string | undefined {
   );
   if (!namespaceMatch || namespaceMatch.length <= 1) {
     clack.log.warn("Unable to determine application package name.");
-    reportCliError(new Error("No package name"));
     return undefined;
   }
 

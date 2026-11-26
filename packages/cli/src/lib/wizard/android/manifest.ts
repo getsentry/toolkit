@@ -135,7 +135,6 @@ export function getMainActivity(manifestFile: string): {
 
   if (activities.length === 0) {
     clack.log.warn("No activity found in AndroidManifest.");
-    reportCliError(new Error("No Activity"));
     return {};
   }
 
@@ -143,7 +142,6 @@ export function getMainActivity(manifestFile: string): {
 
   if (!mainActivity) {
     clack.log.warn("No main activity found in AndroidManifest.");
-    reportCliError(new Error("No Main Activity"));
     return {};
   }
 

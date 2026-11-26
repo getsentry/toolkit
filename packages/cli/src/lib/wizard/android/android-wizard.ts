@@ -8,7 +8,6 @@
 import { readdirSync } from "node:fs";
 import path from "node:path";
 import chalk from "chalk";
-import { reportCliError } from "../../error-reporting.js";
 import { Sentry, traceStep, withTelemetry } from "../telemetry.js";
 import { abortIfSpotlightNotSupported } from "../utils/abort-if-sportlight-not-supported.js";
 import {
@@ -68,7 +67,6 @@ async function runAndroidWizardWithTelemetry(
     clack.log.error(
       "No Gradle project found. Please run this command from the root of your project.",
     );
-    reportCliError(new Error("No Gradle project found"));
     return await abort();
   }
 
@@ -112,12 +110,13 @@ async function runAndroidWizardWithTelemetry(
       selectedProject.slug,
     ),
   );
-  if (!pluginAdded) {
-    clack.log.warn(
-      "Could not add Sentry Gradle plugin to your app's build.gradle file. You'll have to add it manually.\nPlease follow the instructions at https://docs.sentry.io/platforms/android/#install",
-    );
-  }
   Sentry.setTag("gradle-plugin-added", pluginAdded);
+  if (!pluginAdded) {
+    clack.log.error(
+      `The Gradle sync failed after adding the ${chalk.bold("Sentry Gradle plugin")} to ${chalk.cyan(appFile)}. Fix the build, or set up the plugin by hand.\nPlease follow the instructions at https://docs.sentry.io/platforms/android/#install`,
+    );
+    return await abort();
+  }
 
   // ======== STEP 2. Configure Sentry SDK via AndroidManifest ============
   clack.log.step(
@@ -156,32 +155,31 @@ async function runAndroidWizardWithTelemetry(
   Sentry.setTag("has-activity-name", !!activityName);
   Sentry.setTag("has-package-name", !!packageName);
   if (!activityName || !packageName) {
-    clack.log.warn(
-      "Could not find Activity with intent action MAIN. You'll have to manually verify the setup.\nPlease follow the instructions at https://docs.sentry.io/platforms/android/#verify",
+    clack.log.error(
+      "Could not find the Activity with intent action MAIN, or the app's package name. You'll have to finish the setup by hand.\nPlease follow the instructions at https://docs.sentry.io/platforms/android/#verify",
     );
-    reportCliError(new Error("Could not find Main Activity"));
-  } else {
-    const packageNameStable = packageName;
-    const activityFile = traceStep("Find Main Activity Source File", () =>
-      findActivitySourceFile(appDir, packageNameStable, activityName),
-    );
-
-    const activityPatched = traceStep("Patch Main Activity", () =>
-      patchMainActivity(activityFile),
-    );
-    if (!activityPatched) {
-      clack.log.warn(
-        "Could not patch main activity. You'll have to manually verify the setup.\nPlease follow the instructions at https://docs.sentry.io/platforms/android/#verify",
-      );
-    }
-    Sentry.setTag("main-activity-patched", activityPatched);
+    return await abort();
   }
+  const packageNameStable = packageName;
+  const activityFile = traceStep("Find Main Activity Source File", () =>
+    findActivitySourceFile(appDir, packageNameStable, activityName),
+  );
+
+  const activityPatched = traceStep("Patch Main Activity", () =>
+    patchMainActivity(activityFile),
+  );
+  if (!activityPatched) {
+    clack.log.warn(
+      "Could not patch main activity. You'll have to manually verify the setup.\nPlease follow the instructions at https://docs.sentry.io/platforms/android/#verify",
+    );
+  }
+  Sentry.setTag("main-activity-patched", activityPatched);
 
   // ======== STEP 4. Add sentry.properties for the Gradle plugin ============
   clack.log.step(
-    `Configuring ${chalk.bold("proguard mappings upload")} via the ${chalk.cyan(
-      "sentry.properties",
-    )} file.`,
+    `Adding the auth token for the ${chalk.bold(
+      "Sentry Android Gradle plugin",
+    )} to ${chalk.cyan("sentry.properties")}.`,
   );
 
   await addSentryCliConfig({ authToken }, proguardMappingCliSetupConfig);
