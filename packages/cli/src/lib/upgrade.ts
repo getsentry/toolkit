@@ -46,11 +46,15 @@ import {
   UpgradeReleaseNotFoundError,
   type UpgradeSource,
 } from "./binary.js";
-import { CLI_VERSION, NODE_MODULES_DIRNAME } from "./constants.js";
+import {
+  CLI_VERSION,
+  getUserAgent,
+  NODE_MODULES_DIRNAME,
+} from "./constants.js";
 import { getInstallInfo, setInstallInfo } from "./db/install-info.js";
 import type { ReleaseChannel } from "./db/release-channel.js";
 import { attemptDeltaUpgrade, type DeltaResult } from "./delta-upgrade.js";
-import { UpgradeError } from "./errors.js";
+import { stringifyUnknown, UpgradeError } from "./errors.js";
 import { formatBytes } from "./formatters/numbers.js";
 import {
   downloadNightlyBlob,
@@ -95,6 +99,17 @@ export const NIGHTLY_TAG = "nightly";
 
 /** npm registry base URL */
 const NPM_REGISTRY_URL = "https://registry.npmjs.org/sentry";
+
+/**
+ * Sentry's release registry, which Craft updates on every stable release.
+ * The install script reads it too. Asking it first keeps anonymous version
+ * lookups off the GitHub REST API's per-IP rate limit.
+ */
+const RELEASE_REGISTRY_URL =
+  "https://release-registry.services.sentry.io/apps/sentry";
+
+/** How long to wait for the release registry before trying GitHub. */
+const RELEASE_REGISTRY_TIMEOUT_MS = 10_000;
 
 /** Regex to strip 'v' prefix from version strings */
 export const VERSION_PREFIX_REGEX = /^v/;
@@ -516,12 +531,78 @@ export async function fetchLatestFromGitHubWithSource(
   }
 }
 
-/** Fetch the latest standalone CLI version from GitHub releases. */
-export async function fetchLatestFromGitHub(
+/**
+ * Read a stable version from Sentry's release registry.
+ *
+ * @param release - `latest`, or the pinned version to confirm
+ * @returns The version, or undefined when the registry fails, times out, does
+ *   not know the release, or answers with a different version. Callers then
+ *   fall back to GitHub.
+ * @throws The abort reason when `signal` aborts
+ */
+async function fetchRegistryVersion(
+  release: string,
   signal?: AbortSignal,
-  source?: UpgradeSource,
-): Promise<string> {
-  return (await fetchLatestFromGitHubWithSource(signal, source)).version;
+): Promise<string | undefined> {
+  try {
+    const timeout = AbortSignal.timeout(RELEASE_REGISTRY_TIMEOUT_MS);
+    const requestSignal = signal ? AbortSignal.any([signal, timeout]) : timeout;
+    const response = await fetchWithUpgradeError(
+      `${RELEASE_REGISTRY_URL}/${encodeURIComponent(release)}`,
+      {
+        headers: { Accept: "application/json", "User-Agent": getUserAgent() },
+        signal: requestSignal,
+      },
+      "Sentry release registry",
+    );
+    if (!response.ok) {
+      throw new UpgradeError("network_error", `HTTP ${response.status}`);
+    }
+    const data = await parseUpgradeJson(
+      response,
+      requestSignal,
+      "invalid metadata",
+    );
+    const version =
+      typeof data === "object" && data !== null && "version" in data
+        ? data.version
+        : undefined;
+    if (release === "latest") {
+      return validateStableVersion(
+        typeof version === "string" ? version : undefined,
+        "Sentry release registry",
+      );
+    }
+    if (version !== release) {
+      throw new UpgradeError(
+        "network_error",
+        `returned version ${stringifyUnknown(version)}`,
+      );
+    }
+    return release;
+  } catch (error) {
+    if (signal?.aborted) {
+      throw signal.reason;
+    }
+    log.debug(
+      `Release registry lookup for ${release} failed, trying GitHub: ${stringifyUnknown(error)}`,
+    );
+    return;
+  }
+}
+
+/**
+ * Fetch the latest stable standalone version: Sentry's release registry
+ * first, then GitHub releases when the registry cannot answer.
+ */
+export async function fetchLatestStableWithSource(
+  signal?: AbortSignal,
+): Promise<ResolvedUpgradeVersion> {
+  const version = await fetchRegistryVersion("latest", signal);
+  if (version) {
+    return { version, source: UPGRADE_SOURCE };
+  }
+  return await fetchLatestFromGitHubWithSource(signal);
 }
 
 /**
@@ -632,7 +713,7 @@ export async function fetchLatestNightlyVersion(
  * Fetch the latest available version based on installation method and channel.
  *
  * - nightly channel: fetches version from GHCR manifest annotation
- * - curl/brew on stable: checks GitHub /releases/latest
+ * - curl/brew on stable: checks Sentry's release registry, then GitHub releases
  * - package managers on stable: checks npm registry
  *
  * @param method - How the CLI was installed
@@ -648,7 +729,7 @@ export function fetchLatestVersion(
     return fetchLatestNightlyVersion();
   }
   return method === "curl" || method === "brew"
-    ? fetchLatestFromGitHub()
+    ? fetchLatestStableWithSource().then((resolved) => resolved.version)
     : fetchLatestFromNpm();
 }
 
@@ -659,7 +740,7 @@ export function resolveLatestUpgradeVersion(
 ): Promise<ResolvedUpgradeVersion> {
   return channel === "nightly"
     ? fetchLatestNightlyVersionWithSource(signal)
-    : fetchLatestFromGitHubWithSource(signal);
+    : fetchLatestStableWithSource(signal);
 }
 
 function validateNightlyManifestVersion(
@@ -724,6 +805,14 @@ export async function resolveExistingUpgradeVersion(
       return { version, source };
     }
     validateStableVersion(version, "Requested standalone version");
+    // The registry has no entries for the oldest releases, so a miss there
+    // still checks GitHub.
+    if (
+      source === UPGRADE_SOURCE &&
+      (await fetchRegistryVersion(version)) === version
+    ) {
+      return { version, source };
+    }
     const response = await fetchUpgradeRelease(
       getGitHubReleaseByTagUrl(version, source),
     );

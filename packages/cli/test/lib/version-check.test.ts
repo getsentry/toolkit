@@ -28,6 +28,9 @@ import {
 } from "../../src/lib/version-check.js";
 import { mockFetch, useTestConfigDir } from "../helpers.js";
 
+const RELEASE_REGISTRY_LATEST_URL =
+  "https://release-registry.services.sentry.io/apps/sentry/latest";
+
 /**
  * Force `process.stderr.isTTY` for the duration of a test.
  *
@@ -506,15 +509,21 @@ describe("maybeCheckForUpdateInBackground", () => {
       failRequests = false;
       vi.spyOn(Date, "now").mockImplementation(() => now);
       vi.spyOn(deltaUpgrade, "prefetchStablePatches").mockResolvedValue();
-      globalThis.fetch = mockFetch(async () => {
-        checks.push(now);
+      globalThis.fetch = mockFetch(async (input) => {
+        // Every check starts with the release registry; a failed lookup
+        // falls back to GitHub within the same check.
+        const isRegistry = extractInputUrl(input).startsWith(
+          RELEASE_REGISTRY_LATEST_URL,
+        );
+        if (isRegistry) {
+          checks.push(now);
+        }
         if (failRequests) {
           throw new TypeError("fetch failed");
         }
-        return new Response(
-          JSON.stringify([{ tag_name: "cli@99.0.0", draft: false }]),
-          { status: 200 },
-        );
+        return isRegistry
+          ? Response.json({ version: "99.0.0" })
+          : Response.json([{ tag_name: "cli@99.0.0", draft: false }]);
       });
     });
 
@@ -660,10 +669,7 @@ describe("maybeCheckForUpdateInBackground", () => {
     globalThis.fetch = mockFetch(async (input) => {
       const url = extractInputUrl(input);
       requestedUrls.push(url);
-      return new Response(
-        JSON.stringify([{ tag_name: "cli@99.0.0", draft: false }]),
-        { status: 200 },
-      );
+      return Response.json({ version: "99.0.0" });
     });
     const prefetch = vi
       .spyOn(deltaUpgrade, "prefetchStablePatches")
@@ -678,7 +684,33 @@ describe("maybeCheckForUpdateInBackground", () => {
         toolkitSource,
       );
     });
+    expect(requestedUrls).toEqual([RELEASE_REGISTRY_LATEST_URL]);
+  });
+
+  test("falls back to GitHub releases when the release registry fails", async () => {
+    const requestedUrls: string[] = [];
+    globalThis.fetch = mockFetch(async (input) => {
+      const url = extractInputUrl(input);
+      requestedUrls.push(url);
+      return url === RELEASE_REGISTRY_LATEST_URL
+        ? new Response(null, { status: 503 })
+        : Response.json([{ tag_name: "cli@99.0.0", draft: false }]);
+    });
+    const prefetch = vi
+      .spyOn(deltaUpgrade, "prefetchStablePatches")
+      .mockResolvedValue();
+
+    maybeCheckForUpdateInBackground();
+
+    await vi.waitFor(() => {
+      expect(prefetch).toHaveBeenCalledWith(
+        "99.0.0",
+        expect.any(AbortSignal),
+        UPGRADE_SOURCE,
+      );
+    });
     expect(requestedUrls).toEqual([
+      RELEASE_REGISTRY_LATEST_URL,
       "https://api.github.com/repos/getsentry/toolkit/releases?per_page=100",
     ]);
   });

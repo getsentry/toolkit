@@ -137,9 +137,10 @@ const {
   detectPackageManagerFromPath,
   downloadBinaryToTemp,
   executeUpgrade,
-  fetchLatestFromGitHub,
+  fetchLatestFromGitHubWithSource,
   fetchLatestFromNpm,
   fetchLatestNightlyVersion,
+  fetchLatestStableWithSource,
   fetchLatestVersion,
   getCurlInstallPaths,
   parseInstallationMethod,
@@ -147,6 +148,11 @@ const {
   startCleanupOldBinary,
   versionExists,
 } = await import("../../src/lib/upgrade.js");
+
+/** The GitHub-only lookup behind the release-registry fallback. */
+async function fetchLatestFromGitHub(signal?: AbortSignal): Promise<string> {
+  return (await fetchLatestFromGitHubWithSource(signal)).version;
+}
 
 import { TEST_TMP_DIR, useTestConfigDir, at } from "../helpers.js";
 
@@ -219,6 +225,7 @@ describe("fetchLatestFromGitHub", () => {
     );
     expect(requests).toEqual([
       "https://api.github.com/repos/getsentry/toolkit/releases?per_page=100",
+      "https://release-registry.services.sentry.io/apps/sentry/0.46.0",
       "https://api.github.com/repos/getsentry/toolkit/releases/tags/cli%400.46.0",
     ]);
   });
@@ -460,6 +467,109 @@ describe("fetchLatestFromGitHub", () => {
     await expect(fetchLatestFromGitHub()).rejects.toThrow(
       "No version found in GitHub release",
     );
+  });
+});
+
+describe("fetchLatestStableWithSource", () => {
+  const REGISTRY_URL =
+    "https://release-registry.services.sentry.io/apps/sentry";
+
+  test("uses the release registry without calling GitHub", async () => {
+    const requests: string[] = [];
+    mockFetch(async (url) => {
+      requests.push(extractInputUrl(url));
+      return Response.json({ version: "1.4.0" });
+    });
+
+    await expect(fetchLatestStableWithSource()).resolves.toEqual({
+      version: "1.4.0",
+      source: UPGRADE_SOURCE,
+    });
+    expect(requests).toEqual([`${REGISTRY_URL}/latest`]);
+  });
+
+  test.each([
+    ["HTTP 500", () => new Response("down", { status: 500 })],
+    ["invalid JSON", () => new Response("{", { status: 200 })],
+    ["a prerelease", () => Response.json({ version: "1.5.0-beta.1" })],
+    [
+      "a network error",
+      () => {
+        throw new TypeError("fetch failed");
+      },
+    ],
+  ])(
+    "falls back to GitHub when the registry returns %s",
+    async (_name, registry) => {
+      const requests: string[] = [];
+      mockFetch(async (url) => {
+        const request = extractInputUrl(url);
+        requests.push(request);
+        if (request.startsWith(REGISTRY_URL)) {
+          return registry();
+        }
+        return Response.json([{ tag_name: "cli@1.3.0" }]);
+      });
+
+      await expect(fetchLatestStableWithSource()).resolves.toEqual({
+        version: "1.3.0",
+        source: UPGRADE_SOURCE,
+      });
+      expect(requests).toEqual([
+        `${REGISTRY_URL}/latest`,
+        "https://api.github.com/repos/getsentry/toolkit/releases?per_page=100",
+      ]);
+    },
+  );
+
+  test("rethrows the caller's abort instead of falling back", async () => {
+    const controller = new AbortController();
+    const reason = new Error("stop");
+    const requests: string[] = [];
+    mockFetch(async (url) => {
+      requests.push(extractInputUrl(url));
+      controller.abort(reason);
+      throw reason;
+    });
+
+    await expect(fetchLatestStableWithSource(controller.signal)).rejects.toBe(
+      reason,
+    );
+    expect(requests).toEqual([`${REGISTRY_URL}/latest`]);
+  });
+
+  test("confirms a pinned version through the registry", async () => {
+    const requests: string[] = [];
+    mockFetch(async (url) => {
+      requests.push(extractInputUrl(url));
+      return Response.json({ version: "1.2.0" });
+    });
+
+    await expect(resolveExistingUpgradeVersion("1.2.0")).resolves.toEqual({
+      version: "1.2.0",
+      source: UPGRADE_SOURCE,
+    });
+    expect(requests).toEqual([`${REGISTRY_URL}/1.2.0`]);
+  });
+
+  test("checks GitHub for a pinned version the registry does not list", async () => {
+    const requests: string[] = [];
+    mockFetch(async (url) => {
+      const request = extractInputUrl(url);
+      requests.push(request);
+      return request.startsWith(REGISTRY_URL)
+        ? new Response("Not Found", { status: 404 })
+        : Response.json({ tag_name: "cli@0.1.0" });
+    });
+
+    await expect(resolveExistingUpgradeVersion("0.1.0")).resolves.toEqual({
+      version: "0.1.0",
+      source: UPGRADE_SOURCE,
+    });
+    expect(requests).toEqual([
+      `${REGISTRY_URL}/0.1.0`,
+      "https://api.github.com/repos/getsentry/toolkit/releases/tags/cli%400.1.0",
+    ]);
   });
 });
 
@@ -844,6 +954,7 @@ describe("versionExists", () => {
 
     await expect(versionExists("curl", "1.0.0")).resolves.toBe(true);
     expect(requests).toEqual([
+      "https://release-registry.services.sentry.io/apps/sentry/1.0.0",
       "https://api.github.com/repos/getsentry/toolkit/releases/tags/cli%401.0.0",
     ]);
   });
@@ -874,6 +985,7 @@ describe("versionExists", () => {
       reason: "network_error",
     });
     expect(requests).toEqual([
+      "https://release-registry.services.sentry.io/apps/sentry/1.0.0",
       "https://api.github.com/repos/getsentry/toolkit/releases/tags/cli%401.0.0",
     ]);
   });
@@ -919,6 +1031,7 @@ describe("versionExists", () => {
       false,
     );
     expect(requests).toEqual([
+      "https://release-registry.services.sentry.io/apps/sentry/1.0.0",
       "https://api.github.com/repos/getsentry/toolkit/releases/tags/cli%401.0.0",
     ]);
   });
