@@ -151,6 +151,23 @@ describe("debug-files upload progress on a terminal", () => {
     expect(lines()).toEqual(["Processed 2 of 2 files"]);
   });
 
+  test("restarts the processing spinner after a chunk re-send", () => {
+    const terminal = captureTerminal();
+    const { onProgress } = createUploadProgressReporter();
+
+    onProgress({ phase: "processing", processed: 1, total: 3 });
+    onProgress({ phase: "uploading", files: 1, totalBytes: 2048 });
+    onProgress({ phase: "uploaded", files: 1 });
+    const beforeResume = terminal().length;
+    // Same count as before the re-send: the spinner still comes back.
+    onProgress({ phase: "processing", processed: 1, total: 3 });
+
+    expect(terminal().slice(beforeResume)).toContain(
+      "Waiting for Sentry to process 3 debug information files... 1/3",
+    );
+    expect(lines()).toEqual(["Uploaded 1 debug information file"]);
+  });
+
   test("stop clears a spinner left by a failed upload", () => {
     const terminal = captureTerminal();
     const reporter = createUploadProgressReporter();

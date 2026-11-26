@@ -88,14 +88,14 @@ export function createUploadProgressReporter(): UploadProgressReporter {
   };
 
   const onProcessing = (processed: number, total: number) => {
-    if (processed === lastProcessed) {
-      return;
-    }
+    const changed = processed !== lastProcessed;
     const first = lastProcessed < 0;
     lastProcessed = processed;
     if (processed >= total) {
-      stop();
-      log.info(`Processed ${processed} of ${fileCount(total)}`);
+      if (changed) {
+        stop();
+        log.info(`Processed ${processed} of ${fileCount(total)}`);
+      }
       return;
     }
     const message = `Waiting for Sentry to process ${difCount(total)}... ${processed}/${total}`;
@@ -103,14 +103,17 @@ export function createUploadProgressReporter(): UploadProgressReporter {
       line.setMessage(message);
       return;
     }
-    if (first) {
-      line = startProgressLine(message);
-      if (!line) {
-        log.info(`Waiting for Sentry to process ${difCount(total)}...`);
-      }
+    // Start the spinner on the first poll, and again after a chunk re-send
+    // stopped it.
+    line = startProgressLine(message);
+    if (line || !changed) {
       return;
     }
-    log.info(`Processed ${processed} of ${fileCount(total)}`);
+    log.info(
+      first
+        ? `Waiting for Sentry to process ${difCount(total)}...`
+        : `Processed ${processed} of ${fileCount(total)}`,
+    );
   };
 
   const onProgress = (event: DebugFilesUploadProgress) => {
