@@ -1,4 +1,4 @@
-import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { isDeepStrictEqual } from "node:util";
 
 /**
@@ -17,8 +17,18 @@ const CURRENT_DIR = "packages/mcp-core";
 const MAIN_DIR = "main-stats";
 const ARTIFACT_PREFIX = "token-stats-";
 
+/** Runs `read`, or returns undefined when the path does not exist. */
+function ifExists(read) {
+  try {
+    return read();
+  } catch (error) {
+    if (error.code === "ENOENT") return undefined;
+    throw error;
+  }
+}
+
 function readJson(file) {
-  return existsSync(file) ? JSON.parse(readFileSync(file, "utf8")) : undefined;
+  return ifExists(() => JSON.parse(readFileSync(file, "utf8")));
 }
 
 function readStats(dir) {
@@ -31,8 +41,10 @@ function readStats(dir) {
  * into `main-stats/token-stats-<sha>/`.
  */
 function readMainStats() {
-  if (!existsSync(MAIN_DIR)) return undefined;
-  const artifacts = readdirSync(MAIN_DIR, { withFileTypes: true }).filter(
+  const entries = ifExists(() =>
+    readdirSync(MAIN_DIR, { withFileTypes: true }),
+  );
+  const artifacts = (entries ?? []).filter(
     (entry) => entry.isDirectory() && entry.name.startsWith(ARTIFACT_PREFIX),
   );
   if (artifacts.length !== 1) return undefined;
