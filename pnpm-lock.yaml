@@ -214,8 +214,8 @@ catalogs:
       specifier: ^1.2.3
       version: 1.2.3
     '@sentry/api':
-      specifier: 3.0.0
-      version: 3.0.0
+      specifier: 3.2.0
+      version: 3.2.0
     '@sentry/cloudflare':
       specifier: 11.12.0
       version: 11.12.0
@@ -701,7 +701,7 @@ importers:
         version: 2.1.7(hono@4.13.18)
       '@sentry/api':
         specifier: 'catalog:'
-        version: 3.0.0(valibot@1.4.2(typescript@7.0.2))(zod@4.6.7)
+        version: 3.2.0(valibot@1.4.2(typescript@7.0.2))(zod@4.6.7)
       '@sentry/core':
         specifier: 'catalog:'
         version: 11.12.0
@@ -1066,7 +1066,7 @@ importers:
         version: 2.4.0
       '@sentry/api':
         specifier: 'catalog:'
-        version: 3.0.0(valibot@1.4.2(typescript@7.0.2))(zod@4.6.7)
+        version: 3.2.0(valibot@1.4.2(typescript@7.0.2))(zod@4.6.7)
       '@sentry/core':
         specifier: 'catalog:'
         version: 11.12.0
@@ -1253,7 +1253,7 @@ importers:
     dependencies:
       '@sentry/api':
         specifier: 'catalog:'
-        version: 3.0.0(valibot@1.4.2(typescript@7.0.2))(zod@4.6.7)
+        version: 3.2.0(valibot@1.4.2(typescript@7.0.2))(zod@4.6.7)
       '@sentry/http':
         specifier: workspace:*
         version: link:../http
@@ -4453,8 +4453,8 @@ packages:
     cpu: [x64]
     os: [win32]
 
-  '@sentry/api@3.0.0':
-    resolution: {integrity: sha512-bb4mGHF2PWf8yhxiUipGHcDHWRhmHxlbniuX2dO6Wjg0PvqGA+2DXQmM3Rwq36t3mr9Cp1La0q1IY48crvnTuA==}
+  '@sentry/api@3.2.0':
+    resolution: {integrity: sha512-grOmtnfztzf/KDo1d+nq2NTjWznkudVTuOQk4Whbz+XYsNgl6p1pzho2DExXN+er9aQ0QO0/Cabb6KjHIPgZDA==}
     engines: {node: '>=22'}
     peerDependencies:
       valibot: '*'
@@ -11497,7 +11497,7 @@ snapshots:
   '@rollup/rollup-win32-x64-msvc@4.62.4':
     optional: true
 
-  '@sentry/api@3.0.0(valibot@1.4.2(typescript@7.0.2))(zod@4.6.7)':
+  '@sentry/api@3.2.0(valibot@1.4.2(typescript@7.0.2))(zod@4.6.7)':
     dependencies:
       p-limit: 7.3.3
       typescript: '@typescript/typescript6@6.0.2'

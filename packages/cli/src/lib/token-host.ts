@@ -25,6 +25,7 @@ import {
 } from "./db/auth.js";
 import { isTrustedRegionOrigin } from "./db/regions.js";
 import { invocationState } from "./env.js";
+import { getRcTokenBootHost } from "./env-token-host.js";
 import { HostScopeError } from "./errors.js";
 import { normalizeHttpOrigin, normalizeOrigin } from "./sentry-urls.js";
 import { parseSntrysClaim } from "./token-claims.js";
@@ -224,4 +225,22 @@ export function isRequestOriginTrustedForCustomHeaders(
   }
   const requestOrigin = normalizeTrustOrigin(requestInput);
   return requestOrigin !== undefined && hasStoredAccountForHost(requestOrigin);
+}
+
+/**
+ * Custom-header trust for an authenticated request, from the credential
+ * captured for it. A `.sentryclirc` `sntrys_` token is checked against its
+ * boot host, not its claim, so a host that only the rc file names never
+ * receives `SENTRY_CUSTOM_HEADERS`. Requests without a credential use
+ * {@link isRequestOriginTrustedForCustomHeaders}.
+ */
+export function isRequestOriginTrustedForCustomHeadersInContext(
+  requestInput: string | URL | Request | undefined | null,
+  credential: Pick<CredentialContext, "host" | "identity" | "token">,
+): boolean {
+  return isOriginTrustedFor(
+    requestInput,
+    getRcTokenBootHost(credential.token) ?? credential.host,
+    credential.identity,
+  );
 }
