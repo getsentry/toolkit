@@ -133,6 +133,18 @@ workspaces:
               assert_match version.to_s, shell_output("#{bin}/sentry --version").chomp
             end
           end
+      # The Docker image: cli-build.yml pushes it to GHCR, tagged with the
+      # release commit, and these copy it to Docker Hub.
+      - name: docker
+        id: Docker Hub (release)
+        source: ghcr.io/getsentry/toolkit/sentry-cli
+        target: getsentry/sentry-cli
+      - name: docker
+        id: Docker Hub (latest)
+        source: ghcr.io/getsentry/toolkit/sentry-cli
+        target:
+          image: getsentry/sentry-cli
+          format: "{{{image}}}:latest"
   # Standalone npm libraries. Each is released on its own, with
   # `<name>@<version>` tags and `release/<name>/<version>` branches, and
   # `merge-jobs.yml` packs every one of them. To publish another package

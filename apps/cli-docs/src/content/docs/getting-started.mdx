@@ -150,6 +150,35 @@ Homebrew installs shell completions but can't install agent skills into your hom
 sentry cli setup --no-modify-path --no-completions
 ```
 
+## Docker
+
+The [`getsentry/sentry-cli`](https://hub.docker.com/r/getsentry/sentry-cli)
+image runs the CLI on amd64 and arm64 Linux. Its entrypoint is `sentry` and its
+working directory is `/work`, so mount your project there and pass a token:
+
+```bash
+docker run --rm -v "$PWD:/work" -e SENTRY_AUTH_TOKEN getsentry/sentry-cli sourcemap upload ./dist
+```
+
+Each release is tagged with its version, and `latest` follows the newest
+release. Pin a version tag in CI. The image doesn't check for updates; pull a
+newer tag to upgrade.
+
+The image includes `git`, so commands such as `release set-commits --auto` and
+`release propose-version` read a checkout mounted at `/work`. Credentials and
+caches are not kept between runs, so use `SENTRY_AUTH_TOKEN` rather than
+`sentry auth login`.
+
+The image is built on [distroless](https://github.com/GoogleContainerTools/distroless)
+and has no shell, so CI systems that run a script inside the job's image, such
+as GitLab CI, can't use it as the job image. Install the CLI in the job instead,
+or copy the binary into your own glibc-based image. The binary also needs
+`libatomic1`:
+
+```dockerfile
+COPY --from=getsentry/sentry-cli /usr/local/bin/sentry /usr/local/bin/sentry
+```
+
 ## Package Managers
 
 Install globally with your preferred package manager (the npm packages require **Node.js 20+**; on **22.15+** the built-in `node:sqlite` is used, on 20–22.14 a bundled WASM fallback is used transparently):
