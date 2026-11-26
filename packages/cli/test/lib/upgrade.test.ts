@@ -120,7 +120,8 @@ import {
   getBinaryDownloadUrl,
   isNightlyVersion,
   releaseLock,
-  UPGRADE_SOURCES,
+  UPGRADE_SOURCE,
+  UpgradeReleaseNotFoundError,
 } from "../../src/lib/binary.js";
 import {
   clearInstallInfo,
@@ -212,7 +213,7 @@ describe("fetchLatestFromGitHub", () => {
     const resolved = await resolveExistingUpgradeVersion(version);
 
     expect(version).toBe("0.46.0");
-    expect(resolved).toEqual({ version, source: UPGRADE_SOURCES[0] });
+    expect(resolved).toEqual({ version, source: UPGRADE_SOURCE });
     expect(getBinaryDownloadUrl(version, resolved?.source)).toStartWith(
       "https://github.com/getsentry/toolkit/releases/download/cli@0.46.0/",
     );
@@ -370,46 +371,12 @@ describe("fetchLatestFromGitHub", () => {
     expect(requests).toHaveLength(2);
   });
 
-  test("falls back to the legacy latest release only on Toolkit HTTP 404", async () => {
-    const requests: string[] = [];
-    mockFetch(async (url) => {
-      requests.push(extractInputUrl(url));
-      if (requests.length === 1) {
-        return new Response("Not Found", { status: 404 });
-      }
-      return new Response(JSON.stringify({ tag_name: "v1.2.3" }), {
-        status: 200,
-      });
-    });
-
-    await expect(fetchLatestFromGitHub()).resolves.toBe("1.2.3");
-    expect(requests).toEqual([
-      "https://api.github.com/repos/getsentry/toolkit/releases?per_page=100",
-      "https://api.github.com/repos/getsentry/cli/releases/latest",
-    ]);
-  });
-
   test("rejects an object from the Toolkit release-list endpoint", async () => {
     mockFetch(async () => Response.json({ tag_name: "cli@9.9.9" }));
 
     await expect(fetchLatestFromGitHub()).rejects.toThrow(
       "GitHub returned invalid release metadata",
     );
-  });
-
-  test("rejects an array from the legacy latest-release endpoint", async () => {
-    let requests = 0;
-    mockFetch(async () => {
-      requests += 1;
-      return requests === 1
-        ? new Response(null, { status: 404 })
-        : Response.json([{ tag_name: "9.9.9" }]);
-    });
-
-    await expect(fetchLatestFromGitHub()).rejects.toThrow(
-      "GitHub returned invalid release metadata",
-    );
-    expect(requests).toBe(2);
   });
 
   test("does not use an MCP release as the latest CLI release", async () => {
@@ -443,19 +410,6 @@ describe("fetchLatestFromGitHub", () => {
     );
   });
 
-  test("strips v prefix from a legacy version", async () => {
-    let requests = 0;
-    mockFetch(async () => {
-      requests += 1;
-      return requests === 1
-        ? new Response(null, { status: 404 })
-        : Response.json({ tag_name: "v0.5.0" });
-    });
-
-    const version = await fetchLatestFromGitHub();
-    expect(version).toBe("0.5.0");
-  });
-
   test("handles version without v prefix", async () => {
     mockFetch(
       async () =>
@@ -479,7 +433,7 @@ describe("fetchLatestFromGitHub", () => {
 
     await expect(fetchLatestFromGitHub()).rejects.toThrow(UpgradeError);
     await expect(fetchLatestFromGitHub()).rejects.toThrow(
-      "No CLI upgrade source was found: every source returned HTTP 404",
+      "No CLI release was found (HTTP 404)",
     );
   });
 
@@ -749,9 +703,6 @@ describe("fetchLatestVersion", () => {
     // Nightly version is now fetched from GHCR manifest annotation, not version.json
     mockFetch(async (url) => {
       const urlStr = extractInputUrl(url);
-      if (urlStr === "https://api.github.com/repos/getsentry/toolkit") {
-        return new Response(null, { status: 200 });
-      }
       if (urlStr.includes("ghcr.io/token")) {
         return new Response(JSON.stringify({ token: "tok" }), { status: 200 });
       }
@@ -776,9 +727,6 @@ describe("fetchLatestVersion", () => {
     // Even npm method uses GHCR when channel=nightly (nightly is curl-only distribution)
     mockFetch(async (url) => {
       const urlStr = extractInputUrl(url);
-      if (urlStr === "https://api.github.com/repos/getsentry/toolkit") {
-        return new Response(null, { status: 200 });
-      }
       if (urlStr.includes("ghcr.io/token")) {
         return new Response(JSON.stringify({ token: "tok" }), { status: 200 });
       }
@@ -853,7 +801,7 @@ describe("versionExists", () => {
       });
 
       await expect(
-        versionExists("curl", version, UPGRADE_SOURCES[0]),
+        versionExists("curl", version, UPGRADE_SOURCE),
       ).rejects.toMatchObject({ reason: "network_error" });
       expect(requests).toBe(0);
     },
@@ -900,27 +848,9 @@ describe("versionExists", () => {
     ]);
   });
 
-  test("falls back to an unprefixed legacy tag on Toolkit HTTP 404", async () => {
-    const requests: string[] = [];
-    mockFetch(async (url) => {
-      requests.push(extractInputUrl(url));
-      return requests.length === 1
-        ? new Response("Not Found", { status: 404 })
-        : new Response(JSON.stringify({ tag_name: "1.0.0" }), { status: 200 });
-    });
-
-    await expect(versionExists("curl", "1.0.0")).resolves.toBe(true);
-    expect(requests).toEqual([
-      "https://api.github.com/repos/getsentry/toolkit/releases/tags/cli%401.0.0",
-      "https://api.github.com/repos/getsentry/cli/releases/tags/1.0.0",
-    ]);
-  });
-
   test("does not classify transport error text as missing sources", async () => {
     mockFetch(async () => {
-      throw new Error(
-        "No CLI upgrade source was found: every source returned HTTP 404",
-      );
+      throw new Error("No CLI release was found (HTTP 404)");
     });
 
     await expect(resolveExistingUpgradeVersion("1.0.0")).rejects.toThrow(
@@ -933,36 +863,28 @@ describe("versionExists", () => {
     ["invalid JSON", "{"],
     ["missing tag", JSON.stringify({})],
     ["mismatched tag", JSON.stringify({ tag_name: "mcp@1.0.0" })],
-  ])(
-    "rejects pinned Toolkit %s without legacy fallback",
-    async (_name, body) => {
-      const requests: string[] = [];
-      mockFetch(async (url) => {
-        requests.push(extractInputUrl(url));
-        return new Response(body, { status: 200 });
-      });
+  ])("rejects pinned Toolkit %s", async (_name, body) => {
+    const requests: string[] = [];
+    mockFetch(async (url) => {
+      requests.push(extractInputUrl(url));
+      return new Response(body, { status: 200 });
+    });
 
-      await expect(
-        resolveExistingUpgradeVersion("1.0.0"),
-      ).rejects.toMatchObject({
-        reason: "network_error",
-      });
-      expect(requests).toEqual([
-        "https://api.github.com/repos/getsentry/toolkit/releases/tags/cli%401.0.0",
-      ]);
-    },
-  );
+    await expect(resolveExistingUpgradeVersion("1.0.0")).rejects.toMatchObject({
+      reason: "network_error",
+    });
+    expect(requests).toEqual([
+      "https://api.github.com/repos/getsentry/toolkit/releases/tags/cli%401.0.0",
+    ]);
+  });
 
   test.each([undefined, "not-semver", "0.14.0-dev.124"])(
-    "rejects pinned nightly manifest annotation %s without legacy fallback",
+    "rejects pinned nightly manifest annotation %s",
     async (annotation) => {
       const requests: string[] = [];
       mockFetch(async (url) => {
         const request = extractInputUrl(url);
         requests.push(request);
-        if (request === "https://api.github.com/repos/getsentry/toolkit") {
-          return new Response(null, { status: 200 });
-        }
         if (request.includes("ghcr.io/token")) {
           return new Response(JSON.stringify({ token: "tok" }), {
             status: 200,
@@ -983,22 +905,19 @@ describe("versionExists", () => {
       await expect(
         resolveExistingUpgradeVersion("0.14.0-dev.123"),
       ).rejects.toMatchObject({ reason: "network_error" });
-      expect(
-        requests.some((request) => request.includes("getsentry/cli")),
-      ).toBe(false);
     },
   );
 
-  test("does not fall back from an explicit selected source", async () => {
+  test("returns false when an explicit source returns HTTP 404", async () => {
     const requests: string[] = [];
     mockFetch(async (url) => {
       requests.push(extractInputUrl(url));
       return new Response("Not Found", { status: 404 });
     });
 
-    await expect(
-      versionExists("curl", "1.0.0", UPGRADE_SOURCES[0]),
-    ).resolves.toBe(false);
+    await expect(versionExists("curl", "1.0.0", UPGRADE_SOURCE)).resolves.toBe(
+      false,
+    );
     expect(requests).toEqual([
       "https://api.github.com/repos/getsentry/toolkit/releases/tags/cli%401.0.0",
     ]);
@@ -1008,7 +927,7 @@ describe("versionExists", () => {
     mockFetch(async () => new Response(null, { status: 200 }));
 
     await expect(
-      versionExists("curl", "1.0.0", UPGRADE_SOURCES[0]),
+      versionExists("curl", "1.0.0", UPGRADE_SOURCE),
     ).rejects.toThrow("GitHub returned invalid metadata for version 1.0.0");
   });
 
@@ -1018,7 +937,7 @@ describe("versionExists", () => {
       mockFetch(async () => new Response(null, { status }));
 
       await expect(
-        versionExists("curl", "1.0.0", UPGRADE_SOURCES[0]),
+        versionExists("curl", "1.0.0", UPGRADE_SOURCE),
       ).rejects.toThrow(`HTTP ${status}`);
     },
   );
@@ -1126,9 +1045,6 @@ describe("versionExists", () => {
     };
     mockFetch(async (url) => {
       const u = extractInputUrl(url);
-      if (u === "https://api.github.com/repos/getsentry/toolkit") {
-        return new Response(null, { status: 200 });
-      }
       if (u.includes("ghcr.io/token")) {
         return new Response(JSON.stringify({ token: "tok" }), { status: 200 });
       }
@@ -1145,9 +1061,6 @@ describe("versionExists", () => {
   test("checks GHCR for nightly version - version does not exist", async () => {
     mockFetch(async (url) => {
       const u = extractInputUrl(url);
-      if (u === "https://api.github.com/repos/getsentry/toolkit") {
-        return new Response(null, { status: 200 });
-      }
       if (u.includes("ghcr.io/token")) {
         return new Response(JSON.stringify({ token: "tok" }), { status: 200 });
       }
@@ -1169,9 +1082,6 @@ describe("versionExists", () => {
     };
     mockFetch(async (url) => {
       const u = extractInputUrl(url);
-      if (u === "https://api.github.com/repos/getsentry/toolkit") {
-        return new Response(null, { status: 200 });
-      }
       if (u.includes("ghcr.io/token")) {
         return new Response(JSON.stringify({ token: "tok" }), { status: 200 });
       }
@@ -1205,7 +1115,7 @@ describe("versionExists", () => {
     });
 
     await expect(
-      versionExists("curl", "0.14.0-dev.123", UPGRADE_SOURCES[0]),
+      versionExists("curl", "0.14.0-dev.123", UPGRADE_SOURCE),
     ).rejects.toThrow(
       "Nightly manifest version 0.14.0-dev.124 does not match requested version 0.14.0-dev.123",
     );
@@ -1229,7 +1139,7 @@ describe("versionExists", () => {
     });
 
     await expect(
-      versionExists("curl", "0.14.0-dev.1772661724", UPGRADE_SOURCES[0]),
+      versionExists("curl", "0.14.0-dev.1772661724", UPGRADE_SOURCE),
     ).rejects.toThrow("HTTP 404");
   });
 
@@ -1259,10 +1169,9 @@ describe("versionExists", () => {
     });
 
     await expect(
-      versionExists("curl", "0.14.0-dev.1772661724", UPGRADE_SOURCES[0]),
+      versionExists("curl", "0.14.0-dev.1772661724", UPGRADE_SOURCE),
     ).rejects.toThrow("HTTP 403");
     expect(requests).toHaveLength(2);
-    expect(requests.some((url) => url.includes("getsentry/cli"))).toBe(false);
   });
 });
 
@@ -2083,59 +1992,25 @@ describe("fetchLatestNightlyVersion", () => {
       reason,
     );
   });
-  test("falls back to legacy when the Toolkit nightly manifest returns 404", async () => {
-    const requests: string[] = [];
+  test("reports a missing nightly manifest as HTTP 404", async () => {
     mockFetch(async (url) => {
       const request = extractInputUrl(url);
-      requests.push(request);
-      if (request === "https://api.github.com/repos/getsentry/toolkit") {
-        return new Response(null, { status: 200 });
-      }
-      if (request === "https://api.github.com/repos/getsentry/cli") {
-        return new Response(null, { status: 200 });
-      }
-      if (request.includes("scope=repository:getsentry/toolkit:pull")) {
+      if (request.includes("ghcr.io/token")) {
         return new Response(JSON.stringify({ token: "toolkit-token" }), {
           status: 200,
         });
       }
-      if (request.includes("/v2/getsentry/toolkit/manifests/nightly")) {
-        return new Response("Not Found", { status: 404 });
-      }
-      if (request.includes("scope=repository:getsentry/cli:pull")) {
-        return new Response(JSON.stringify({ token: "cli-token" }), {
-          status: 200,
-        });
-      }
-      if (request.includes("/v2/getsentry/cli/manifests/nightly")) {
-        return new Response(
-          JSON.stringify({
-            schemaVersion: 2,
-            layers: [],
-            annotations: { version: "0.0.0-dev.1740000000" },
-          }),
-          { status: 200 },
-        );
-      }
-      return new Response("Unexpected", { status: 500 });
+      return new Response("Not Found", { status: 404 });
     });
 
-    await expect(fetchLatestNightlyVersion()).resolves.toBe(
-      "0.0.0-dev.1740000000",
-    );
-    expect(requests).toContain(
-      "https://ghcr.io/v2/getsentry/cli/manifests/nightly",
+    await expect(fetchLatestNightlyVersion()).rejects.toThrow(
+      "No CLI release was found (HTTP 404)",
     );
   });
 
-  test("does not fall back from a non-404 Toolkit nightly failure", async () => {
-    const requests: string[] = [];
+  test("throws on a non-404 nightly manifest failure", async () => {
     mockFetch(async (url) => {
       const request = extractInputUrl(url);
-      requests.push(request);
-      if (request === "https://api.github.com/repos/getsentry/toolkit") {
-        return new Response(null, { status: 200 });
-      }
       if (request.includes("ghcr.io/token")) {
         return new Response(JSON.stringify({ token: "toolkit-token" }), {
           status: 200,
@@ -2145,19 +2020,11 @@ describe("fetchLatestNightlyVersion", () => {
     });
 
     await expect(fetchLatestNightlyVersion()).rejects.toThrow("HTTP 403");
-    expect(requests).not.toContain(
-      "https://api.github.com/repos/getsentry/cli",
-    );
   });
 
-  test("does not fall back when nightly transport error text says HTTP 404", async () => {
-    const requests: string[] = [];
+  test("does not classify nightly transport error text as HTTP 404", async () => {
     mockFetch(async (url) => {
       const request = extractInputUrl(url);
-      requests.push(request);
-      if (request === "https://api.github.com/repos/getsentry/toolkit") {
-        return new Response(null, { status: 200 });
-      }
       if (request.includes("scope=repository:getsentry/toolkit:pull")) {
         return new Response(JSON.stringify({ token: "toolkit-token" }), {
           status: 200,
@@ -2169,10 +2036,13 @@ describe("fetchLatestNightlyVersion", () => {
       return new Response("Unexpected", { status: 500 });
     });
 
-    await expect(fetchLatestNightlyVersion()).rejects.toThrow("HTTP 404");
-    expect(requests).not.toContain(
-      "https://api.github.com/repos/getsentry/cli",
+    const error = await fetchLatestNightlyVersion().catch(
+      (reason: unknown) => reason,
     );
+    expect(error).toMatchObject({
+      message: expect.stringContaining("HTTP 404"),
+    });
+    expect(error).not.toBeInstanceOf(UpgradeReleaseNotFoundError);
   });
 
   test("returns version from GHCR manifest annotation", async () => {
@@ -2180,9 +2050,6 @@ describe("fetchLatestNightlyVersion", () => {
     let callCount = 0;
     mockFetch(async (url) => {
       const urlStr = extractInputUrl(url);
-      if (urlStr === "https://api.github.com/repos/getsentry/toolkit") {
-        return new Response(null, { status: 200 });
-      }
       callCount += 1;
       if (urlStr.includes("ghcr.io/token")) {
         return new Response(JSON.stringify({ token: "test-token" }), {
@@ -2214,11 +2081,7 @@ describe("fetchLatestNightlyVersion", () => {
   });
 
   test("throws UpgradeError when GHCR token exchange fails", async () => {
-    mockFetch(async (url) =>
-      extractInputUrl(url) === "https://api.github.com/repos/getsentry/toolkit"
-        ? new Response(null, { status: 200 })
-        : new Response("Unauthorized", { status: 401 }),
-    );
+    mockFetch(async () => new Response("Unauthorized", { status: 401 }));
 
     await expect(fetchLatestNightlyVersion()).rejects.toThrow(UpgradeError);
     await expect(fetchLatestNightlyVersion()).rejects.toThrow(
@@ -2229,9 +2092,6 @@ describe("fetchLatestNightlyVersion", () => {
   test("throws UpgradeError when manifest has no version annotation", async () => {
     mockFetch(async (url) => {
       const urlStr = extractInputUrl(url);
-      if (urlStr === "https://api.github.com/repos/getsentry/toolkit") {
-        return new Response(null, { status: 200 });
-      }
       if (urlStr.includes("ghcr.io/token")) {
         return new Response(JSON.stringify({ token: "tok" }), { status: 200 });
       }
@@ -2373,7 +2233,7 @@ describe("executeUpgrade with curl method (nightly)", () => {
         undefined,
         false,
         undefined,
-        UPGRADE_SOURCES[0],
+        UPGRADE_SOURCE,
       ),
     ).rejects.toMatchObject({ reason: "network_error" });
     expect(requests.some((request) => request.includes("/blobs/"))).toBe(false);

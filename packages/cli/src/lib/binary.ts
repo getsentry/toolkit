@@ -197,22 +197,12 @@ export type UpgradeSource = {
   readonly tagPrefix: string;
 };
 
-/** Ordered CLI release sources. The resolver falls through only on HTTP 404. */
-export const UPGRADE_SOURCES = [
-  {
-    githubRepo: "getsentry/toolkit",
-    ghcrRepo: "getsentry/toolkit",
-    tagPrefix: "cli@",
-  },
-  {
-    githubRepo: "getsentry/cli",
-    ghcrRepo: "getsentry/cli",
-    tagPrefix: "",
-  },
-] as const satisfies readonly [UpgradeSource, ...UpgradeSource[]];
-
-/** The first source used by direct helper calls that do not resolve a source. */
-export const PRIMARY_UPGRADE_SOURCE = UPGRADE_SOURCES[0];
+/** The repository pair that hosts CLI releases (tags `cli@<version>`). */
+export const UPGRADE_SOURCE = {
+  githubRepo: "getsentry/toolkit",
+  ghcrRepo: "getsentry/toolkit",
+  tagPrefix: "cli@",
+} as const satisfies UpgradeSource;
 
 /** Valid methods that can be specified via --method flag */
 export const INSTALLATION_METHODS: readonly InstallationMethod[] = [
@@ -313,7 +303,7 @@ export function getPlatformBinaryName(): string {
  */
 export function getBinaryDownloadUrl(
   version: string,
-  source: UpgradeSource = PRIMARY_UPGRADE_SOURCE,
+  source: UpgradeSource = UPGRADE_SOURCE,
 ): string {
   const tag = `${source.tagPrefix}${version}`;
   return `https://github.com/${source.githubRepo}/releases/download/${tag}/${getPlatformBinaryName()}`;
@@ -321,7 +311,7 @@ export function getBinaryDownloadUrl(
 
 /** Build the GitHub API base URL for a release source. */
 export function getGitHubReleasesUrl(
-  source: UpgradeSource = PRIMARY_UPGRADE_SOURCE,
+  source: UpgradeSource = UPGRADE_SOURCE,
 ): string {
   return `https://api.github.com/repos/${source.githubRepo}/releases`;
 }
@@ -329,7 +319,7 @@ export function getGitHubReleasesUrl(
 /** Build the GitHub API URL for one source-specific release tag. */
 export function getGitHubReleaseByTagUrl(
   version: string,
-  source: UpgradeSource = PRIMARY_UPGRADE_SOURCE,
+  source: UpgradeSource = UPGRADE_SOURCE,
 ): string {
   const tag = `${source.tagPrefix}${version}`;
   return `${getGitHubReleasesUrl(source)}/tags/${encodeURIComponent(tag)}`;
@@ -337,103 +327,48 @@ export function getGitHubReleaseByTagUrl(
 
 /** Build the GitHub API URL used to discover a source's latest CLI release. */
 export function getGitHubLatestReleaseUrl(
-  source: UpgradeSource = PRIMARY_UPGRADE_SOURCE,
+  source: UpgradeSource = UPGRADE_SOURCE,
 ): string {
-  return source.tagPrefix
-    ? `${getGitHubReleasesUrl(source)}?per_page=100`
-    : `${getGitHubReleasesUrl(source)}/latest`;
+  return `${getGitHubReleasesUrl(source)}?per_page=100`;
 }
 
-/** Build the GitHub API URL used to verify that a source repository exists. */
-export function getGitHubRepositoryUrl(
-  source: UpgradeSource = PRIMARY_UPGRADE_SOURCE,
-): string {
-  return `https://api.github.com/repos/${source.githubRepo}`;
-}
-
-/** GitHub API base URL for the primary release source. */
+/** GitHub API base URL for CLI releases. */
 export const GITHUB_RELEASES_URL = getGitHubReleasesUrl();
 
-/** Result of selecting one source for an upgrade operation. */
-export type ResolvedUpgradeSource = {
-  /** The selected release source. */
-  readonly source: UpgradeSource;
-  /** The successful response from the source probe. */
-  readonly response: Response;
-};
-
-/** All configured upgrade sources returned an HTTP 404 response. */
-export class UpgradeSourceNotFoundError extends UpgradeError {
+/** A CLI release lookup returned HTTP 404. */
+export class UpgradeReleaseNotFoundError extends UpgradeError {
   constructor() {
-    super(
-      "network_error",
-      "No CLI upgrade source was found: every source returned HTTP 404",
-    );
-    this.name = "UpgradeSourceNotFoundError";
-  }
-}
-
-/** Configuration for selecting the first available upgrade source. */
-export type ResolveUpgradeSourceOptions = {
-  /** Build the source-specific URL whose response proves source availability. */
-  readonly getProbeUrl: (source: UpgradeSource) => string;
-  /** Fetch implementation used for the probe. Defaults to the CLI CA-aware fetch. */
-  readonly fetch?: typeof fetch;
-  /** Optional cancellation signal shared by every source probe. */
-  readonly signal?: AbortSignal | undefined;
-  /** Ordered sources to probe. Defaults to all configured upgrade sources. */
-  readonly sources?: readonly UpgradeSource[];
-};
-
-async function fetchUpgradeProbe(
-  source: UpgradeSource,
-  options: ResolveUpgradeSourceOptions,
-): Promise<Response> {
-  try {
-    return await (options.fetch ?? customFetch)(options.getProbeUrl(source), {
-      headers: getGitHubHeaders(),
-      ...(options.signal && { signal: options.signal }),
-    });
-  } catch (error) {
-    if (options.signal?.aborted) {
-      throw options.signal.reason;
-    }
-    if (error instanceof Error && error.name === "AbortError") {
-      throw error;
-    }
-    if (error instanceof Error && isTlsCertError(error)) {
-      throw new UpgradeTransportError(buildTlsErrorDetail(error));
-    }
-    throw new UpgradeTransportError(
-      `Failed to connect to GitHub: ${stringifyUnknown(error)}`,
-    );
+    super("network_error", "No CLI release was found (HTTP 404)");
+    this.name = "UpgradeReleaseNotFoundError";
   }
 }
 
 /**
- * Select the first available upgrade source.
+ * Request CLI release metadata from GitHub.
  *
- * The caller receives the successful probe response so it never repeats the
- * request. Only HTTP 404 advances to the next source. Every other HTTP or
- * network failure aborts immediately.
+ * Returns the successful response. HTTP 404 throws
+ * {@link UpgradeReleaseNotFoundError}; every other HTTP or network failure
+ * throws an {@link UpgradeError}.
  */
-export async function resolveUpgradeSource(
-  options: ResolveUpgradeSourceOptions,
-): Promise<ResolvedUpgradeSource> {
-  for (const source of options.sources ?? UPGRADE_SOURCES) {
-    const response = await fetchUpgradeProbe(source, options);
-    if (response.ok) {
-      return { source, response };
-    }
-    if (response.status !== 404) {
-      throw new UpgradeError(
-        "network_error",
-        `Failed to fetch from GitHub: HTTP ${response.status}`,
-      );
-    }
+export async function fetchUpgradeRelease(
+  url: string,
+  signal?: AbortSignal,
+): Promise<Response> {
+  const response = await fetchWithUpgradeError(
+    url,
+    { headers: getGitHubHeaders(), ...(signal && { signal }) },
+    "GitHub",
+  );
+  if (response.status === 404) {
+    throw new UpgradeReleaseNotFoundError();
   }
-
-  throw new UpgradeSourceNotFoundError();
+  if (!response.ok) {
+    throw new UpgradeError(
+      "network_error",
+      `Failed to fetch from GitHub: HTTP ${response.status}`,
+    );
+  }
+  return response;
 }
 
 /**

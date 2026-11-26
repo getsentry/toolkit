@@ -17,6 +17,8 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { app } from "../../../src/app.js";
 import type { SentryContext } from "../../../src/context.js";
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
+import * as apiClient from "../../../src/lib/api-client.js";
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as chunkUpload from "../../../src/lib/api/chunk-upload.js";
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as debugFilesApi from "../../../src/lib/api/debug-files.js";
@@ -26,7 +28,9 @@ import {
   WATCH_ARM64_DEBUG_ID,
   watchFatMachO,
 } from "../../fixtures/dif/macho.js";
-import { useTestConfigDir } from "../../helpers.js";
+import { setAuthToken } from "../../../src/lib/db/auth.js";
+import { DEFAULT_SENTRY_URL } from "../../../src/lib/constants.js";
+import { mintSntrysToken, useTestConfigDir } from "../../helpers.js";
 
 vi.mock("node:os", async (importOriginal) => {
   const actual = await importOriginal<typeof import("node:os")>();
@@ -44,6 +48,18 @@ const BREAKPAD_FIXTURE = [
 ].join("\n");
 
 const KNOWN_DEBUG_ID = "0f13a5da-412a-fbf7-c866-2048f3294f3d";
+
+/** Numeric org/project IDs, as DSN auto-detection yields on a cold cache. */
+const NUMERIC_ORG_ID = "1234567";
+const NUMERIC_PROJECT_ID = "4500000000000042";
+
+/** Project details the slug lookup returns for the numeric IDs above. */
+const NUMERIC_TARGET_PROJECT = {
+  id: NUMERIC_PROJECT_ID,
+  slug: "my-project",
+  name: "My Project",
+  organization: { id: NUMERIC_ORG_ID, slug: "my-org", name: "My Org" },
+} as Awaited<ReturnType<typeof apiClient.getProject>>;
 
 let tempDir: string;
 let savedEnv: Record<string, string | undefined>;
@@ -363,6 +379,121 @@ describe("sentry debug-files upload", () => {
     // The server options fetched for the scan gate are threaded through so
     // uploadDebugFiles does not re-fetch them.
     expect(callArgs?.serverOptions).toBeDefined();
+    expect(exitCode).toBe(0);
+  });
+
+  test("numeric org/project IDs are shown as slugs in the summary", async () => {
+    process.env["SENTRY_ORG"] = NUMERIC_ORG_ID;
+    process.env["SENTRY_PROJECT"] = NUMERIC_PROJECT_ID;
+    await writeBreakpad();
+
+    const getProject = vi
+      .spyOn(apiClient, "getProject")
+      .mockResolvedValue(NUMERIC_TARGET_PROJECT);
+    const spy = vi.spyOn(debugFilesApi, "uploadDebugFiles").mockResolvedValue([
+      {
+        name: "example.sym",
+        debugId: KNOWN_DEBUG_ID,
+        checksum: "a".repeat(40),
+        state: "ok",
+        detail: null,
+      },
+    ]);
+
+    const { output, exitCode } = await runUpload([tempDir]);
+    expect(getProject).toHaveBeenCalledWith(NUMERIC_ORG_ID, NUMERIC_PROJECT_ID);
+    expect(spy.mock.calls[0]?.[0]?.org).toBe("my-org");
+    expect(spy.mock.calls[0]?.[0]?.project).toBe("my-project");
+    expect(output).toContain("my-org");
+    expect(output).toContain("my-project");
+    expect(output).not.toContain(NUMERIC_PROJECT_ID);
+    expect(output).toContain("Uploaded 1 debug file(s) to my-org/my-project");
+    expect(exitCode).toBe(0);
+  });
+
+  test("--json reports slugs for numeric org/project IDs", async () => {
+    process.env["SENTRY_ORG"] = NUMERIC_ORG_ID;
+    process.env["SENTRY_PROJECT"] = NUMERIC_PROJECT_ID;
+    await writeBreakpad();
+
+    vi.spyOn(apiClient, "getProject").mockResolvedValue(NUMERIC_TARGET_PROJECT);
+    vi.spyOn(debugFilesApi, "uploadDebugFiles").mockResolvedValue([
+      {
+        name: "example.sym",
+        debugId: KNOWN_DEBUG_ID,
+        checksum: "a".repeat(40),
+        state: "ok",
+        detail: null,
+      },
+    ]);
+
+    const { output, exitCode } = await runUpload([tempDir, "--json"]);
+    const parsed = JSON.parse(output);
+    expect(parsed.org).toBe("my-org");
+    expect(parsed.project).toBe("my-project");
+    expect(exitCode).toBe(0);
+  });
+
+  test("keeps numeric IDs and still uploads when slug lookup fails", async () => {
+    process.env["SENTRY_ORG"] = NUMERIC_ORG_ID;
+    process.env["SENTRY_PROJECT"] = NUMERIC_PROJECT_ID;
+    await writeBreakpad();
+
+    // CI org auth tokens (org:ci) cannot read project details.
+    vi.spyOn(apiClient, "getProject").mockRejectedValue(
+      new Error("Failed to get project: 403 Forbidden"),
+    );
+    const spy = vi.spyOn(debugFilesApi, "uploadDebugFiles").mockResolvedValue([
+      {
+        name: "example.sym",
+        debugId: KNOWN_DEBUG_ID,
+        checksum: "a".repeat(40),
+        state: "ok",
+        detail: null,
+      },
+    ]);
+
+    const { output, exitCode } = await runUpload([tempDir]);
+    expect(spy.mock.calls[0]?.[0]?.org).toBe(NUMERIC_ORG_ID);
+    expect(spy.mock.calls[0]?.[0]?.project).toBe(NUMERIC_PROJECT_ID);
+    expect(output).toContain(
+      `Uploaded 1 debug file(s) to ${NUMERIC_ORG_ID}/${NUMERIC_PROJECT_ID}`,
+    );
+    expect(exitCode).toBe(0);
+  });
+
+  test("falls back to the org auth token's org slug when slug lookup fails", async () => {
+    process.env["SENTRY_ORG"] = NUMERIC_ORG_ID;
+    process.env["SENTRY_PROJECT"] = NUMERIC_PROJECT_ID;
+    setAuthToken(
+      mintSntrysToken({
+        iat: 1_700_000_000,
+        url: DEFAULT_SENTRY_URL,
+        org: "my-org",
+      }),
+    );
+    await writeBreakpad();
+
+    // org:ci tokens cannot read project details.
+    vi.spyOn(apiClient, "getProject").mockRejectedValue(
+      new Error("Failed to get project: 403 Forbidden"),
+    );
+    const spy = vi.spyOn(debugFilesApi, "uploadDebugFiles").mockResolvedValue([
+      {
+        name: "example.sym",
+        debugId: KNOWN_DEBUG_ID,
+        checksum: "a".repeat(40),
+        state: "ok",
+        detail: null,
+      },
+    ]);
+
+    const { output, exitCode } = await runUpload([tempDir]);
+    expect(spy.mock.calls[0]?.[0]?.org).toBe("my-org");
+    expect(spy.mock.calls[0]?.[0]?.project).toBe(NUMERIC_PROJECT_ID);
+    expect(output).toContain(
+      `Uploaded 1 debug file(s) to my-org/${NUMERIC_PROJECT_ID}`,
+    );
     expect(exitCode).toBe(0);
   });
 

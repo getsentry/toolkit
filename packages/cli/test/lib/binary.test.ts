@@ -21,6 +21,7 @@ import {
   acquireLock,
   compareVersions,
   determineInstallDir,
+  fetchUpgradeRelease,
   fetchWithUpgradeError,
   getBinaryDownloadUrl,
   getBinaryFilename,
@@ -36,10 +37,9 @@ import {
   parseUpgradeJson,
   releaseLock,
   replaceBinarySync,
-  resolveUpgradeSource,
   samePath,
-  UPGRADE_SOURCES,
-  UpgradeSourceNotFoundError,
+  UPGRADE_SOURCE,
+  UpgradeReleaseNotFoundError,
 } from "../../src/lib/binary.js";
 import { UpgradeError } from "../../src/lib/errors.js";
 import { extractInputUrl } from "../../src/lib/fetch-input.js";
@@ -69,126 +69,82 @@ describe("getBinaryDownloadUrl", () => {
   });
 });
 
-describe("UPGRADE_SOURCES", () => {
-  test("checks Toolkit before the legacy CLI repository", () => {
-    expect(UPGRADE_SOURCES).toEqual([
-      {
-        githubRepo: "getsentry/toolkit",
-        ghcrRepo: "getsentry/toolkit",
-        tagPrefix: "cli@",
-      },
-      {
-        githubRepo: "getsentry/cli",
-        ghcrRepo: "getsentry/cli",
-        tagPrefix: "",
-      },
-    ]);
+describe("UPGRADE_SOURCE", () => {
+  test("points at Toolkit cli@ releases", () => {
+    expect(UPGRADE_SOURCE).toEqual({
+      githubRepo: "getsentry/toolkit",
+      ghcrRepo: "getsentry/toolkit",
+      tagPrefix: "cli@",
+    });
   });
 });
 
-describe("resolveUpgradeSource", () => {
-  test("uses the first source when it exists", async () => {
-    const requests: string[] = [];
+describe("fetchUpgradeRelease", () => {
+  const url = getGitHubReleaseByTagUrl("0.45.0");
+  let originalFetch: typeof globalThis.fetch;
+  let requests: string[];
 
-    const resolved = await resolveUpgradeSource({
-      getProbeUrl: (source) => getGitHubReleaseByTagUrl("0.45.0", source),
-      fetch: async (url) => {
-        requests.push(extractInputUrl(url));
-        return new Response(JSON.stringify({ tag_name: "cli@0.45.0" }), {
-          status: 200,
-        });
-      },
-    });
+  beforeEach(() => {
+    originalFetch = globalThis.fetch;
+    requests = [];
+  });
 
-    expect(resolved).toEqual({
-      source: UPGRADE_SOURCES[0],
-      response: expect.any(Response),
-    });
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  function mockFetch(respond: () => Response): void {
+    globalThis.fetch = async (input) => {
+      requests.push(extractInputUrl(input));
+      return respond();
+    };
+  }
+
+  test("returns a successful response", async () => {
+    mockFetch(() => Response.json({ tag_name: "cli@0.45.0" }));
+
+    const response = await fetchUpgradeRelease(url);
+
+    await expect(response.json()).resolves.toEqual({ tag_name: "cli@0.45.0" });
     expect(requests).toEqual([
       "https://api.github.com/repos/getsentry/toolkit/releases/tags/cli%400.45.0",
     ]);
   });
 
-  test("falls back to the legacy source only on HTTP 404", async () => {
-    const requests: string[] = [];
+  test("throws UpgradeReleaseNotFoundError on HTTP 404", async () => {
+    mockFetch(() => new Response("Not Found", { status: 404 }));
 
-    const resolved = await resolveUpgradeSource({
-      getProbeUrl: (source) => getGitHubReleaseByTagUrl("0.45.0", source),
-      fetch: async (url) => {
-        requests.push(extractInputUrl(url));
-        return new Response(
-          requests.length === 1
-            ? "Not Found"
-            : JSON.stringify({ tag_name: "0.45.0" }),
-          { status: requests.length === 1 ? 404 : 200 },
-        );
-      },
+    const error = await fetchUpgradeRelease(url).catch(
+      (reason: unknown) => reason,
+    );
+
+    expect(error).toBeInstanceOf(UpgradeReleaseNotFoundError);
+    expect(error).toMatchObject({ name: "UpgradeReleaseNotFoundError" });
+    expect(requests).toHaveLength(1);
+  });
+
+  test.each([401, 403, 429, 500])("throws on HTTP %i", async (status) => {
+    mockFetch(() => new Response("failure", { status }));
+
+    const error = await fetchUpgradeRelease(url).catch(
+      (reason: unknown) => reason,
+    );
+
+    expect(error).toBeInstanceOf(UpgradeError);
+    expect(error).not.toBeInstanceOf(UpgradeReleaseNotFoundError);
+    expect(error).toMatchObject({
+      message: `Failed to fetch from GitHub: HTTP ${status}`,
     });
-
-    expect(resolved.source).toBe(UPGRADE_SOURCES[1]);
-    expect(requests).toEqual([
-      "https://api.github.com/repos/getsentry/toolkit/releases/tags/cli%400.45.0",
-      "https://api.github.com/repos/getsentry/cli/releases/tags/0.45.0",
-    ]);
   });
 
-  test.each([401, 403, 429, 500])(
-    "does not fall back on HTTP %i",
-    async (status) => {
-      const requests: string[] = [];
+  test("throws on a network failure", async () => {
+    globalThis.fetch = async () => {
+      throw new TypeError("fetch failed");
+    };
 
-      await expect(
-        resolveUpgradeSource({
-          getProbeUrl: (source) => getGitHubReleaseByTagUrl("0.45.0", source),
-          fetch: async (url) => {
-            requests.push(extractInputUrl(url));
-            return new Response("failure", { status });
-          },
-        }),
-      ).rejects.toThrow(`HTTP ${status}`);
-
-      expect(requests).toEqual([
-        "https://api.github.com/repos/getsentry/toolkit/releases/tags/cli%400.45.0",
-      ]);
-    },
-  );
-
-  test("does not fall back on a network failure", async () => {
-    const requests: string[] = [];
-
-    await expect(
-      resolveUpgradeSource({
-        getProbeUrl: (source) => getGitHubReleaseByTagUrl("0.45.0", source),
-        fetch: async (url) => {
-          requests.push(extractInputUrl(url));
-          throw new TypeError("fetch failed");
-        },
-      }),
-    ).rejects.toThrow("Failed to connect to GitHub: fetch failed");
-
-    expect(requests).toEqual([
-      "https://api.github.com/repos/getsentry/toolkit/releases/tags/cli%400.45.0",
-    ]);
-  });
-
-  test("fails after every source returns 404", async () => {
-    const requests: string[] = [];
-
-    const error = await resolveUpgradeSource({
-      getProbeUrl: (source) => getGitHubReleaseByTagUrl("0.45.0", source),
-      fetch: async (url) => {
-        requests.push(extractInputUrl(url));
-        return new Response("Not Found", { status: 404 });
-      },
-    }).catch((reason: unknown) => reason);
-
-    expect(error).toBeInstanceOf(UpgradeSourceNotFoundError);
-    expect(error).toMatchObject({ name: "UpgradeSourceNotFoundError" });
-
-    expect(requests).toEqual([
-      "https://api.github.com/repos/getsentry/toolkit/releases/tags/cli%400.45.0",
-      "https://api.github.com/repos/getsentry/cli/releases/tags/0.45.0",
-    ]);
+    await expect(fetchUpgradeRelease(url)).rejects.toThrow(
+      "Failed to connect to GitHub: fetch failed",
+    );
   });
 });
 
@@ -461,15 +417,15 @@ describe("fetchWithUpgradeError", () => {
   test("preserves an arbitrary external abort reason", async () => {
     const controller = new AbortController();
     const reason = { kind: "cancelled" };
-    const request = resolveUpgradeSource({
-      getProbeUrl: () => "https://example.com",
-      signal: controller.signal,
-      fetch: async () => {
-        controller.abort(reason);
-        // oxlint-disable-next-line typescript/only-throw-error -- the test rethrows the abort reason unchanged
-        throw reason;
-      },
-    });
+    globalThis.fetch = async () => {
+      controller.abort(reason);
+      // oxlint-disable-next-line typescript/only-throw-error -- the test rethrows the abort reason unchanged
+      throw reason;
+    };
+    const request = fetchUpgradeRelease(
+      "https://example.com",
+      controller.signal,
+    );
 
     await expect(request).rejects.toBe(reason);
   });
