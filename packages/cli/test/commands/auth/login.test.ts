@@ -1194,7 +1194,7 @@ describe("applyLoginUrl (trust anchor registration)", () => {
     ).toBe(true);
   });
 
-  test("SENTRY_HOST from boot env registers trust anchor (shell export is trusted)", async () => {
+  test("SENTRY_HOST from boot env alone does not register a trust anchor", async () => {
     process.env["SENTRY_HOST"] = "https://sentry.acme.com";
     const { captureEnvTokenHost } =
       await import("../../../src/lib/env-token-host.js");
@@ -1208,7 +1208,7 @@ describe("applyLoginUrl (trust anchor registration)", () => {
       isRequestOriginTrustedForCustomHeaders(
         "https://sentry.acme.com/oauth/device/code/",
       ),
-    ).toBe(true);
+    ).toBe(false);
   });
 
   test("rc-poisoned SENTRY_URL does NOT register trust anchor (attacker path)", async () => {

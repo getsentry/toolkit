@@ -20,8 +20,8 @@ import { normalizeAuthToken } from "./auth-header.js";
 import {
   type CredentialContext,
   getActiveAuthHost,
-  getCredentialContext,
   getIdentityFingerprint,
+  hasStoredAccountForHost,
 } from "./db/auth.js";
 import { isTrustedRegionOrigin } from "./db/regions.js";
 import { invocationState } from "./env.js";
@@ -136,20 +136,6 @@ function isOriginTrustedFor(
   );
 }
 
-/**
- * Check whether a request's origin is trusted under the active token's scope.
- * Returns `true` when no token is active (nothing to protect).
- */
-export function isRequestOriginTrusted(
-  requestInput: string | URL | Request | undefined | null,
-): boolean {
-  const credential = getCredentialContext();
-  if (!credential) {
-    return true;
-  }
-  return isOriginTrustedFor(requestInput, credential.host, credential.identity);
-}
-
 /** Evaluate the host trust against the credential captured for this request. */
 export function isRequestOriginTrustedForContext(
   requestInput: string | URL | Request | undefined | null,
@@ -201,8 +187,8 @@ export function assertCredentialScope(
 }
 
 /**
- * Like {@link isRequestOriginTrusted}, but anchored on the `sntrys_` claim
- * url instead of `getActiveTokenHost()`.
+ * Like {@link isRequestOriginTrustedForContext}, but anchored on the
+ * `sntrys_` claim url instead of the credential's host.
  */
 export function isHostTrustedForClaim(
   requestInput: string | URL | Request | undefined | null,
@@ -213,22 +199,29 @@ export function isHostTrustedForClaim(
 }
 
 /**
- * Trust check for `applyCustomHeaders` (IAP tokens, mTLS headers, etc.).
+ * Trust check for `applyCustomHeaders` on requests that no credential guard
+ * covers: the public share lookup (`getSharedIssue`) and the OAuth device
+ * and setup-code exchanges. Authenticated requests pass their own check from
+ * the credential that {@link assertCredentialScope} already matched.
  *
- * Token present → same as {@link isRequestOriginTrusted}. No token but an
- * explicit login trust anchor → check against the anchor (allows OAuth
- * device-flow against IAP-protected self-hosted to carry custom headers).
- * No anchor at all → fail closed.
+ * Trusted: a host the user logged in to, either this invocation's login
+ * trust anchor (`sentry auth login --url`) or a usable stored login on the
+ * request's server. Anything else fails closed.
+ *
+ * The active credential's host is deliberately NOT consulted. For an env
+ * token it is the boot-time `SENTRY_URL`/`SENTRY_HOST` (and an rc `sntrys_`
+ * token falls back to that boot host too), which a CI step that can write
+ * `$GITHUB_ENV` sets without ever reading the token. With no credential
+ * guard on these paths, trusting it would let that step point a later
+ * `sentry issue view <share-url>` at its own host and collect
+ * `SENTRY_CUSTOM_HEADERS` (often IAP or proxy credentials).
  */
 export function isRequestOriginTrustedForCustomHeaders(
   requestInput: string | URL | Request | undefined | null,
 ): boolean {
-  if (getActiveTokenHost()) {
-    return isRequestOriginTrusted(requestInput);
+  if (isHostTrusted(requestInput, loginTrustState().anchor)) {
+    return true;
   }
-  const { anchor } = loginTrustState();
-  if (anchor) {
-    return isHostTrusted(requestInput, anchor);
-  }
-  return false;
+  const requestOrigin = normalizeTrustOrigin(requestInput);
+  return requestOrigin !== undefined && hasStoredAccountForHost(requestOrigin);
 }
