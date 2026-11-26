@@ -11,36 +11,33 @@ requires:
 
 Set up the Sentry SDK in your project interactively
 
-### `sentry wizard`
+### `sentry wizard [<org>/<project>] [<integration>]`
 
 Set up the Sentry SDK in your project interactively
 
+**Arguments:**
+
+| Argument | Description |
+|----------|-------------|
+| `[<org>/<project>] [<integration>]` | &lt;org&gt;/&lt;project&gt; to set up (skips the project picker), then the integration (skips the integration picker) |
+
 **Flags:**
-- `-i, --integration <value> - Integration to set up (skips the picker)`
-- `-u, --url <value> - URL of your self-hosted Sentry instance`
-- `--org <value> - Slug of the Sentry organization to use`
-- `--project <value> - Slug of the Sentry project to use`
-- `--saas - Use Sentry SaaS (sentry.io) without asking`
-- `--spotlight - Set up Spotlight for local development, without a Sentry account`
-- `--force-install - Install the SDK even when the package manager's checks fail`
-- `--ignore-git-changes - Don't ask before changing a project with uncommitted changes`
-- `--disable-telemetry - Don't send telemetry about this run to Sentry`
-- `--debug - Print the wizard's debug output`
-- `--app-target <value> - Xcode app target that hosts Swift previews (Apple Snapshots)`
-- `--hosted-test-target <value> - Hosted XCTest target to configure (Apple Snapshots)`
-- `--non-interactive - Fail instead of prompting when a choice is ambiguous`
+- `-f, --force - Change a project with uncommitted changes without asking, and install the SDK even when the package manager's checks fail`
 
 **Examples:**
 
 ```bash
-# Pick an integration and set it up
+# Pick an integration and a project, then set it up
 sentry wizard
 
-# Set up Next.js for a known org and project on sentry.io
-sentry wizard -i nextjs --saas --org my-org --project my-project
+# Set up Next.js, picking the project
+sentry wizard nextjs
+
+# Set up Next.js for a known org and project
+sentry wizard my-org/my-project nextjs
 
 # Set up Next.js for Spotlight, without a Sentry account
-sentry wizard -i nextjs --spotlight
+SENTRY_SPOTLIGHT=1 sentry wizard nextjs
 ```
 
 All commands also support `--json`, `--fields`, `--help`, `--log-level`, and `--verbose` flags.

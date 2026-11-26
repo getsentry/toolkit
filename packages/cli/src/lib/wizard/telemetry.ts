@@ -6,8 +6,7 @@
  * wizard flow is a `wizard.flow` span under it and each step a `wizard.step`
  * span under that. Tags go on the same scope as the CLI's. Telemetry is off
  * when the CLI's is (`SENTRY_CLI_NO_TELEMETRY`, `DO_NOT_TRACK`, or
- * `sentry cli defaults telemetry off`), and `--disable-telemetry` turns it
- * off for the run.
+ * `sentry cli defaults telemetry off`).
  *
  * The old wizard sent its telemetry to a project of its own; the tag names
  * stay the same so its dashboards can move over.
@@ -26,7 +25,7 @@ export const Sentry = { setTag, setUser };
 
 /**
  * Run a wizard flow in a `wizard.flow` span, tagged with the integration and
- * which of `--org`, `--project`, and `--saas` were passed.
+ * the kind of `<org>/<project>` target passed (`auto-detect` for none).
  */
 export async function withTelemetry<F>(
   options: {
@@ -38,9 +37,7 @@ export async function withTelemetry<F>(
   callback: () => F | Promise<F>,
 ): Promise<F> {
   setTag("integration", options.integration);
-  setTag("args.project", Boolean(options.wizardOptions.projectSlug));
-  setTag("args.org", Boolean(options.wizardOptions.orgSlug));
-  setTag("args.saas", Boolean(options.wizardOptions.saas));
+  setTag("args.target", options.wizardOptions.target?.type ?? "auto-detect");
 
   return await startSpan(
     {
