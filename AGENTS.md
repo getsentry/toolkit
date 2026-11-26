@@ -146,7 +146,7 @@ Use `/dex` skill to coordinate complex work. Create tasks with full context, bre
 ## Workflow
 
 1. Check neighboring files for existing patterns before writing new code.
-2. When adding or modifying Sentry API endpoint usage, ALWAYS validate the endpoint behavior against the Sentry source code in `~/src/sentry` instead of assuming docs or client parameters are authoritative.
+2. When adding or modifying Sentry API endpoint usage, ALWAYS validate the endpoint behavior against the getsentry/sentry source instead of assuming docs or client parameters are authoritative.
 3. Update relevant docs when changing functionality.
 4. Follow docs/contributing/error-handling.md for MCP error types and
    packages/cli/src/lib/errors.ts for CLI error classes.
