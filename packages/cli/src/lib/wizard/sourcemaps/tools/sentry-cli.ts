@@ -263,6 +263,11 @@ export function setSentryCliRcDefaults(
 /**
  * Write the org and project to the project's `.sentryclirc`, so that
  * `sentry sourcemap upload` finds them when the script runs locally.
+ *
+ * The self-hosted URL stays out of the file. v4 refuses a non-SaaS
+ * `[defaults] url` unless the token's host or a stored login vouches for it,
+ * and the `[auth] token` from the same file doesn't (see
+ * `assertRcUrlTrusted`), so users set `SENTRY_URL` instead.
  */
 async function addOrgAndProjectToSentryCliRc(
   options: SourceMapUploadToolConfigurationOptions,
