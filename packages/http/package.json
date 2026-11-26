@@ -1,0 +1,90 @@
+{
+  "name": "@sentry/http",
+  "version": "0.1.0-dev.0",
+  "description": "HTTP response caching, body compression, and retries over the Fetch API, with pluggable cache stores",
+  "type": "module",
+  "license": "FSL-1.1-Apache-2.0",
+  "author": "Sentry",
+  "homepage": "https://github.com/getsentry/toolkit/tree/main/packages/http#readme",
+  "keywords": [
+    "sentry",
+    "http",
+    "cache",
+    "http-cache",
+    "retry",
+    "fetch"
+  ],
+  "bugs": {
+    "url": "https://github.com/getsentry/toolkit/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/getsentry/toolkit.git",
+    "directory": "packages/http"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "sideEffects": false,
+  "sentryCi": {
+    "e2e": "test:package"
+  },
+  "files": [
+    "dist",
+    "LICENSE.md",
+    "README.md"
+  ],
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./src/index.ts"
+    },
+    "./codec": {
+      "types": "./src/codec.ts",
+      "default": "./src/codec.ts"
+    }
+  },
+  "publishConfig": {
+    "access": "public",
+    "exports": {
+      ".": {
+        "import": {
+          "types": "./dist/index.d.ts",
+          "default": "./dist/index.js"
+        },
+        "require": {
+          "types": "./dist/index.d.cts",
+          "default": "./dist/index.cjs"
+        }
+      },
+      "./codec": {
+        "import": {
+          "types": "./dist/codec.d.ts",
+          "default": "./dist/codec.js"
+        },
+        "require": {
+          "types": "./dist/codec.d.cts",
+          "default": "./dist/codec.cjs"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "build": "tsdown",
+    "test": "vitest run",
+    "test:ci": "vitest run --reporter=default --reporter=junit --outputFile=tests.junit.xml",
+    "test:package": "sh test/package/check.sh",
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.browser.json"
+  },
+  "dependencies": {
+    "http-cache-semantics": "^4.2.0"
+  },
+  "devDependencies": {
+    "@types/http-cache-semantics": "^4.2.0",
+    "@types/node": "catalog:",
+    "fast-check": "^4.8.0",
+    "tsdown": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  }
+}

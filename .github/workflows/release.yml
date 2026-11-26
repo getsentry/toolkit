@@ -10,6 +10,7 @@ on:
         default: cli
         options:
           - cli
+          - http
           - logger
       bump:
         description: "Version bump: auto (from commits), pre (next prerelease), or an explicit bump type"
@@ -71,6 +72,9 @@ jobs:
           case "$PRODUCT" in
             cli)
               workspace=packages/cli
+              ;;
+            http)
+              workspace=packages/http
               ;;
             logger)
               workspace=packages/logger

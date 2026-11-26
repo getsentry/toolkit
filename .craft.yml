@@ -134,6 +134,16 @@ workspaces:
             end
           end
   # No preReleaseCommand: Craft bumps package.json through the npm target.
+  packages/http:
+    changelog:
+      policy: auto
+    releaseBranchPrefix: "release/{{workspaceName}}"
+    targets:
+      - name: github
+        tagPrefix: "{{workspaceName}}@"
+        includeNames: '/^{{packageSimpleName}}-\d.*\.tgz$/'
+      - name: npm
+        includeNames: '/^{{packageSimpleName}}-\d.*\.tgz$/'
   packages/logger:
     changelog:
       policy: auto

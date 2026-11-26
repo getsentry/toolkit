@@ -705,6 +705,9 @@ importers:
       '@sentry/core':
         specifier: 'catalog:'
         version: 11.12.0
+      '@sentry/http':
+        specifier: workspace:*
+        version: link:../http
       '@sentry/logger':
         specifier: workspace:*
         version: link:../logger
@@ -861,6 +864,31 @@ importers:
       typescript:
         specifier: 'catalog:'
         version: 7.0.2
+
+  packages/http:
+    dependencies:
+      http-cache-semantics:
+        specifier: ^4.2.0
+        version: 4.3.0
+    devDependencies:
+      '@types/http-cache-semantics':
+        specifier: ^4.2.0
+        version: 4.2.0
+      '@types/node':
+        specifier: 'catalog:'
+        version: 22.20.3
+      fast-check:
+        specifier: ^4.8.0
+        version: 4.10.1
+      tsdown:
+        specifier: 'catalog:'
+        version: 0.23.7(tsrs@7.1.0-beta.tsrs3)(tsx@4.23.13)(typescript@7.0.2)
+      typescript:
+        specifier: 'catalog:'
+        version: 7.0.2
+      vitest:
+        specifier: 'catalog:'
+        version: 5.0.5(@opentelemetry/api@1.9.1)(@types/node@22.20.3)(@vitest/coverage-v8@5.0.5)(jsdom@28.1.0(supports-color@10.1.0))(msw@2.15.0(@types/node@22.20.3)(typescript@7.0.2))(vite@8.3.8(@types/node@22.20.3)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.13)(yaml@2.9.1))
 
   packages/logger:
     devDependencies:

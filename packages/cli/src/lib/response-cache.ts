@@ -1,14 +1,14 @@
 /**
  * HTTP response cache for read-only API calls.
  *
- * Freshness, revalidation, and retention come from the shared cache policy
- * in `@sentry/api/client` (`lookupResponse` / `storeResponse`): server
- * `Cache-Control` / `ETag` / `Expires` headers win, and a URL-based fallback
- * TTL applies when the server sends none (Sentry's current behavior). This
- * module adds the CLI's store, identity, kill switches, telemetry, and
- * cache-age hint.
+ * Freshness, revalidation, and retention come from the cache policy in
+ * `@sentry/http` (`lookupResponse` / `storeResponse`): server
+ * `Cache-Control` / `ETag` / `Expires` headers win, and the URL's fallback
+ * tier from `@sentry/api/client` applies when the server sends none
+ * (Sentry's current behavior). This module adds the CLI's store, identity,
+ * kill switches, telemetry, and cache-age hint.
  *
- * Bodies are compressed with the toolkit-core codec and kept in a
+ * Bodies are compressed with the `@sentry/http/codec` codec and kept in a
  * filesystem store under `~/.sentry/cache/api-responses/` (see
  * `response-cache-store.ts`), separate from the config SQLite database, which
  * stores small structured data (tokens, org slugs, cursors).
@@ -18,14 +18,15 @@
 
 import { rm } from "node:fs/promises";
 import { join } from "node:path";
+import { classifyUrl, FALLBACK_TTL_MS } from "@sentry/api/client";
 import {
-  buildCacheKey as buildIdentityCacheKey,
   type CacheLookup,
-  classifyUrl,
+  type FreshnessOptions,
+  buildCacheKey as buildIdentityCacheKey,
   lookupResponse,
   storeResponse,
-} from "@sentry/api/client";
-import { createBodyCodec } from "@sentry/toolkit-core/response-cache/codec";
+} from "@sentry/http";
+import { createBodyCodec } from "@sentry/http/codec";
 
 import { getIdentityFingerprint } from "./db/auth.js";
 import { getConfigDir } from "./db/index.js";
@@ -38,8 +39,18 @@ import { recordCacheHit, withCacheSpan } from "./telemetry.js";
 const log = logger.withTag("response-cache");
 
 // ---------------------------------------------------------------------------
-// Cache keys — tiers, keys, and invalidation prefixes live in @sentry/api/client
+// Cache keys live in @sentry/http; tiers and invalidation prefixes in
+// @sentry/api/client
 // ---------------------------------------------------------------------------
+
+/**
+ * Freshness for a Sentry API URL: its fallback tier's TTL when the server
+ * sends no cache headers. The server's `max-age` may give more, since Sentry
+ * sets it only on endpoints whose data rarely changes.
+ */
+function freshness(url: string): FreshnessOptions {
+  return { ttlMs: FALLBACK_TTL_MS[classifyUrl(url)], maxTtlMs: Infinity };
+}
 
 /**
  * Build the cache key for the active identity + method + URL.
@@ -190,7 +201,7 @@ export type { CacheLookup };
  * Look up a GET request in the cache.
  *
  * A fresh entry is a `hit`, and a stale entry with an `ETag` is returned for
- * conditional revalidation (see `lookupResponse` in `@sentry/api/client`).
+ * conditional revalidation (see `lookupResponse` in `@sentry/http`).
  *
  * @param method - HTTP method (only "GET" is cached)
  * @param url - Full request URL
@@ -233,6 +244,7 @@ export async function lookupCachedResponse(
 
       try {
         const lookup = await lookupResponse({
+          ...freshness(url),
           store,
           codec,
           key,
@@ -294,7 +306,7 @@ export async function getCachedResponse(
  * Store a response in the cache.
  *
  * Only caches successful (2xx) GET responses that HTTP caching allows (see
- * `storeResponse` in `@sentry/api/client`); `Cache-Control: no-store` is not
+ * `storeResponse` in `@sentry/http`); `Cache-Control: no-store` is not
  * cached.
  *
  * This function is fire-and-forget — errors are silently swallowed to avoid
@@ -338,6 +350,7 @@ export async function storeCachedResponse(
       "cache.put",
       async (span) => {
         const size = await storeResponse({
+          ...freshness(url),
           store,
           codec,
           key,
@@ -345,6 +358,7 @@ export async function storeCachedResponse(
           url,
           requestHeaders,
           response,
+          requireJson: true,
         });
         if (size > 0) {
           span.setAttribute("cache.item_size", size);
