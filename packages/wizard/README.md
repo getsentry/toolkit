@@ -2,10 +2,10 @@
 
 > **Deprecated. Use `npx sentry wizard`.** The Sentry wizard is now the
 > `sentry wizard` command of the [Sentry CLI](https://cli.sentry.dev). It
-> takes the same integrations and flags:
+> takes the org and project first, then the integration:
 >
 > ```shell
-> npx sentry wizard -i nextjs
+> npx sentry wizard my-org/my-project nextjs
 > ```
 >
 > See the [`sentry wizard` docs](https://cli.sentry.dev/commands/wizard/).
@@ -14,15 +14,24 @@ From version 10, this package only forwards to `sentry wizard`, so existing
 `npx @sentry/wizard` commands keep working:
 
 ```shell
-npx @sentry/wizard -i nextjs --saas --org my-org --project my-project
+# Runs `sentry wizard my-org/my-project nextjs`
+npx @sentry/wizard -i nextjs --org my-org --project my-project
 ```
 
 It prints a deprecation notice on stderr, then runs `sentry wizard` from the
 [`sentry`](https://www.npmjs.com/package/sentry) package it depends on, with
-the same arguments. The exit code and signals pass through. The sign-up flags
-`--signup`, `--promo-code` and `--coming-from` are gone: sign up at
-<https://sentry.io/signup/> first. Version 9 stays on npm for anyone who pins
-it.
+the old flags translated:
+
+- `-i`/`--integration <id>` becomes the integration argument.
+- `--org <org> --project <project>` becomes `<org>/<project>`, and `--org`
+  alone becomes `<org>/`.
+- `--force-install` and `--ignore-git-changes` become `-f`.
+- `-u`/`--url <url>` sets `SENTRY_URL` for the run.
+
+Every other old flag is ignored with a notice, including `--project` without
+`--org`, `--saas`, `--spotlight` (set `SENTRY_SPOTLIGHT=1` instead) and the
+sign-up flags (sign up at <https://sentry.io/signup/> first). The exit code
+and signals pass through. Version 9 stays on npm for anyone who pins it.
 
 ## Development
 

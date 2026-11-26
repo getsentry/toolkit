@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // `@sentry/wizard` 10 runs `sentry wizard` from the Sentry CLI, which replaced
-// it. Arguments, stdio, the exit code, and signals pass through unchanged.
+// it. Old flags are translated to the command's syntax; stdio, the exit code,
+// and signals pass through unchanged.
 import { spawn } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { createRequire } from "node:module";
@@ -42,7 +43,121 @@ function findSentryBin() {
   return undefined;
 }
 
+/** Old flags with a `sentry wizard` equivalent, by name. */
+const TRANSLATED = new Map([
+  ["i", "integration"],
+  ["integration", "integration"],
+  ["u", "url"],
+  ["url", "url"],
+  ["org", "org"],
+  ["project", "project"],
+]);
+
+/** Old flags that `-f` replaces. */
+const FORCE_FLAGS = new Set(["force-install", "ignore-git-changes"]);
+
+/** Old flags without an equivalent that take a value, which is dropped too. */
+const VALUE_FLAGS = new Set([
+  "promo-code",
+  "coming-from",
+  "xcode-project-dir",
+  "app-target",
+  "hosted-test-target",
+]);
+
+/** Old flags that take every value up to the next flag. */
+const ARRAY_FLAGS = new Set(["p", "platform"]);
+
+/**
+ * Translate `@sentry/wizard` arguments to `sentry wizard [<org>/<project>]
+ * [<integration>] [-f]`. Other arguments, such as a target or integration
+ * already written as positionals, pass through. Values are never printed:
+ * some old flags carried tokens.
+ *
+ * @param {readonly string[]} args
+ * @returns {{ args: string[], url: string | undefined, notices: string[] }}
+ */
+function translateArgs(args) {
+  /** @type {Map<string, string>} */
+  const values = new Map();
+  /** @type {string[]} */
+  const positionals = [];
+  /** @type {string[]} */
+  const notices = [];
+  let force = false;
+  let help = false;
+  for (let index = 0; index < args.length; index += 1) {
+    const arg = args[index] ?? "";
+    if (arg === "--") {
+      positionals.push(...args.slice(index + 1));
+      break;
+    }
+    if (!arg.startsWith("-") || arg === "-") {
+      positionals.push(arg);
+      continue;
+    }
+    if (arg === "-h" || arg === "--help") {
+      help = true;
+      continue;
+    }
+    const equals = arg.indexOf("=");
+    const flag = equals === -1 ? arg : arg.slice(0, equals);
+    const name = flag.replace(/^--?/, "");
+    let value = equals === -1 ? undefined : arg.slice(equals + 1);
+    const isNextValue = () => !(args[index + 1] ?? "-").startsWith("-");
+    const equivalent = TRANSLATED.get(name);
+    if (
+      value === undefined &&
+      (equivalent !== undefined ||
+        VALUE_FLAGS.has(name) ||
+        name.startsWith("preSelectedProject.")) &&
+      isNextValue()
+    ) {
+      index += 1;
+      value = args[index];
+    }
+    if (ARRAY_FLAGS.has(name)) {
+      while (value === undefined && isNextValue()) {
+        index += 1;
+      }
+    }
+    if (FORCE_FLAGS.has(name)) {
+      force = true;
+    } else if (equivalent === undefined) {
+      notices.push(`Ignoring ${flag}: \`sentry wizard\` has no such option.`);
+    } else if (value === undefined) {
+      notices.push(`Ignoring ${flag}: it needs a value.`);
+    } else {
+      values.set(equivalent, value);
+    }
+  }
+
+  const org = values.get("org");
+  const project = values.get("project");
+  if (org === undefined && project !== undefined) {
+    notices.push(
+      "Ignoring --project: it needs --org, so the wizard asks for the project.",
+    );
+  }
+  const integration = values.get("integration");
+  return {
+    args: [
+      ...(org === undefined ? [] : [`${org}/${project ?? ""}`]),
+      ...positionals,
+      ...(integration === undefined ? [] : [integration]),
+      ...(force ? ["-f"] : []),
+      ...(help ? ["--help"] : []),
+    ],
+    url: values.get("url"),
+    notices,
+  };
+}
+
 process.stderr.write(`${NOTICE}\n`);
+const translated = translateArgs(process.argv.slice(2));
+for (const notice of translated.notices) {
+  process.stderr.write(`${notice}\n`);
+}
 
 const sentryBin = findSentryBin();
 if (sentryBin === undefined) {
@@ -54,8 +169,14 @@ if (sentryBin === undefined) {
 
 const child = spawn(
   process.execPath,
-  [sentryBin, "wizard", ...process.argv.slice(2)],
-  { stdio: "inherit" },
+  [sentryBin, "wizard", ...translated.args],
+  {
+    stdio: "inherit",
+    env:
+      translated.url === undefined
+        ? process.env
+        : { ...process.env, SENTRY_URL: translated.url },
+  },
 );
 
 let interrupts = 0;

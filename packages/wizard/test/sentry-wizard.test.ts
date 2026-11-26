@@ -18,12 +18,16 @@ const SOURCE_BIN = fileURLToPath(
 const NOTICE =
   "`@sentry/wizard` is deprecated. Use `npx sentry wizard` instead.\n";
 
-// A stand-in for the `sentry` package's bin. It prints its arguments, then
+// A stand-in for the `sentry` package's bin. It prints its arguments and
+// SENTRY_URL, then
 // behaves as FAKE_SENTRY says: exit with a code, die from a signal, or wait
 // and report the signals it gets.
 const FAKE_SENTRY_BIN = `
 const [mode, value] = (process.env.FAKE_SENTRY ?? "exit:0").split(":");
-process.stdout.write(JSON.stringify(process.argv.slice(2)) + "\\n");
+process.stdout.write(
+  JSON.stringify({ args: process.argv.slice(2), url: process.env.SENTRY_URL }) +
+    "\\n",
+);
 if (mode === "exit") process.exit(Number(value));
 if (mode === "kill") process.kill(process.pid, value);
 if (mode === "wait") {
@@ -70,7 +74,7 @@ type Run = {
 function run(bin: string, args: string[], fake = "exit:0"): Run {
   // `pnpm run` sets NODE_PATH to its store, where Node would find the
   // workspace CLI instead of the fake.
-  const { NODE_PATH: _nodePath, ...env } = process.env;
+  const { NODE_PATH: _nodePath, SENTRY_URL: _sentryUrl, ...env } = process.env;
   const child = spawn(process.execPath, [bin, ...args], {
     env: { ...env, FAKE_SENTRY: fake },
     stdio: ["ignore", "pipe", "pipe"],
@@ -105,26 +109,117 @@ afterAll(() => {
 });
 
 describe("sentry-wizard", () => {
-  test("prints the deprecation notice and runs `sentry wizard` with the arguments unchanged", async () => {
-    const args = [
+  test("prints the deprecation notice and translates -i, --org and --project", async () => {
+    const result = run(bin, [
       "-i",
       "nextjs",
-      "--saas",
       "--org",
-      "x",
+      "my-org",
       "--project",
-      "my app",
-      "-u",
-    ];
-    const result = run(bin, args);
+      "my-app",
+    ]);
 
     expect(await result.done).toEqual({ code: 0, signal: null });
     expect(result.stderr()).toBe(NOTICE);
-    expect(JSON.parse(result.stdout())).toEqual(["wizard", ...args]);
+    expect(JSON.parse(result.stdout())).toEqual({
+      args: ["wizard", "my-org/my-app", "nextjs"],
+    });
+  });
+
+  test("reads --flag=value forms, and --org alone as an org target", async () => {
+    const result = run(bin, ["--integration=nextjs", "--org=my-org"]);
+
+    expect(await result.done).toEqual({ code: 0, signal: null });
+    expect(JSON.parse(result.stdout())).toEqual({
+      args: ["wizard", "my-org/", "nextjs"],
+    });
+  });
+
+  test("turns --force-install and --ignore-git-changes into one -f", async () => {
+    const result = run(bin, [
+      "--force-install",
+      "-i",
+      "nextjs",
+      "--ignore-git-changes",
+    ]);
+
+    expect(await result.done).toEqual({ code: 0, signal: null });
+    expect(JSON.parse(result.stdout())).toEqual({
+      args: ["wizard", "nextjs", "-f"],
+    });
+  });
+
+  test.each([
+    ["-u", "https://sentry.example.com"],
+    ["--url", "https://sentry.example.com"],
+    ["--url=https://sentry.example.com"],
+  ])("sets SENTRY_URL for %s instead of passing it on", async (...urlArgs) => {
+    const result = run(bin, [...urlArgs, "-i", "nextjs"]);
+
+    expect(await result.done).toEqual({ code: 0, signal: null });
+    expect(JSON.parse(result.stdout())).toEqual({
+      args: ["wizard", "nextjs"],
+      url: "https://sentry.example.com",
+    });
+  });
+
+  test("drops other old flags and their values, with a notice for each", async () => {
+    const result = run(bin, [
+      "--project",
+      "my-app",
+      "--saas",
+      "--spotlight",
+      "--debug",
+      "--disable-telemetry",
+      "--promo-code",
+      "secret-code",
+      "--skip-connect",
+      "--quiet",
+      "--uninstall",
+      "-p",
+      "ios",
+      "android",
+      "-i",
+      "nextjs",
+    ]);
+
+    expect(await result.done).toEqual({ code: 0, signal: null });
+    expect(JSON.parse(result.stdout())).toEqual({
+      args: ["wizard", "nextjs"],
+    });
+    expect(result.stderr()).toBe(
+      NOTICE +
+        [
+          "--saas",
+          "--spotlight",
+          "--debug",
+          "--disable-telemetry",
+          "--promo-code",
+          "--skip-connect",
+          "--quiet",
+          "--uninstall",
+          "-p",
+        ]
+          .map(
+            (flag) =>
+              `Ignoring ${flag}: \`sentry wizard\` has no such option.\n`,
+          )
+          .join("") +
+        "Ignoring --project: it needs --org, so the wizard asks for the project.\n",
+    );
+  });
+
+  test("passes positionals and --help through", async () => {
+    const result = run(bin, ["my-org/my-app", "nextjs", "--help"]);
+
+    expect(await result.done).toEqual({ code: 0, signal: null });
+    expect(JSON.parse(result.stdout())).toEqual({
+      args: ["wizard", "my-org/my-app", "nextjs", "--help"],
+    });
   });
 
   test("exits with the CLI's exit code", async () => {
-    const result = run(bin, ["-i", "nextjs", "--promo-code", "x"], "exit:21");
+    const result = run(bin, [], "exit:21");
 
     expect(await result.done).toEqual({ code: 21, signal: null });
   });
