@@ -11,7 +11,7 @@ import { TEST_ARGS } from "./constants.js";
 
 declare module "vitest" {
   export interface ProvidedContext {
-    /** Origin of the mock Sentry API, for `sentry wizard --url`. */
+    /** Origin of the mock Sentry API, for `SENTRY_URL`. */
     sentryUrl: string;
   }
 }

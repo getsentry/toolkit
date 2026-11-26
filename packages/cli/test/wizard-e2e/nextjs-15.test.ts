@@ -153,7 +153,10 @@ describe("NextJS-15 Spotlight", () => {
   const { projectDir, cleanup } = createIsolatedTestEnv("nextjs-15-test-app");
 
   beforeAll(async () => {
-    wizardExitCode = await withEnv({ cwd: projectDir })
+    wizardExitCode = await withEnv({
+      cwd: projectDir,
+      env: { SENTRY_SPOTLIGHT: "1" },
+    })
       .defineInteraction()
       .expectOutput("Spotlight mode enabled!")
       .whenAsked("Please select your package manager.")
@@ -183,7 +186,7 @@ describe("NextJS-15 Spotlight", () => {
       )
       .respondWith(KEYS.DOWN, KEYS.ENTER) // Decline MCP config
       .expectOutput("Successfully installed the Sentry Next.js SDK!")
-      .run([...getWizardCommand("nextjs"), "--spotlight"]);
+      .run(["wizard", "nextjs"]);
   });
 
   afterAll(() => {

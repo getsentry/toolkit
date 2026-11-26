@@ -6,10 +6,11 @@ and then checks the files the wizard wrote and that the app still builds and
 runs. They were moved here from getsentry/sentry-wizard's `e2e-tests/`.
 
 The wizard never talks to sentry.io. `global-setup.ts` starts a local mock
-Sentry API (the routes in `../mocks/routes.ts`, plus org auth token creation),
-and `getWizardCommand()` points `--url`, `--org` and `--project` at it, with
-its token in `SENTRY_AUTH_TOKEN`. Append `--spotlight` for a run without a
-project. No secrets are needed.
+Sentry API (the routes in `../mocks/routes.ts`, plus org auth token creation).
+Every run gets its URL in `SENTRY_URL` and its token in `SENTRY_AUTH_TOKEN`,
+and `getWizardCommand()` runs `sentry wizard test-org/test-project <integration>`.
+For a run without a project, pass `env: { SENTRY_SPOTLIGHT: "1" }` to
+`withEnv()` and run `["wizard", <integration>]`. No secrets are needed.
 
 ## Running
 

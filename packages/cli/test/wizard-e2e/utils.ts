@@ -7,9 +7,9 @@
  * wizard` in it while answering its prompts ({@link withEnv}), and then checks
  * the files the wizard wrote and that the app still builds and runs.
  *
- * The wizard never talks to sentry.io: runs that need a project point `--url`
- * at the local mock Sentry API that `global-setup.ts` starts, and Spotlight
- * runs need no project at all.
+ * The wizard never talks to sentry.io: runs that need a project set
+ * `SENTRY_URL` to the local mock Sentry API that `global-setup.ts` starts, and
+ * Spotlight runs (`SENTRY_SPOTLIGHT=1`) need no project at all.
  */
 
 import {
@@ -61,23 +61,15 @@ function getCliCommand(): [string, ...string[]] {
 }
 
 /**
- * The `sentry wizard` arguments for `integration`, logged in to the mock
- * Sentry API with its org and project preselected. Append `--spotlight` for a
- * run without a project.
+ * The `sentry wizard` arguments that set up `integration` for the mock
+ * Sentry API's org and project. The run logs in with the environment token
+ * that {@link wizardEnv} sets for the mock's `SENTRY_URL`.
  */
 export function getWizardCommand(integration: WizardIntegration): string[] {
   return [
     "wizard",
-    "--debug",
-    "-i",
+    `${TEST_ARGS.ORG_SLUG}/${TEST_ARGS.PROJECT_SLUG}`,
     integration,
-    "--url",
-    inject("sentryUrl"),
-    "--org",
-    TEST_ARGS.ORG_SLUG,
-    "--project",
-    TEST_ARGS.PROJECT_SLUG,
-    "--disable-telemetry",
   ];
 }
 
@@ -363,17 +355,22 @@ async function withTimeout<T>(
 }
 
 /**
- * Start describing a wizard run in `cwd`. Set `debug` (or
- * `SENTRY_WIZARD_E2E_DEBUG=true`) to stream the wizard's output.
+ * Start describing a wizard run in `cwd`, with `env` added to its
+ * environment. Set `debug` (or `SENTRY_WIZARD_E2E_DEBUG=true`) to stream the
+ * wizard's output.
  */
-export function withEnv(options: { cwd: string; debug?: boolean }): {
+export function withEnv(options: {
+  cwd: string;
+  env?: NodeJS.ProcessEnv;
+  debug?: boolean;
+}): {
   defineInteraction: () => Interaction;
 } {
   return {
     defineInteraction: () =>
       new Interaction(
         options.cwd,
-        wizardEnv(),
+        { ...wizardEnv(), ...options.env },
         options.debug ?? process.env["SENTRY_WIZARD_E2E_DEBUG"] === "true",
       ),
   };
