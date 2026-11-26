@@ -216,10 +216,8 @@ export function isHostTrustedForClaim(
 /**
  * Trust check for `applyCustomHeaders` (IAP tokens, mTLS headers, etc.).
  *
- * Token present → same as {@link isRequestOriginTrusted}, except that a
- * `.sentryclirc` `sntrys_` token is checked against its boot host, not its
- * claim: the headers come from the user's env, and a host that only the rc
- * file names must not receive them. No token but an explicit login trust
+ * Token present → {@link isRequestOriginTrustedForCustomHeadersInContext}
+ * for the active credential. No token but an explicit login trust
  * anchor → check against the anchor (allows OAuth device-flow against
  * IAP-protected self-hosted to carry custom headers). No anchor at all →
  * fail closed.
@@ -229,10 +227,9 @@ export function isRequestOriginTrustedForCustomHeaders(
 ): boolean {
   const credential = getCredentialContext();
   if (credential) {
-    return isOriginTrustedFor(
+    return isRequestOriginTrustedForCustomHeadersInContext(
       requestInput,
-      getRcTokenBootHost(credential.token) ?? credential.host,
-      credential.identity,
+      credential,
     );
   }
   const { anchor } = loginTrustState();
@@ -240,4 +237,21 @@ export function isRequestOriginTrustedForCustomHeaders(
     return isHostTrusted(requestInput, anchor);
   }
   return false;
+}
+
+/**
+ * {@link isRequestOriginTrustedForCustomHeaders} for the credential captured
+ * for this request. A `.sentryclirc` `sntrys_` token is checked against its
+ * boot host, not its claim, so a host that only the rc file names never
+ * receives `SENTRY_CUSTOM_HEADERS`.
+ */
+export function isRequestOriginTrustedForCustomHeadersInContext(
+  requestInput: string | URL | Request | undefined | null,
+  credential: Pick<CredentialContext, "host" | "identity" | "token">,
+): boolean {
+  return isOriginTrustedFor(
+    requestInput,
+    getRcTokenBootHost(credential.token) ?? credential.host,
+    credential.identity,
+  );
 }

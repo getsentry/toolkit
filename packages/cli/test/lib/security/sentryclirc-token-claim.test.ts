@@ -11,6 +11,7 @@
 
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { listOrganizations } from "@sentry/api";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import { _resetCustomHeadersCache } from "../../../src/lib/custom-headers.js";
 import {
@@ -25,12 +26,15 @@ import {
   CONFIG_FILENAME,
   clearSentryCliRcCache,
 } from "../../../src/lib/sentryclirc.js";
+import { resetAuthenticatedFetch } from "../../../src/lib/sentry-client.js";
+import { getSdkClientConfig } from "../../../src/lib/sentry-sdk-client.js";
 import {
   assertCredentialScope,
   isRequestOriginTrustedForCustomHeaders,
 } from "../../../src/lib/token-host.js";
 import {
   mintSntrysToken,
+  mockFetch,
   resetHostScopingState,
   useEnvSandbox,
   useTestConfigDir,
@@ -52,17 +56,42 @@ useEnvSandbox([
   "SENTRY_CUSTOM_HEADERS",
 ]);
 
+let originalFetch: typeof globalThis.fetch;
+
 beforeEach(async () => {
+  originalFetch = globalThis.fetch;
   clearSentryCliRcCache();
   _resetCustomHeadersCache();
+  resetAuthenticatedFetch();
   await resetHostScopingState();
 });
 
 afterEach(async () => {
+  globalThis.fetch = originalFetch;
   clearSentryCliRcCache();
   _resetCustomHeadersCache();
+  resetAuthenticatedFetch();
   await resetHostScopingState();
 });
+
+/** Send one request through the authenticated fetch; return its headers. */
+async function sentHeaders(baseUrl: string): Promise<Headers> {
+  let sent: Headers | undefined;
+  globalThis.fetch = mockFetch(async (input, init) => {
+    sent = new Headers(
+      init?.headers ?? (input instanceof Request ? input.headers : undefined),
+    );
+    return Response.json([]);
+  });
+  await listOrganizations({
+    ...getSdkClientConfig(baseUrl),
+    throwOnError: true,
+  });
+  if (!sent) {
+    throw new Error("No request was sent");
+  }
+  return sent;
+}
 
 function writeRc(dir: string, content: string): void {
   writeFileSync(join(dir, CONFIG_FILENAME), content, "utf-8");
@@ -146,6 +175,29 @@ describe(".sentryclirc sntrys_ token", () => {
     expect(isRequestOriginTrustedForCustomHeaders(`${ACME}/api/0/`)).toBe(
       false,
     );
+  });
+
+  test("does not send SENTRY_CUSTOM_HEADERS to the rc host on authenticated requests", async () => {
+    process.env["SENTRY_CUSTOM_HEADERS"] = "X-IAP-Token: secret";
+    const dir = projectDir();
+    writeRc(dir, `[auth]\ntoken = ${ACME_TOKEN}\n[defaults]\nurl = ${ACME}\n`);
+    await boot(dir);
+    await assertRcUrlTrusted(dir);
+
+    const headers = await sentHeaders(ACME);
+    expect(headers.get("Authorization")).toBe(`Bearer ${ACME_TOKEN}`);
+    expect(headers.get("X-IAP-Token")).toBeNull();
+  });
+
+  test("sends SENTRY_CUSTOM_HEADERS on authenticated requests to a boot SENTRY_URL that matches", async () => {
+    process.env["SENTRY_CUSTOM_HEADERS"] = "X-IAP-Token: secret";
+    process.env["SENTRY_URL"] = ACME;
+    const dir = projectDir();
+    writeRc(dir, `[auth]\ntoken = ${ACME_TOKEN}\n`);
+    await boot(dir);
+
+    const headers = await sentHeaders(ACME);
+    expect(headers.get("X-IAP-Token")).toBe("secret");
   });
 
   test("keeps SENTRY_CUSTOM_HEADERS on a boot SENTRY_URL that matches", async () => {
