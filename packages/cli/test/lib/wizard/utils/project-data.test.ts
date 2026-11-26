@@ -19,6 +19,9 @@ const mocks = vi.hoisted(() => ({
   createOrgAuthToken: vi.fn(),
   select: vi.fn(),
   text: vi.fn(),
+  isRequestOriginTrusted: vi.fn(),
+  getApiBaseUrl: vi.fn(),
+  warn: vi.fn(),
 }));
 
 vi.mock("@clack/prompts", () => ({
@@ -31,9 +34,22 @@ vi.mock("@clack/prompts", () => ({
   log: {
     info: vi.fn(),
     step: vi.fn(),
-    warn: vi.fn(),
+    warn: mocks.warn,
     error: vi.fn(),
   },
+}));
+// The stored login (`getAuthConfig`) is mocked, so its host check is too.
+vi.mock("../../../../src/lib/token-host.js", async (importOriginal) => ({
+  ...(await importOriginal<
+    typeof import("../../../../src/lib/token-host.js")
+  >()),
+  isRequestOriginTrusted: mocks.isRequestOriginTrusted,
+}));
+vi.mock("../../../../src/lib/sentry-client.js", async (importOriginal) => ({
+  ...(await importOriginal<
+    typeof import("../../../../src/lib/sentry-client.js")
+  >()),
+  getApiBaseUrl: mocks.getApiBaseUrl,
 }));
 vi.mock("../../../../src/lib/db/auth.js", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../../../src/lib/db/auth.js")>()),
@@ -87,10 +103,15 @@ const KEY = {
   dsn: { public: "https://abc@o1.ingest.sentry.io/42", secret: "" },
 };
 
-beforeEach(() => {
+beforeEach(async () => {
   vi.clearAllMocks();
+  const actualClient = await vi.importActual<
+    typeof import("../../../../src/lib/sentry-client.js")
+  >("../../../../src/lib/sentry-client.js");
+  mocks.getApiBaseUrl.mockImplementation(actualClient.getApiBaseUrl);
   vi.stubEnv("SENTRY_HANDOFF", "");
   mocks.getAuthConfig.mockReturnValue({ token: "stored" });
+  mocks.isRequestOriginTrusted.mockReturnValue(true);
   mocks.listOrganizations.mockResolvedValue([ORG]);
   mocks.getProject.mockResolvedValue(PROJECT);
   mocks.getProjectKeys.mockResolvedValue([KEY]);
@@ -234,6 +255,53 @@ describe("getOrAskForProjectData", () => {
     await expect(
       getOrAskForProjectData({ telemetryEnabled: false, saas: true }),
     ).rejects.toThrow(WizardExitError);
+  });
+
+  it("logs in again when the stored login is for another instance", async () => {
+    mocks.isRequestOriginTrusted.mockReturnValueOnce(false);
+    mocks.runInteractiveLogin.mockResolvedValue({ method: "oauth" });
+
+    await getOrAskForProjectData({
+      telemetryEnabled: false,
+      url: "https://sentry.example.com",
+      orgSlug: "acme",
+      projectSlug: "web",
+    });
+
+    expect(mocks.runInteractiveLogin).toHaveBeenCalled();
+  });
+
+  it("uses the stored login's instance when none is chosen", async () => {
+    mocks.getApiBaseUrl.mockReturnValue("https://sentry.example.com");
+
+    const result = await getOrAskForProjectData({
+      telemetryEnabled: false,
+      orgSlug: "acme",
+      projectSlug: "web",
+    });
+
+    expect(mocks.runInteractiveLogin).not.toHaveBeenCalled();
+    expect(result).toMatchObject({
+      sentryUrl: "https://sentry.example.com/",
+      selfHosted: true,
+    });
+  });
+
+  it("links to the self-hosted auth token settings when it can't create one", async () => {
+    mocks.getApiBaseUrl.mockReturnValue("https://sentry.example.com");
+    mocks.createOrgAuthToken.mockRejectedValue(new Error("forbidden"));
+
+    await getOrAskForProjectData({
+      telemetryEnabled: false,
+      orgSlug: "acme",
+      projectSlug: "web",
+    });
+
+    expect(mocks.warn).toHaveBeenCalledWith(
+      expect.stringContaining(
+        "https://sentry.example.com/settings/acme/auth-tokens/",
+      ),
+    );
   });
 
   it("claims an agent handoff and uses its org", async () => {

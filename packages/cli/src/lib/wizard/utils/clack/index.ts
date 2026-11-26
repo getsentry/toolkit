@@ -24,6 +24,7 @@ import { sentry } from "../../../app-identity.js";
 import { CLI_VERSION } from "../../../constants.js";
 import { reportCliError } from "../../../error-reporting.js";
 import { WizardExitError } from "../../../errors.js";
+import { isSea } from "../../../react-native/wrap-call.js";
 import { Sentry, traceStep } from "../../telemetry.js";
 import { debug } from "../debug.js";
 import { getUncommittedOrUntrackedFilePaths, isInGitRepo } from "../git.js";
@@ -717,9 +718,7 @@ SENTRY_AUTH_TOKEN=${authToken}
   if (dotEnvFileExists) {
     const dotEnvFileContent = readFileSync(dotEnvFilePath, "utf8");
 
-    const hasAuthToken = !!dotEnvFileContent.match(
-      /^\s*SENTRY_AUTH_TOKEN\s*=/g,
-    );
+    const hasAuthToken = /^\s*SENTRY_AUTH_TOKEN\s*=/m.test(dotEnvFileContent);
 
     if (hasAuthToken) {
       clack.log.warn(
@@ -887,7 +886,9 @@ function runFormatterCommand(
             new Error(`Could not resolve the ${packageName} binary.`),
           );
     }
-    command = process.execPath;
+    // In the standalone binary, `process.execPath` is `sentry` itself, not
+    // Node, so run the formatter with the project's Node.
+    command = isSea() ? "node" : process.execPath;
     args = [binPath, ...subArgs, "--", ...files];
   } else {
     command = "npx";
@@ -1265,16 +1266,15 @@ export async function getPackageManager(
     return fallback;
   }
 
-  const selectedPackageManager: PackageManager | symbol =
-    await abortIfCancelled(
-      clack.select({
-        message: "Please select your package manager.",
-        options: packageManagers.map((packageManager) => ({
-          value: packageManager,
-          label: packageManager.label,
-        })),
-      }),
-    );
+  const selectedPackageManager = await abortIfCancelled(
+    clack.select({
+      message: "Please select your package manager.",
+      options: packageManagers.map((packageManager) => ({
+        value: packageManager,
+        label: packageManager.label,
+      })),
+    }),
+  );
 
   globalWithSentryWizard.__sentry_wizard_cached_package_manager =
     selectedPackageManager;
