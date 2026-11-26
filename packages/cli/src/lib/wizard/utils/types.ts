@@ -27,12 +27,6 @@ export type WizardOptions = {
   telemetryEnabled: boolean;
 
   /**
-   * The promo code to use while signing up for Sentry.
-   * This can be passed via the --promo-code arg.
-   */
-  promoCode?: string | undefined;
-
-  /**
    * The url of the Sentry instance to use.
    * This can be passed via the `-u` or `--url` arg.
    */
@@ -72,13 +66,6 @@ export type WizardOptions = {
    * Does not apply to all wizard flows (currently NPM only)
    */
   forceInstall?: boolean | undefined;
-
-  /**
-   * Used when the wizard command is copied from partner sites (e.g. Vercel)
-   * to display login/signup instructions specific to organizations provisioned
-   * through the partner.
-   */
-  comingFrom?: string | undefined;
 
   /**
    * If this is set, the wizard will ignore any git changes in the project and not prompt for confirmation.
