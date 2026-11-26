@@ -13370,16 +13370,16 @@
           "maximum": 100
         },
         "dataset": {
-          "description": "Dataset whose attribute keys to list: spans for requests, latency, DB, or AI calls; logs for log lines; metrics for counters, gauges, and distributions.",
           "type": "string",
-          "enum": ["spans", "logs", "metrics"]
+          "enum": ["spans", "logs", "metrics"],
+          "description": "Dataset to search: spans for requests, latency, DB, or AI calls; logs for log lines; metrics for counters, gauges, and distributions."
         },
         "fresh": {
           "description": "Bypass cached reads.",
           "type": "boolean"
         }
       },
-      "required": ["organizationSlug"]
+      "required": ["organizationSlug", "dataset"]
     },
     "outputSchema": {
       "type": "object",

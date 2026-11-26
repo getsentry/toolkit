@@ -49,9 +49,8 @@ export default defineTool({
       ),
     dataset: z
       .enum(SEARCH_ATTRIBUTES_DATASETS)
-      .optional()
       .describe(
-        "Dataset whose attribute keys to list: spans for requests, latency, DB, or AI calls; logs for log lines; metrics for counters, gauges, and distributions.",
+        "Dataset to search: spans for requests, latency, DB, or AI calls; logs for log lines; metrics for counters, gauges, and distributions.",
       ),
   },
   outputSchema: searchAttributesOutputSchema,

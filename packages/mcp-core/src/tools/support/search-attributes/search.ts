@@ -27,7 +27,7 @@ export interface SearchAttributesParams {
   period?: string | undefined;
   regionUrl: string | null;
   limit?: number | undefined;
-  dataset?: SearchAttributesDataset | undefined;
+  dataset: SearchAttributesDataset;
 }
 
 const DEFAULT_PERIOD = "14d";
@@ -53,12 +53,6 @@ export async function runSearchAttributes(
   const organizationSlug = params.organizationSlug;
 
   setTargetTagsAndAttributes(params);
-
-  if (!params.dataset) {
-    throw new UserInputError(
-      "Choose a dataset: `spans` (requests, latency, database and AI calls), `logs` (log lines), or `metrics` (counters, gauges, distributions).",
-    );
-  }
 
   // The attributes API filters by numeric project ID, not slug.
   let projectId: string | undefined;
@@ -90,8 +84,8 @@ export async function runSearchAttributes(
   // Set once the hint searches replace rows with a smaller set related to the
   // query, so the list fallback can say what it's showing.
   let narrowedByHints = false;
-  // Set once any hint is searched. Hint searches look through every key, so
-  // a match past the cut would have turned up.
+  // Set once hint searches ran without failing or reaching the limit. They
+  // look through every key, so a match past the cut would have turned up.
   let searchedHints = false;
 
   const rowsReachesLimit = mayBeCutOff(rows);
@@ -122,14 +116,19 @@ export async function runSearchAttributes(
     const keyHints = await withAgentFallback<string[]>({
       operation: "search_attributes.key_hints",
       fallback: () => [],
-      run: () => generateKeyHintsAgent({ query, dataset }),
+      run: () =>
+        generateKeyHintsAgent({
+          query,
+          dataset,
+          abortSignal: apiService.signal,
+        }),
     });
-    searchedHints = keyHints.length > 0;
     // A hint search only adds keys, so a failed one is skipped rather than
-    // failing the call. 4xx and config errors aren't ours to report.
+    // failing the call. 4xx, config errors and aborted calls aren't ours to report.
     const searchHint = (hint: string) =>
       fetchRows(hint).catch((error: unknown) => {
         if (
+          !apiService.signal?.aborted &&
           !(error instanceof ApiClientError) &&
           !(error instanceof ConfigurationError)
         ) {
@@ -140,18 +139,23 @@ export async function runSearchAttributes(
             },
           });
         }
-        return [];
+        // Null, not [], so a failed search isn't mistaken for no match.
+        return null;
       });
 
     // If there are results from the hints, use that + recommended keys
     // otherwise it defaults to the original exhaustive list
     const hintRows = await Promise.all(keyHints.map(searchHint));
-    if (hintRows.some((r) => r.length > 0)) {
+    const searchedRows = hintRows.filter((r) => r !== null);
+    // A hint search that reached the limit itself may be missing keys too.
+    searchedHints =
+      searchedRows.length > 0 && !searchedRows.some((r) => mayBeCutOff(r));
+    if (searchedRows.some((r) => r.length > 0)) {
       const recommendedKeys = getRecommendedKeysByDataset(dataset);
       const recommendedRows = rows.filter((attribute) =>
         recommendedKeys.has(attribute.key),
       );
-      rows = mergeByKey([recommendedRows, ...hintRows]);
+      rows = mergeByKey([recommendedRows, ...searchedRows]);
       narrowedByHints = true;
     }
   }
@@ -168,6 +172,7 @@ export async function runSearchAttributes(
               dataset,
               attributes: rows,
               limit: params.limit ?? FIND_LIMIT,
+              abortSignal: apiService.signal,
             }),
         });
 
