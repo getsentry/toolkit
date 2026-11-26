@@ -169,8 +169,8 @@ export function printWelcome(options: {
 
 This wizard sends telemetry data and crash reports to Sentry. This helps us improve the Wizard.
 You can turn this off at any time by running ${chalk.cyanBright(
-      sentry`wizard --disable-telemetry`,
-    )}.`;
+      sentry`cli defaults telemetry off`,
+    )}, or by setting SENTRY_CLI_NO_TELEMETRY=1.`;
   }
 
   clack.note(welcomeText);
@@ -200,7 +200,7 @@ export async function confirmContinueIfNoOrDirtyGitRepo({
     ) {
       if (nonInteractive) {
         clack.log.error(
-          "Project is not inside a git repository in non-interactive mode. Run from a git repository or pass --ignore-git-changes to skip this safety check.",
+          "Project is not inside a git repository in non-interactive mode. Run from a git repository or pass --force to skip this safety check.",
         );
         Sentry.setTag("continue-without-git", false);
         await abort();
@@ -237,7 +237,7 @@ The wizard will create and update files.`,
 
       if (nonInteractive) {
         clack.log.error(
-          "Project has uncommitted or untracked files in non-interactive mode. Commit or stash your changes, or pass --ignore-git-changes to skip this safety check.",
+          "Project has uncommitted or untracked files in non-interactive mode. Commit or stash your changes, or pass --force to skip this safety check.",
         );
         Sentry.setTag("continue-with-dirty-repo", false);
         await abort();
