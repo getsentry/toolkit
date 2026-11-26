@@ -16,10 +16,15 @@ import {
   type CredentialRequest,
   extractUrlPath,
   getValidatedResponseSource,
+  parseRetryDelayMs,
   type ResponseBodyMode,
-  type RetryPolicy,
   type TransportCache,
 } from "@sentry/api/client";
+import type { RetryPolicy } from "@sentry/http";
+import {
+  TRANSPORT_SENDS_ONCE,
+  withSentryRetry,
+} from "@sentry/toolkit-core/sentry-retry";
 import { sentry } from "./app-identity.js";
 import { formatAuthHeader } from "./auth-header.js";
 import { seedCompletions } from "./api/completion-seed.js";
@@ -46,6 +51,7 @@ import {
 } from "./db/auth.js";
 import {
   ApiError,
+  CliError,
   HostScopeError,
   MalformedAuthTokenError,
   RateLimitError,
@@ -89,8 +95,8 @@ const ENDPOINT_TIMEOUT_OVERRIDES: TimeoutOverride[] = [
 ];
 
 /**
- * Caps for automatic retries. Which statuses and methods retry is the shared
- * rule in `@sentry/api/client`.
+ * Caps for automatic retries. Which statuses and methods retry is Sentry's
+ * rule in `@sentry/toolkit-core/sentry-retry`.
  *
  * `maxDelayMs` caps the jittered backoff and the server-requested wait
  * (`Retry-After`, rate-limit reset); a longer server-requested wait is not
@@ -307,6 +313,15 @@ const responseCache: TransportCache = {
   },
 };
 
+/**
+ * Whether a failed attempt may be sent again: a timeout, or a network or
+ * body error. CLI errors, such as a TLS failure, a host-scope rejection, or
+ * an auth error, will not change on a retry.
+ */
+function isRetryableError(error: unknown): boolean {
+  return error instanceof TimeoutError || !(error instanceof CliError);
+}
+
 /** Wrap a request in an `http.client` span when the CLI traces HTTP by hand. */
 async function withHttpSpan(
   { method, path }: { method: string; path: string },
@@ -354,8 +369,9 @@ function selectAccountForRequest({ url, scope }: CredentialRequest): void {
 
 /**
  * The CLI's transport options: stored credentials, host-scope checks, the
- * response cache, and the CLI's error classes. Retries, timeouts, the 401
- * refresh, and redirect validation are in `@sentry/api/client`.
+ * response cache, and the CLI's error classes. Timeouts, the 401 refresh,
+ * and redirect validation are in `@sentry/api/client`. The transport sends
+ * each request once; {@link createAuthenticatedFetch} retries around it.
  */
 function createCliTransport({
   credential,
@@ -381,7 +397,7 @@ function createCliTransport({
       refresh: refreshAfterUnauthorized,
       authorization: (current) => formatAuthHeader(current.token),
     },
-    retry: RETRY_POLICY,
+    retry: TRANSPORT_SENDS_ONCE,
     timeoutMs: timeoutMs ?? resolveTimeoutMs,
     fetch: (input, init) => fetchWithCustomTls(input, init, dispatcher),
     userAgent: getUserAgent(),
@@ -408,8 +424,6 @@ function createCliTransport({
               buildTlsErrorDetail(error as Error),
             )
           : undefined,
-      rateLimited: async (response, { path, retryAfterMs }) =>
-        new RateLimitError(path, retryAfterMs, await readErrorDetail(response)),
     },
     cache: responseCache,
     logger: log,
@@ -483,9 +497,20 @@ function createAuthenticatedFetch(
 
     const method =
       init?.method ?? (input instanceof Request ? input.method : "GET");
-    return await transport.request(input, init, {
+    const path = extractUrlPath(input);
+    const retrying = withSentryRetry(transport, {
+      policy: RETRY_POLICY,
+      isIdempotent: ({ method: m, url }) => isIdempotentOperation(m, url),
+      isRetryableError,
+      onRetry: ({ attempt, delayMs }) =>
+        log.debug(
+          `${method} ${path} → retry ${attempt + 1}/${RETRY_POLICY.maxRetries} after ${Math.round(delayMs)}ms`,
+        ),
+    });
+    const response = await retrying.request(input, init, {
       validateRedirects: options.validatedRedirects === true,
       idempotent: options.idempotent === true,
+      // Read before the retry clones `input`: the mode is keyed by the SDK's Request.
       responseBody:
         method.toUpperCase() !== "GET"
           ? "stream"
@@ -494,6 +519,14 @@ function createAuthenticatedFetch(
               : undefined) ??
             (options.bufferResponseBody ? "buffer" : "stream")),
     });
+    if (response.status === 429) {
+      throw new RateLimitError(
+        path,
+        parseRetryDelayMs(response.status, response.headers),
+        await readErrorDetail(response),
+      );
+    }
+    return response;
   };
   // Every API response, fresh or cached, seeds shell completion, so no API
   // function has to remember to. Awaited so a command that exits right

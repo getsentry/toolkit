@@ -37,6 +37,7 @@ import {
   discoverFilePairs,
   injectDirectory,
   type InjectResult,
+  readExistingDebugIds,
   resolveUploadTarget,
 } from "../../lib/sourcemap/inject.js";
 import { sentry } from "../../lib/app-identity.js";
@@ -124,7 +125,7 @@ type ArtifactContext = {
   urlPrefix: string;
   /** Directory prefix to strip from relative paths (may be empty). */
   pathPrefixToStrip: string;
-  /** True when `--no-rewrite` is set (upload as-is, no debug IDs injected). */
+  /** True when `--no-rewrite` is set (upload as-is, keeping existing debug IDs). */
   noRewrite: boolean;
 };
 
@@ -194,8 +195,6 @@ function buildArtifactPair(
   return [
     {
       path: jsPath,
-      // Empty debugId when --no-rewrite: files uploaded without debug IDs,
-      // relying on release/URL-based matching instead.
       ...debugIdField,
       type: "minified_source",
       url: `${ctx.urlPrefix}${jsRelative}`,
@@ -424,13 +423,7 @@ export const uploadCommand = buildCommand({
     const { org, project } = resolved;
 
     const results: InjectResult[] = flags["no-rewrite"]
-      ? pairs.map((p) => ({
-          jsPath: p.jsPath,
-          map: p.map,
-          mapPath: p.map.kind === "external" ? p.map.mapPath : undefined,
-          injected: false,
-          debugId: "",
-        }))
+      ? await readExistingDebugIds(pairs)
       : await injectDirectory(target.dir, {
           extensions,
           ignoreMatcher,

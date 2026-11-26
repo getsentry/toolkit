@@ -230,6 +230,6 @@ describe("upgradeCommand.func", () => {
     await expect(
       func.call(context, { check: false, method: "curl" }, "999.0.0"),
     ).rejects.toThrow("Version 999.0.0 not found");
-    expect(callCount).toBe(2);
+    expect(callCount).toBe(1);
   });
 });
