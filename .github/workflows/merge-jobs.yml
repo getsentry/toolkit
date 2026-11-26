@@ -12,6 +12,10 @@ permissions:
 jobs:
   test:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      # The JUnit report publishes a check run.
+      checks: write
 
     steps:
       - name: Checkout
