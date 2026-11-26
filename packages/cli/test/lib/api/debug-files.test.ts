@@ -263,6 +263,45 @@ describe("uploadDebugFiles", () => {
     ]);
   });
 
+  test("reports progress for chunks re-sent while polling", async () => {
+    vi.useFakeTimers();
+    const dif = makeDif("libbar.so", "debug bytes", "id-1");
+    const missing = async (
+      _org: string,
+      _project: string,
+      assembleBody: Parameters<typeof assembleDebugFiles>[2],
+    ): Promise<AssembleResponse> => {
+      const key = at(Object.keys(assembleBody), 0);
+      return {
+        [key]: { state: "not_found", missingChunks: assembleBody[key]?.chunks },
+      };
+    };
+    // Missing on the first assemble, and still missing on the two after the
+    // first delivery, so the poll loop re-sends; held on the last.
+    assembleMock
+      .mockImplementationOnce(missing)
+      .mockImplementationOnce(missing)
+      .mockImplementationOnce(missing)
+      .mockImplementationOnce(async (_org, _project, assembleBody) => {
+        const key = at(Object.keys(assembleBody), 0);
+        return { [key]: { state: "created" } };
+      });
+    const onProgress = vi.fn();
+
+    const promise = uploadDebugFiles({
+      ...SOLE,
+      difs: [dif],
+      wait: false,
+      maxWaitMs: 60_000,
+      onProgress,
+    });
+    await vi.runAllTimersAsync();
+    await promise;
+
+    const phases = onProgress.mock.calls.map(([event]) => event.phase);
+    expect(phases).toEqual(["uploading", "uploaded", "uploading", "uploaded"]);
+  });
+
   test("reports up-to-date when the server already holds every chunk", async () => {
     const dif = makeDif("libfoo.so", "debug bytes", "id-1");
     assembleMock.mockImplementationOnce(

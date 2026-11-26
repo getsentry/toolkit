@@ -588,12 +588,14 @@ export async function uploadDebugFiles(
     response = await postAssemble(org, project, bodies);
     evaluation = evaluateAssembly(response, chunked, wait);
     reportProcessing();
+    // Re-sends report progress too, so a long retry does not look hung.
     await uploadMissing({
       chunked,
       missingChecksums: evaluation.missingChecksums,
       serverOptions,
       encoding,
       regionUrl,
+      onProgress,
     });
   }
 
