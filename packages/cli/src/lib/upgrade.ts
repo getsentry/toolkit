@@ -907,8 +907,8 @@ async function streamDecompressToFile(
 /**
  * Build the gzip filename for the current platform binary.
  *
- * Nightly builds are stored in GHCR as `sentry-<os>-<arch>.gz` (or
- * `sentry-windows-x64.exe.gz` on Windows). This filename is the
+ * Nightly builds are stored in GHCR as `sentry-<os>-<arch>[-musl].gz` (or
+ * `sentry-windows-<arch>.exe.gz` on Windows). This filename is the
  * `org.opencontainers.image.title` annotation on the matching OCI layer.
  *
  * @returns Filename of the gzip-compressed binary for this platform

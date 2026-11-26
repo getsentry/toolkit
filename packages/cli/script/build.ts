@@ -24,6 +24,8 @@
  *     sentry-darwin-x64
  *     sentry-linux-arm64
  *     sentry-linux-x64
+ *     sentry-linux-x64-musl
+ *     sentry-windows-arm64.exe
  *     sentry-windows-x64.exe
  *   dist-build/           (chunks and sourcemaps, embedded and uploaded)
  */
@@ -69,33 +71,66 @@ const NODE_VERSION = "lts";
  */
 const SENTRY_CLIENT_ID = process.env["SENTRY_CLIENT_ID"];
 
-/** Build targets configuration */
+/**
+ * Build targets configuration. `libc: "musl"` marks a Linux build on Node's
+ * musl archive; every other Linux build targets glibc.
+ */
 type BuildTarget = {
   os: "darwin" | "linux" | "win32";
   arch: "arm64" | "x64";
+  libc?: "musl";
 };
 
+/**
+ * Each target needs an official Node.js build at NODE_VERSION. There is none
+ * for musl on arm64, 32-bit x86, or armv7, so those platforms use the npm
+ * package instead.
+ */
 const ALL_TARGETS: BuildTarget[] = [
   { os: "darwin", arch: "arm64" },
   { os: "darwin", arch: "x64" },
   { os: "linux", arch: "arm64" },
   { os: "linux", arch: "x64" },
+  { os: "linux", arch: "x64", libc: "musl" },
+  { os: "win32", arch: "arm64" },
   { os: "win32", arch: "x64" },
 ];
 
+/** `--target` name of a target, such as `linux-x64-musl` or `windows-x64`. */
+function getTargetName(target: BuildTarget): string {
+  const platformName = target.os === "win32" ? "windows" : target.os;
+  const libcSuffix = target.libc ? `-${target.libc}` : "";
+  return `${platformName}-${target.arch}${libcSuffix}`;
+}
+
 /** Get package name for a target (uses "windows" instead of "win32") */
 function getPackageName(target: BuildTarget): string {
-  const platformName = target.os === "win32" ? "windows" : target.os;
-  return `sentry-${platformName}-${target.arch}`;
+  return `sentry-${getTargetName(target)}`;
 }
 
 /**
- * Map our BuildTarget to fossilize's platform string.
- * Fossilize uses Node's archive naming: "win" not "win32".
+ * Map our BuildTarget to fossilize's platform string, which names the Node
+ * archive to download (`node-v<version>-<platform>`): "win" not "win32",
+ * and a `-musl` suffix for musl builds.
  */
 function getFossilizePlatform(target: BuildTarget): string {
   const os = target.os === "win32" ? "win" : target.os;
-  return `${os}-${target.arch}`;
+  const libcSuffix = target.libc ? `-${target.libc}` : "";
+  return `${os}-${target.arch}${libcSuffix}`;
+}
+
+/**
+ * The libc of this machine on Linux. Node's report names the glibc version
+ * only when Node runs on glibc.
+ */
+function getHostLibc(): BuildTarget["libc"] {
+  if (process.platform !== "linux") {
+    return;
+  }
+  const report = process.report.getReport() as {
+    header?: { glibcVersionRuntime?: string };
+  };
+  return report.header?.glibcVersionRuntime ? undefined : "musl";
 }
 
 /**
@@ -435,15 +470,13 @@ async function postProcessTarget(target: BuildTarget): Promise<void> {
   }
 }
 
-/** Parse target string (e.g., "darwin-x64", "linux-arm64") into BuildTarget */
+/**
+ * Parse target string (e.g., "darwin-x64", "linux-x64-musl") into
+ * BuildTarget. "win32-" is accepted as an alias for "windows-".
+ */
 function parseTarget(targetStr: string): BuildTarget | null {
-  // Handle "windows" alias for "win32"
-  const normalized = targetStr.replace("windows-", "win32-");
-  const parts = normalized.split("-");
-  const os = parts[0] as BuildTarget["os"];
-  const arch = parts[1] as BuildTarget["arch"];
-
-  const target = ALL_TARGETS.find((t) => t.os === os && t.arch === arch);
+  const normalized = targetStr.replace(/^win32-/, "windows-");
+  const target = ALL_TARGETS.find((t) => getTargetName(t) === normalized);
   return target ?? null;
 }
 
@@ -464,18 +497,24 @@ async function build(): Promise<void> {
     const target = parseTarget(targetArg);
     if (!target) {
       logger.error(
-        `Invalid target: ${targetArg}\nValid targets: ${ALL_TARGETS.map((t) => `${t.os === "win32" ? "windows" : t.os}-${t.arch}`).join(", ")}`,
+        `Invalid target: ${targetArg}\nValid targets: ${ALL_TARGETS.map(getTargetName).join(", ")}`,
       );
       process.exit(1);
     }
     targets = [target];
     logger.info(`Building for target: ${getPackageName(target)}`);
   } else if (singleBuild) {
+    const hostLibc = getHostLibc();
     const currentTarget = ALL_TARGETS.find(
-      (t) => t.os === process.platform && t.arch === process.arch,
+      (t) =>
+        t.os === process.platform &&
+        t.arch === process.arch &&
+        t.libc === hostLibc,
     );
     if (!currentTarget) {
-      logger.error(`Unsupported platform: ${process.platform}-${process.arch}`);
+      logger.error(
+        `Unsupported platform: ${process.platform}-${process.arch}${hostLibc ? `-${hostLibc}` : ""}`,
+      );
       process.exit(1);
     }
     targets = [currentTarget];

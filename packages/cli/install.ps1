@@ -41,12 +41,14 @@ function Install-SentryCli {
     Write-Verbose "Could not enable TLS 1.2: $_"
   }
 
-  $asset = 'sentry-windows-x64.exe'
+  # Where there is no standalone binary, the npm package runs on Node.js.
+  $npmFallback = 'Install Node.js 20 or later and run: npm install -g sentry'
   # What error reports say about the install. Each step updates it.
   $state = @{ Step = 'start'; Version = 'unknown'; Arch = 'unknown' }
 
   function Invoke-Install {
-    Assert-WindowsX64
+    # The functions below read $asset from this scope.
+    $asset = Get-WindowsAsset
     $release = Resolve-Release
     $binary = Save-Binary $release
     try {
@@ -62,7 +64,8 @@ function Install-SentryCli {
   # Step 1: check that this machine can run the binary
   # -------------------------------------------------------------------------
 
-  function Assert-WindowsX64 {
+  # Returns the release file name for this machine's architecture.
+  function Get-WindowsAsset {
     $state.Step = 'detect-os'
     if ($env:OS -ne 'Windows_NT') {
       Stop-Install 'This installer is for Windows. On macOS and Linux, run: curl https://cli.sentry.dev/install -fsS | bash'
@@ -73,10 +76,14 @@ function Install-SentryCli {
     # PROCESSOR_ARCHITEW6432 to the real architecture.
     $arch = if ($env:PROCESSOR_ARCHITEW6432) { $env:PROCESSOR_ARCHITEW6432 } else { $env:PROCESSOR_ARCHITECTURE }
     $state.Arch = "$arch"
-    if ($arch -ne 'AMD64') {
-      Stop-Install "Unsupported: windows-$arch (only windows-x64 is supported). Install Node.js and run: npm install -g sentry"
+    switch ($arch) {
+      'AMD64' { $state.Arch = 'x64' }
+      'ARM64' { $state.Arch = 'arm64' }
+      default {
+        Stop-Install "Unsupported: windows-$arch (only x64 and arm64 are supported). $npmFallback"
+      }
     }
-    $state.Arch = 'x64'
+    return "sentry-windows-$($state.Arch).exe"
   }
 
   # -------------------------------------------------------------------------
@@ -115,7 +122,7 @@ function Install-SentryCli {
       }
       $state.Version = $release.Version
       if ($null -eq $release.Gz -and $null -eq $release.Raw) {
-        Stop-Install "Sentry CLI $($release.Version) has no $asset build"
+        Stop-Install "Sentry CLI $($release.Version) has no $asset build. $npmFallback"
       }
       return $release
     }

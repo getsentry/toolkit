@@ -121,13 +121,18 @@ It installs stable releases only. To switch to nightly afterwards, run
       <td></td>
     </tr>
     <tr>
-      <td><strong>Linux</strong></td>
+      <td><strong>Linux (glibc)</strong></td>
       <td>x64, arm64</td>
-      <td>Standalone binary requires glibc</td>
+      <td>Debian, Ubuntu, Fedora, Arch, and most others</td>
+    </tr>
+    <tr>
+      <td><strong>Linux (musl)</strong></td>
+      <td>x64</td>
+      <td>Alpine: run <code>apk add libstdc++ libatomic</code> first</td>
     </tr>
     <tr>
       <td><strong>Windows</strong></td>
-      <td>x64</td>
+      <td>x64, arm64</td>
       <td>Via PowerShell, Git Bash, MSYS2, or WSL</td>
     </tr>
   </tbody>
@@ -135,8 +140,11 @@ It installs stable releases only. To switch to nightly afterwards, run
 
 {/* GENERATED:END platform-support */}
 
-On Alpine and other musl-based Linux systems, install Node.js and use
-`npm install -g sentry` instead of the standalone installer.
+The standalone binary embeds Node.js, so it exists only for platforms that
+Node.js publishes official builds for. On any other platform, such as musl on
+arm64 or 32-bit systems, the installers stop and point you to the npm package:
+install Node.js 20 or later and run `npm install -g sentry`, or use another
+[package manager](#package-managers).
 
 ## Homebrew
 

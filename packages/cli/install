@@ -39,6 +39,9 @@ GHCR_REPO="ghcr.io/v2/getsentry/toolkit"
 # --retry-all-errors (7.71).
 curl_retry=(--retry 3 --retry-connrefused --retry-max-time 60)
 
+# Where there is no standalone binary, the npm package runs on Node.js.
+npm_fallback="Install Node.js 20 or later and run: npm install -g sentry"
+
 no_room_message="There is not enough room to download sentry (about 140 MB) into the install directory, or it is not writable. Free up space or set SENTRY_INSTALL_DIR to another directory, then retry."
 
 # Installer state. The steps below fill these in; error reports read them.
@@ -48,9 +51,9 @@ no_completions=false
 no_agent_skills=false
 os=""            # darwin, linux, or windows
 arch=""          # x64 or arm64
-libc_variant=""  # set to musl only to report why the install stopped
+libc_variant=""  # "musl" on musl-based Linux, such as Alpine
 suffix=""        # ".exe" on Windows
-asset=""         # release file name, such as sentry-linux-x64
+asset=""         # release file name, such as sentry-linux-x64-musl
 version=""       # the exact version being installed
 gz_url=""        # release downloads and their SHA-256 checksums
 gz_sha=""
@@ -227,29 +230,45 @@ detect_platform() {
     Darwin*) os="darwin" ;;
     Linux*) os="linux" ;;
     MINGW*|MSYS*|CYGWIN*) os="windows" ;;
-    *) die "Unsupported OS: $(uname -s)" "detect-os" ;;
+    *) die "Unsupported OS: $(uname -s). ${npm_fallback}" "detect-os" ;;
   esac
 
   arch=$(uname -m)
   case "$arch" in
     x86_64) arch="x64" ;;
     aarch64|arm64) arch="arm64" ;;
-    *) die "Unsupported architecture: $arch" "detect-arch" ;;
+    *) die "Unsupported architecture: $arch. ${npm_fallback}" "detect-arch" ;;
   esac
 
-  # The standalone binary is a Node.js SEA, and official Node.js builds
-  # target glibc.
+  # The standalone binary is a Node.js SEA, so it exists only where Node.js
+  # publishes an official build. Its only musl build is for x64.
   if [[ "$os" == "linux" ]] && is_musl; then
     libc_variant="musl"
-    die "The standalone binary requires glibc. On musl (Alpine), install Node.js and run: npm install -g sentry" "detect-libc"
+    [[ "$arch" == "x64" ]] \
+      || die "Unsupported: linux-${arch}-musl (the musl binary is x64 only). ${npm_fallback}" "detect-libc"
+    require_musl_libraries
   fi
 
   if [[ "$os" == "windows" ]]; then
     suffix=".exe"
-    [[ "$arch" == "x64" ]] || die "Unsupported: windows-$arch (only windows-x64 is supported)" "detect-arch"
   fi
 
-  asset="sentry-${os}-${arch}${suffix}"
+  asset="sentry-${os}-${arch}${libc_variant:+-${libc_variant}}${suffix}"
+}
+
+# The musl build of Node.js links against libstdc++, libgcc, and libatomic,
+# which Alpine does not install by default. Stop before the download when one
+# is missing.
+require_musl_libraries() {
+  local lib missing=()
+  for lib in libstdc++.so.6 libgcc_s.so.1 libatomic.so.1; do
+    if [[ ! -e "/lib/${lib}" && ! -e "/usr/lib/${lib}" && ! -e "/usr/local/lib/${lib}" ]]; then
+      missing+=("$lib")
+    fi
+  done
+  if (( ${#missing[@]} > 0 )); then
+    die "The musl binary needs ${missing[*]}. On Alpine, run: apk add libstdc++ libatomic, then retry. Or: ${npm_fallback}" "detect-libc-deps"
+  fi
 }
 
 # Succeeds on musl-based Linux, such as Alpine.
@@ -502,7 +521,7 @@ fetch_registry_release() {
   { read -r gz_url; read -r gz_sha; } <<< "$(registry_file "$metadata" "${asset}.gz")" || true
   { read -r raw_url; read -r raw_sha; } <<< "$(registry_file "$metadata" "$asset")" || true
   if [[ -z "$gz_url" && -z "$raw_url" ]]; then
-    die "Sentry CLI ${version} has no ${asset} build" "resolve-asset"
+    die "Sentry CLI ${version} has no ${asset} build. ${npm_fallback}" "resolve-asset"
   fi
 }
 
@@ -584,7 +603,7 @@ download_nightly() {
   muted "Installing nightly sentry ${version}..."
 
   digest=$(layer_digest "${asset}.gz" <<< "$manifest")
-  [[ -n "$digest" ]] || die "No nightly build found for ${asset}.gz" "ghcr-digest"
+  [[ -n "$digest" ]] || die "No nightly build found for ${asset}.gz. ${npm_fallback}" "ghcr-digest"
 
   download_nightly_blob "$token" "$digest"
   unpack_binary "$blob_file"
