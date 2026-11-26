@@ -65,6 +65,11 @@ const WIZARD_RUNNERS: Partial<Record<WizardIntegration, WizardRunner>> = {
   },
 };
 
+/** Whether `integration` has a flow in this version. */
+export function hasWizardRunner(integration: WizardIntegration): boolean {
+  return integration in WIZARD_RUNNERS;
+}
+
 /** What `sentry wizard` passes to {@link runWizard}. */
 export type RunWizardArgs = {
   /** `-i`: the integration to set up; prompts for one when unset. */
@@ -126,7 +131,7 @@ async function askForIntegration(): Promise<WizardIntegration> {
   const integration = await abortIfCancelled(
     clack.select<WizardIntegration>({
       message: "What do you want to set up?",
-      options: WIZARD_INTEGRATIONS.filter(({ id }) => id in WIZARD_RUNNERS).map(
+      options: WIZARD_INTEGRATIONS.filter(({ id }) => hasWizardRunner(id)).map(
         ({ id, label }) => ({ value: id, label }),
       ),
     }),

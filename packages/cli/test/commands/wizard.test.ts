@@ -15,6 +15,7 @@ vi.mock("../../src/lib/wizard/nextjs/nextjs-wizard.js", () => ({
 import { wizardCommand } from "../../src/commands/wizard.js";
 import type { SentryContext } from "../../src/context.js";
 import { ValidationError, WizardExitError } from "../../src/lib/errors.js";
+import { hasWizardRunner, INTEGRATION_IDS } from "../../src/lib/wizard/run.js";
 import type { Writer } from "../../src/types/index.js";
 import { loadCommand, useTestConfigDir } from "../helpers.js";
 
@@ -125,11 +126,16 @@ describe("sentry wizard", () => {
     expect(runNextjsWizard).not.toHaveBeenCalled();
   });
 
-  test("reports an integration this version can't set up yet", async () => {
-    await expect(runWizardCommand({ integration: "remix" })).rejects.toThrow(
-      "The remix wizard is not available in this version yet.",
-    );
-  });
+  const unported = INTEGRATION_IDS.find((id) => !hasWizardRunner(id));
+
+  test.runIf(unported)(
+    "reports an integration this version can't set up yet",
+    async () => {
+      await expect(runWizardCommand({ integration: unported })).rejects.toThrow(
+        `The ${unported} wizard is not available in this version yet.`,
+      );
+    },
+  );
 
   test("exits with the wizard's code when it stops", async () => {
     runNextjsWizard.mockRejectedValue(new WizardExitError(0));
