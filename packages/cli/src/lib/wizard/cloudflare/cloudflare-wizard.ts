@@ -57,11 +57,10 @@ export async function runCloudflareWizard(
 async function runCloudflareWizardWithTelemetry(
   options: WizardOptions,
 ): Promise<void> {
-  const { promoCode, telemetryEnabled, forceInstall } = options;
+  const { telemetryEnabled, forceInstall } = options;
 
   printWelcome({
     wizardName: "Sentry Cloudflare Wizard",
-    promoCode,
     telemetryEnabled,
   });
 

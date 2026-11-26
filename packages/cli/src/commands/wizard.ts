@@ -20,7 +20,7 @@ import {
   parseUrl,
 } from "../lib/completion-target.js";
 import { getEnv } from "../lib/env.js";
-import { WizardExitError } from "../lib/errors.js";
+import { ValidationError, WizardExitError } from "../lib/errors.js";
 import {
   disableTelemetryForRun,
   isTelemetryEnabled,
@@ -39,13 +39,38 @@ type WizardFlags = {
   readonly "disable-telemetry": boolean;
   readonly "force-install": boolean;
   readonly "ignore-git-changes": boolean;
+  readonly signup: boolean;
   readonly "promo-code"?: string;
   readonly "coming-from"?: string;
-  readonly signup: boolean;
   readonly "skip-connect": boolean;
   readonly quiet: boolean;
   readonly uninstall: boolean;
 };
+
+/**
+ * Fail on the `@sentry/wizard` sign-up and partner flags, which `sentry
+ * wizard` dropped: it logs in with the CLI's login, which has no sign-up or
+ * partner step.
+ *
+ * @throws {ValidationError} When one of them is passed
+ */
+function rejectRemovedFlags(flags: WizardFlags): void {
+  const removed = [
+    flags.signup ? "--signup" : undefined,
+    flags["promo-code"] === undefined ? undefined : "--promo-code",
+    flags["coming-from"] === undefined ? undefined : "--coming-from",
+  ].filter((flag) => flag !== undefined);
+  if (removed.length === 0) {
+    return;
+  }
+  throw new ValidationError(
+    `${removed.join(", ")} ${removed.length === 1 ? "is" : "are"} no longer supported. ` +
+      "Sign up at https://sentry.io/signup/ (and apply any promo code there), " +
+      "then run the wizard again without " +
+      `${removed.length === 1 ? "it" : "them"}.`,
+    removed[0],
+  );
+}
 
 /** The trimmed value of the environment variable `name`, unless empty. */
 function envValue(name: string): string | undefined {
@@ -63,8 +88,10 @@ export const wizardCommand = buildCommand({
       "uploads. It logs in with your `sentry auth login` account (or starts " +
       "a login), and lets you pick or create the Sentry project to send " +
       "data to.\n\n" +
-      "Pass `-i` to skip the integration picker. These are the same " +
-      "integrations and flags `npx @sentry/wizard` takes.\n\n" +
+      "Pass `-i` to skip the integration picker. It takes the same " +
+      "integrations and flags as `npx @sentry/wizard`, except the sign-up " +
+      "flags `--signup`, `--promo-code` and `--coming-from`, which fail: " +
+      "sign up at https://sentry.io/signup/ first.\n\n" +
       "The wizard changes files in your project. To have a coding agent set " +
       "up Sentry instead, run `sentry init`, which prints the agent's setup " +
       "guide and changes nothing.",
@@ -143,29 +170,33 @@ export const wizardCommand = buildCommand({
         brief: "Print the wizard's debug output",
         default: false,
       },
+      // `@sentry/wizard`'s sign-up and partner flags. The wizard logs in
+      // with the CLI's login, which has no sign-up or partner step, so these
+      // fail with an explanation instead of being dropped silently.
+      signup: {
+        kind: "boolean",
+        brief: "Removed: sign up at https://sentry.io/signup/ first",
+        default: false,
+        hidden: true as const,
+      },
       "promo-code": {
         kind: "parsed",
         parse: parseText,
-        brief: "Promo code to apply when signing up",
+        brief: "Removed: apply promo codes when you sign up",
         placeholder: "code",
         optional: true,
+        hidden: true as const,
       },
       "coming-from": {
         kind: "parsed",
         parse: parseText,
-        brief: "Partner the command was copied from, such as vercel",
+        brief: "Removed: partner sign-up is not supported",
         placeholder: "partner",
         optional: true,
         hidden: true as const,
       },
       // Flags `@sentry/wizard` accepted that no flow reads any more. Kept so
       // copied commands still run.
-      signup: {
-        kind: "boolean",
-        brief: "Ignored: the login page offers sign-up",
-        default: false,
-        hidden: true as const,
-      },
       "skip-connect": {
         kind: "boolean",
         brief: "Ignored",
@@ -189,6 +220,7 @@ export const wizardCommand = buildCommand({
   },
   // oxlint-disable-next-line require-yield -- The wizard prints its own interactive output; the command yields none.
   async *func(this: SentryContext, flags: WizardFlags) {
+    rejectRemovedFlags(flags);
     if (flags["disable-telemetry"]) {
       disableTelemetryForRun();
     }
@@ -199,13 +231,11 @@ export const wizardCommand = buildCommand({
         debug: flags.debug || envValue("SENTRY_WIZARD_DEBUG") === "true",
         wizardOptions: {
           telemetryEnabled: !flags["disable-telemetry"] && isTelemetryEnabled(),
-          promoCode: flags["promo-code"],
           url: flags.url ?? envValue("SENTRY_WIZARD_URL"),
           orgSlug: flags.org,
           projectSlug: flags.project,
           saas: flags.saas,
           forceInstall: flags["force-install"],
-          comingFrom: flags["coming-from"],
           ignoreGitChanges: flags["ignore-git-changes"],
           spotlight: flags.spotlight,
         },

@@ -151,7 +151,6 @@ export async function abortIfCancelled<T>(
 /** Print the intro banner and welcome note of a wizard. */
 export function printWelcome(options: {
   wizardName: string;
-  promoCode?: string | undefined;
   message?: string | undefined;
   telemetryEnabled?: boolean | undefined;
 }): void {
@@ -161,10 +160,6 @@ export function printWelcome(options: {
   let welcomeText =
     options.message ||
     `The ${options.wizardName} will help you set up Sentry for your application.\nThank you for using Sentry :)`;
-
-  if (options.promoCode) {
-    welcomeText = `${welcomeText}\n\nUsing promo-code: ${options.promoCode}`;
-  }
 
   welcomeText = `${welcomeText}\n\nVersion: ${CLI_VERSION}`;
 

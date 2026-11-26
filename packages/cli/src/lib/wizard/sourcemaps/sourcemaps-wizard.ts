@@ -65,7 +65,6 @@ async function runSourcemapsWizardWithTelemetry(
       wizardName: "Sentry Source Maps Upload Configuration Wizard",
       message: `This wizard will help you upload source maps to Sentry as part of your build.
 Thank you for using Sentry :)`,
-      promoCode: options.promoCode,
       telemetryEnabled: options.telemetryEnabled,
     });
   }
@@ -126,9 +125,7 @@ Thank you for using Sentry :)`,
     ),
   );
 
-  await traceStep("ci-setup", () =>
-    setupCI(selectedTool, authToken, options.comingFrom),
-  );
+  await traceStep("ci-setup", () => setupCI(selectedTool, authToken));
 
   if (!preSelectedTool) {
     // running prettier is only necessary if the source maps wizard is the main flow

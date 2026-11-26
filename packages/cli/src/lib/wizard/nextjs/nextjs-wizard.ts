@@ -104,11 +104,10 @@ export function runNextjsWizard(options: WizardOptions) {
 export async function runNextjsWizardWithTelemetry(
   options: WizardOptions,
 ): Promise<void> {
-  const { promoCode, telemetryEnabled, forceInstall } = options;
+  const { telemetryEnabled, forceInstall } = options;
 
   printWelcome({
     wizardName: "Sentry Next.js Wizard",
-    promoCode,
     telemetryEnabled,
   });
 
@@ -483,13 +482,13 @@ The wizard will import ${chalk.cyan(
     path.join(process.cwd(), "vercel.json"),
   );
 
-  if (mightBeUsingVercel && !options.comingFrom) {
+  if (mightBeUsingVercel) {
     clack.log.info(
       "▲ It seems like you're using Vercel. We recommend using the Sentry Vercel \
       integration to set up an auth token for Vercel deployments: https://vercel.com/integrations/sentry",
     );
   } else if (!spotlight) {
-    await setupCI("nextjs", authToken, options.comingFrom);
+    await setupCI("nextjs", authToken);
   }
 
   const packageManagerForOutro =
