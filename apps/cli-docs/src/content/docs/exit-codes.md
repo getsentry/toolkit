@@ -41,7 +41,7 @@ react to failure categories without parsing stderr.
 | 40 | Seer Not Enabled | Seer is not enabled for the organization |
 | 41 | Seer No Budget | Seer requires a paid plan |
 | 42 | AI Disabled | AI features disabled by organization admin |
-| 43 | Seer Out Of Credits | Organization is out of Seer credits or hit its daily Seer spend limit |
+| 43 | Seer Not Enough Credits | Organization does not have enough Seer credits or hit its daily Seer spend limit |
 | 44 | Seer Setup Required | Seer needs a GitHub or GitLab integration, or repositories connected to the project |
 | 50 | Upgrade Error | CLI upgrade operation failed |
 | 51 | Device Flow Error | OAuth device authorization flow failed |

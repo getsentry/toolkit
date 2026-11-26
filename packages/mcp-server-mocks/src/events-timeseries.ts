@@ -120,7 +120,9 @@ export function eventsTimeSeriesResponse(request: Request): Response {
     );
   }
   const topEvents = params.get("topEvents");
-  const groupBy = params.get("groupBy");
+  // `groupBy` lists the columns to group by and the aggregates to select.
+  const groupByColumns = params.getAll("groupBy");
+  const groupBy = groupByColumns.find((column) => !column.includes("("));
   const sort = params.get("sort");
   if (topEvents && (!groupBy || !sort)) {
     return HttpResponse.json(
@@ -129,9 +131,15 @@ export function eventsTimeSeriesResponse(request: Request): Response {
     );
   }
   const sortBy = sort?.replace(/^-/, "");
-  if (topEvents && !yAxes.includes(sortBy ?? "")) {
+  // As Sentry does: the errors dataset selects only the `groupBy` columns;
+  // the other datasets select the yAxis aggregates too.
+  const selected =
+    params.get("dataset") === "errors"
+      ? groupByColumns
+      : [...groupByColumns, ...yAxes];
+  if (topEvents && !selected.includes(sortBy ?? "")) {
     return HttpResponse.json(
-      { detail: `Cannot sort by ${sortBy}: it is not a selected column` },
+      { detail: "Cannot sort by a field that is not selected." },
       { status: 400 },
     );
   }

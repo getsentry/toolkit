@@ -2073,10 +2073,12 @@ describe("structuredContent", () => {
       const payload = parsePayload(result);
 
       expect(requests).toHaveLength(1);
+      // Not same_title: its issue search would add to every call.
       expect(requests[0]?.searchParams.getAll("type")).toEqual([
         "similar_stacktrace",
         "same_trace",
         "contributing",
+        "same_supergroup",
       ]);
       expect(requests[0]?.searchParams.get("limit")).toBe("5");
       // the latest event is the endpoint's default
@@ -2249,6 +2251,36 @@ describe("structuredContent", () => {
         "similar_stacktrace",
         "same_trace",
         "contributing",
+        "same_supergroup",
+      ]);
+    });
+
+    it("lists same-supergroup issues", async () => {
+      mockLatestEvent();
+      captureRelatedRequest(() =>
+        HttpResponse.json({
+          data: [
+            {
+              issue: relatedIssuesFixture.data[0]?.issue,
+              relations: [{ type: "same_supergroup" }],
+            },
+          ],
+          meta: {
+            types: [
+              {
+                type: "same_supergroup",
+                status: "ok",
+                supergroup: { id: "17", title: "Payment client times out" },
+              },
+            ],
+          },
+        }),
+      );
+
+      const result = await getIssueDetails.handler(params, experimentalContext);
+
+      expect(parsePayload(result).relatedIssues?.issues).toMatchObject([
+        { shortId: "CLOUDFLARE-MCP-42", relations: ["same_supergroup"] },
       ]);
     });
   });

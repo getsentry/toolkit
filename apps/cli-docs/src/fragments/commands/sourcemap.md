@@ -8,7 +8,8 @@ Existing debug IDs from JavaScript comments or sourcemaps are preserved. If a
 bundler emits an ID without Sentry's runtime registration snippet, `inject`
 adds the snippet and adjusts the sourcemap mappings. Bundles that already
 register their ID are left unchanged. `sourcemap upload` applies the same
-injection by default, unless `--no-rewrite` is passed.
+injection by default, unless `--no-rewrite` is passed. With `--no-rewrite`,
+files upload unchanged, along with any debug IDs they already carry.
 Binary bundles with an existing debug ID in their sourcemap are left unchanged.
 
 ## Resolving sourcemap linkage

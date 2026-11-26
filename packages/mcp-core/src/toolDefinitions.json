@@ -3116,7 +3116,7 @@
   {
     "name": "find_related_issues",
     "title": "Find Related Issues",
-    "description": "Find Sentry issues related to an issue: likely duplicates with a similar stack trace in the same project, other errors in the same trace, and the error issues behind a metric alert. Returns each related issue with its status and why it's related. Use it before resolving or ignoring an issue. It doesn't compare titles or error messages.",
+    "description": "Find Sentry issues related to an issue: likely duplicates with a similar stack trace or the same title in the same project, other errors in the same trace, issues Seer found to share a root cause, and the error issues behind a metric alert. Returns each related issue with its status and why it's related. Use it before resolving or ignoring an issue.",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -3147,13 +3147,19 @@
         },
         "types": {
           "default": null,
-          "description": "Relation types to return; all when omitted. similar_stacktrace: likely duplicates. same_trace: errors in the same trace, often the other side of a request. contributing: for a metric issue, the error issues behind it.",
+          "description": "Relation types; all when omitted. similar_stacktrace: likely duplicates. same_trace: errors in the same trace. contributing: errors behind a metric issue. same_title: errors with the same title, last 14 days. same_supergroup: same root cause per Seer.",
           "anyOf": [
             {
               "type": "array",
               "items": {
                 "type": "string",
-                "enum": ["similar_stacktrace", "same_trace", "contributing"]
+                "enum": [
+                  "similar_stacktrace",
+                  "same_trace",
+                  "contributing",
+                  "same_title",
+                  "same_supergroup"
+                ]
               }
             },
             {
@@ -3264,7 +3270,9 @@
                       "enum": [
                         "similar_stacktrace",
                         "same_trace",
-                        "contributing"
+                        "contributing",
+                        "same_title",
+                        "same_supergroup"
                       ]
                     },
                     "score": {
@@ -3308,7 +3316,13 @@
             "properties": {
               "type": {
                 "type": "string",
-                "enum": ["similar_stacktrace", "same_trace", "contributing"]
+                "enum": [
+                  "similar_stacktrace",
+                  "same_trace",
+                  "contributing",
+                  "same_title",
+                  "same_supergroup"
+                ]
               },
               "status": {
                 "type": "string",
@@ -3321,9 +3335,24 @@
               "traceId": {
                 "description": "same_trace only: the trace that was searched.",
                 "type": ["string", "null"]
+              },
+              "title": {
+                "description": "same_title only: the title that was searched.",
+                "type": ["string", "null"]
+              },
+              "supergroup": {
+                "description": "same_supergroup only: what the issues in this issue's supergroup have in common, from Seer.",
+                "type": ["string", "null"]
               }
             },
-            "required": ["type", "status", "detail", "traceId"],
+            "required": [
+              "type",
+              "status",
+              "detail",
+              "traceId",
+              "title",
+              "supergroup"
+            ],
             "additionalProperties": false
           },
           "description": "Whether each requested relation type ran."
@@ -7430,7 +7459,7 @@
           "additionalProperties": false
         },
         "relatedIssues": {
-          "description": "Up to 5 other issues related to this one, most relations first: similar_stacktrace (likely duplicate), same_trace (same request), contributing (behind a metric alert). Check them before resolving or ignoring this issue.",
+          "description": "Up to 5 other issues related to this one, most relations first: similar_stacktrace (likely duplicate), same_trace (same request), contributing (behind a metric alert), same_supergroup (same root cause per Seer). Check them before resolving or ignoring this issue.",
           "type": "object",
           "properties": {
             "issues": {
@@ -7472,7 +7501,9 @@
                       "enum": [
                         "similar_stacktrace",
                         "same_trace",
-                        "contributing"
+                        "contributing",
+                        "same_title",
+                        "same_supergroup"
                       ]
                     }
                   }
@@ -7491,7 +7522,13 @@
               "type": "array",
               "items": {
                 "type": "string",
-                "enum": ["similar_stacktrace", "same_trace", "contributing"]
+                "enum": [
+                  "similar_stacktrace",
+                  "same_trace",
+                  "contributing",
+                  "same_title",
+                  "same_supergroup"
+                ]
               },
               "description": "Relation types that failed, so some may be missing."
             }
@@ -8358,7 +8395,7 @@
                   "type": ["string", "null"]
                 },
                 "failureReason": {
-                  "description": "Why the Seer run failed, when Sentry can explain it. \"out_of_credits\": the organization ran out of Seer credits, so someone with billing access must adjust Seer spend and auto-reload in Sentry before the run can continue.",
+                  "description": "Why the Seer run failed, when Sentry can explain it. \"out_of_credits\": the organization does not have enough Seer credits, so someone with billing access must adjust Seer spend and auto-reload in Sentry before the run can continue.",
                   "type": ["string", "null"]
                 }
               },

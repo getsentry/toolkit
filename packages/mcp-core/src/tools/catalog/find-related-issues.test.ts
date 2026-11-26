@@ -121,18 +121,24 @@ describe("find_related_issues", () => {
           {
             "detail": null,
             "status": "ok",
+            "supergroup": null,
+            "title": null,
             "traceId": null,
             "type": "similar_stacktrace",
           },
           {
             "detail": null,
             "status": "ok",
+            "supergroup": null,
+            "title": null,
             "traceId": "3032af8bcdfe4423b937fc5c041d5d82",
             "type": "same_trace",
           },
           {
             "detail": "Only metric issues have contributing issues.",
             "status": "not_applicable",
+            "supergroup": null,
+            "title": null,
             "traceId": null,
             "type": "contributing",
           },
@@ -188,6 +194,83 @@ describe("find_related_issues", () => {
       "similar_stacktrace",
       "same_trace",
       "contributing",
+      "same_title",
+      "same_supergroup",
+    ]);
+  });
+
+  it("returns same-title and same-supergroup issues with what was matched", async () => {
+    mswServer.use(
+      http.get(RELATED_URL, () =>
+        HttpResponse.json({
+          data: [
+            {
+              issue: issueFixture,
+              relations: [{ type: "same_title" }, { type: "same_supergroup" }],
+            },
+          ],
+          meta: {
+            types: [
+              {
+                type: "same_title",
+                status: "ok",
+                eventId: "7ca573c0f4814912aaa9bdc77d1a7d51",
+                title: "Error: Tool list_organizations is already registered",
+              },
+              {
+                type: "same_supergroup",
+                status: "ok",
+                supergroup: {
+                  id: "17",
+                  title: "Tools are registered twice when the server restarts",
+                },
+              },
+            ],
+          },
+        }),
+      ),
+    );
+
+    const result = await findRelatedIssues.handler(
+      { ...params, types: ["same_title", "same_supergroup"] },
+      context,
+    );
+    const structuredContent = getStructuredContent<Output>(result);
+
+    expect(findRelatedIssuesOutputSchema.parse(structuredContent)).toEqual(
+      structuredContent,
+    );
+    expect(
+      structuredContent.relatedIssues.map(({ shortId, relations }) => ({
+        shortId,
+        relations,
+      })),
+    ).toEqual([
+      {
+        shortId: "CLOUDFLARE-MCP-41",
+        relations: [
+          { type: "same_title", score: null },
+          { type: "same_supergroup", score: null },
+        ],
+      },
+    ]);
+    expect(structuredContent.relationTypes).toEqual([
+      {
+        type: "same_title",
+        status: "ok",
+        detail: null,
+        traceId: null,
+        title: "Error: Tool list_organizations is already registered",
+        supergroup: null,
+      },
+      {
+        type: "same_supergroup",
+        status: "ok",
+        detail: null,
+        traceId: null,
+        title: null,
+        supergroup: "Tools are registered twice when the server restarts",
+      },
     ]);
   });
 
@@ -328,6 +411,8 @@ describe("find_related_issues through the MCP server", () => {
         "similar_stacktrace",
         "same_trace",
         "contributing",
+        "same_title",
+        "same_supergroup",
       ]);
       expect(relatedRequest?.searchParams.get("limit")).toBe("10");
 

@@ -907,6 +907,8 @@ export const RELATED_ISSUE_TYPES = [
   "similar_stacktrace",
   "same_trace",
   "contributing",
+  "same_title",
+  "same_supergroup",
 ] as const;
 
 /** Outcome of each requested relation type (`RelationTypeStatus`). */
@@ -948,6 +950,10 @@ export const RelatedIssuesResponseSchema = z.object({
           status: z.enum(RELATED_ISSUE_TYPE_STATUSES),
           detail: z.string().optional(),
           traceId: z.string().optional(),
+          title: z.string().optional(),
+          supergroup: z
+            .object({ id: z.string(), title: z.string() })
+            .optional(),
         })
         .passthrough(),
     ),

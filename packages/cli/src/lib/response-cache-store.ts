@@ -2,7 +2,7 @@
  * Filesystem {@link CacheStore} for the CLI's response cache.
  *
  * Each entry is one JSON file, `<key>.v2.json`, written atomically. Its body
- * holds the bytes from the toolkit-core codec (zstd, or brotli on Node < 22.15)
+ * holds the bytes from the `@sentry/http` codec (zstd, or brotli on Node < 22.15)
  * as base64. A byte budget over file sizes is enforced by a cleanup sweep that
  * runs on a share of writes: it deletes expired entries, then evicts the least
  * recently used ones. A cache hit touches the file's mtime, so mtime is the
@@ -30,13 +30,8 @@ import {
   writeFile,
 } from "node:fs/promises";
 import { join } from "node:path";
-import {
-  type CacheEntry,
-  type CacheStore,
-  classifyUrl,
-  FALLBACK_TTL_MS,
-} from "@sentry/api/client";
-import type { BodyEncoding } from "@sentry/toolkit-core/response-cache/codec";
+import { classifyUrl, FALLBACK_TTL_MS } from "@sentry/api/client";
+import type { BodyEncoding, CacheEntry, CacheStore } from "@sentry/http";
 import pLimit from "p-limit";
 
 import { logger } from "./logger.js";
@@ -107,8 +102,6 @@ export type FileStoreOptions = {
 };
 
 export type FileStore = CacheStore & {
-  /** Remove the entry under `key`, in either format. */
-  delete(key: string): Promise<void>;
   /** Remove every entry. */
   clear(): Promise<void>;
   /** Delete expired entries, then evict until within the byte budget. */
@@ -199,7 +192,6 @@ function fromLegacy(legacy: LegacyEntry): ParsedEntry {
     entry: {
       url: legacy.url,
       identity: legacy.identity ?? "",
-      tier: classifyUrl(legacy.url),
       status: legacy.status,
       headers: legacy.headers,
       body: { bytes, encoding: "identity", rawSize: bytes.byteLength },

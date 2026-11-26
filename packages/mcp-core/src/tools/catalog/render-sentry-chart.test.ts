@@ -137,10 +137,10 @@ describe("render_sentry_chart", () => {
       "p95(span.duration)",
       "count()",
     ]);
+    expect(captured?.getAll("groupBy")).toEqual(["release", "count()"]);
     expect(Object.fromEntries(captured ?? [])).toMatchObject({
       dataset: "spans",
       topEvents: "5",
-      groupBy: "release",
       sort: "-count()",
       excludeOther: "1",
       statsPeriod: "24h",
@@ -157,6 +157,23 @@ describe("render_sentry_chart", () => {
       { label: "(none)", count: 39, total: null, values: [119, null] },
     ]);
     expect(chart.peak).toBeNull();
+  });
+
+  // The errors dataset selects only the `groupBy` columns, so Sentry rejects
+  // `sort=-count()` unless `count()` is also a `groupBy`.
+  it("splits an errors chart by an attribute", async () => {
+    const chart = getStructuredContent<ChartResult>(
+      await renderSentryChart.handler(
+        { ...baseParams, groupBy: "release", interval: "1h" },
+        context,
+      ),
+    );
+
+    expect(chart.title).toBe("count() by release");
+    expect(chart.series).toHaveLength(5);
+    for (const series of chart.series) {
+      expect(series.count).toBeGreaterThan(0);
+    }
   });
 
   // The busy releases have steady traffic; the sparse ones have 1 to 57
