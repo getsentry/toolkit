@@ -1368,16 +1368,6 @@ describe("Homebrew detection (detectInstallationMethod)", () => {
     expect(method).toBe("brew");
   });
 
-  test("detects brew for the sentry-cli formula (v3 name)", async () => {
-    Object.defineProperty(process, "execPath", {
-      value: "/opt/homebrew/Cellar/sentry-cli/4.0.0/bin/sentry",
-      configurable: true,
-    });
-
-    const method = await detectInstallationMethod();
-    expect(method).toBe("brew");
-  });
-
   test("Homebrew detection overrides stale stored install info", async () => {
     // Simulate a user who previously had curl recorded in the DB but then
     // switched to Homebrew — the /Cellar/ check should win.
@@ -2666,28 +2656,6 @@ describe("executeUpgrade (brew)", () => {
     expect(capturedCmd).toBe("brew");
     expect(capturedArgs).toEqual(["upgrade", "getsentry/tools/sentry"]);
     expect(capturedOpts).toHaveProperty("shell", process.platform === "win32");
-  });
-
-  test("upgrades the sentry-cli formula when installed from it", async () => {
-    const originalExecPath = process.execPath;
-    Object.defineProperty(process, "execPath", {
-      value: "/opt/homebrew/Cellar/sentry-cli/4.0.0/bin/sentry",
-      configurable: true,
-    });
-    let capturedArgs: string[] = [];
-    spawnImpl.fn = (_cmd, args) => {
-      capturedArgs = args;
-      return fakeProcess(0);
-    };
-    try {
-      await executeUpgrade("brew", "4.1.0");
-    } finally {
-      Object.defineProperty(process, "execPath", {
-        value: originalExecPath,
-        configurable: true,
-      });
-    }
-    expect(capturedArgs).toEqual(["upgrade", "getsentry/tools/sentry-cli"]);
   });
 });
 

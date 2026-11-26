@@ -90,34 +90,28 @@ export function getLegacyInstallDirs(homeDir: string): string[] {
   return LEGACY_INSTALL_SUBDIRS.map((dir) => join(homeDir, dir));
 }
 
-/**
- * Homebrew formulas that install the CLI (see `.craft.yml`): `sentry`, and
- * `sentry-cli`, which v3 used.
- */
-const HOMEBREW_FORMULAS = ["sentry", "sentry-cli"] as const;
-
-type HomebrewFormula = (typeof HOMEBREW_FORMULAS)[number];
+/** Cellar path segment for the `sentry` Homebrew formula (see `.craft.yml`). */
+const HOMEBREW_CELLAR_SEGMENT = "/Cellar/sentry/";
 
 /**
- * The Homebrew formula whose Cellar the CLI binary runs from, or null when
- * it is not a Homebrew install.
+ * Detect if the CLI binary is running from a Homebrew Cellar.
  *
  * Homebrew places the real binary deep in the Cellar
  * (e.g. `/opt/homebrew/Cellar/sentry/1.2.3/bin/sentry`) and exposes it
  * via a symlink at the prefix bin dir (e.g. `/opt/homebrew/bin/sentry`).
  * `process.execPath` typically reflects the symlink, not the realpath, so
- * we resolve symlinks first before checking for a CLI formula's Cellar dir.
- * Falls back to the unresolved path if `realpathSync` throws (e.g. binary
- * was deleted).
+ * we resolve symlinks first before checking for the `sentry` formula's
+ * Cellar dir. Falls back to the unresolved path if `realpathSync` throws
+ * (e.g. binary was deleted).
  *
- * Matches only the CLI formulas' Cellar dirs rather than any `/Cellar/`
- * path: for npm, pnpm, yarn, and bun installs `process.execPath` is Node,
- * which may itself be a Homebrew install (`/opt/homebrew/Cellar/node/...`).
+ * Matches `/Cellar/sentry/` rather than any `/Cellar/` path: for npm, pnpm,
+ * yarn, and bun installs `process.execPath` is Node, which may itself be a
+ * Homebrew install (`/opt/homebrew/Cellar/node/...`).
  *
  * Synchronous and subprocess-free, so it is safe to call from both
  * `cli upgrade` and `cli uninstall`.
  */
-function getHomebrewFormula(): HomebrewFormula | null {
+export function isHomebrewInstall(): boolean {
   let execPath = process.execPath;
   try {
     execPath = realpathSync(execPath);
@@ -125,24 +119,7 @@ function getHomebrewFormula(): HomebrewFormula | null {
     // Binary may have been deleted or moved; use the original path
     logger.debug("realpath of execPath failed, using unresolved path", error);
   }
-  return (
-    HOMEBREW_FORMULAS.find((formula) =>
-      execPath.includes(`/Cellar/${formula}/`),
-    ) ?? null
-  );
-}
-
-/** Whether the CLI binary runs from a Homebrew Cellar. */
-export function isHomebrewInstall(): boolean {
-  return getHomebrewFormula() !== null;
-}
-
-/**
- * The tap formula that `brew upgrade` and `brew uninstall` should name: the
- * one the CLI runs from, else `getsentry/tools/sentry`.
- */
-export function getHomebrewFormulaRef(): string {
-  return `getsentry/tools/${getHomebrewFormula() ?? "sentry"}`;
+  return execPath.includes(HOMEBREW_CELLAR_SEGMENT);
 }
 
 /**
@@ -187,7 +164,7 @@ export function getPackageManagerUninstallCommand(
     case "yarn":
       return `yarn global remove ${packageName}`;
     case "brew":
-      return `brew uninstall ${getHomebrewFormulaRef()}`;
+      return "brew uninstall getsentry/tools/sentry";
     default:
       return;
   }

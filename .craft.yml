@@ -123,8 +123,6 @@ workspaces:
             version "{{version}}"
             license "FSL-1.1-Apache-2.0"
 
-            conflicts_with "getsentry/tools/sentry-cli", because: "both install a `sentry` binary"
-
             if OS.mac?
               if Hardware::CPU.arm?
                 url "https://github.com/getsentry/toolkit/releases/download/cli@{{version}}/sentry-darwin-arm64.gz"
@@ -163,77 +161,6 @@ workspaces:
             def caveats
               <<~EOS
                 Shell completions for bash, zsh, and fish are installed by Homebrew.
-
-                To install the Sentry CLI skill for detected AI coding agents, run:
-                  sentry cli setup --no-modify-path --no-completions
-
-                `sentry cli upgrade` refreshes the skill automatically. After a
-                `brew upgrade`, run the command above again.
-              EOS
-            end
-
-            test do
-              assert_match version.to_s, shell_output("#{bin}/sentry --version").chomp
-            end
-          end
-      # The v3 formula, kept so `brew upgrade` moves v3 users to v4. Same as
-      # the formula above apart from its name and caveats.
-      - name: brew
-        tap: getsentry/tools
-        id: sentry-cli
-        formula: sentry-cli
-        path: Formula
-        includeNames: '/^sentry-(darwin|linux)-(arm64|x64)\.gz$/'
-        template: |
-          class SentryCli < Formula
-            desc "Sentry command-line tool for error monitoring and debugging"
-            homepage "https://cli.sentry.dev"
-            version "{{version}}"
-            license "FSL-1.1-Apache-2.0"
-
-            conflicts_with "getsentry/tools/sentry", because: "both install a `sentry` binary"
-
-            if OS.mac?
-              if Hardware::CPU.arm?
-                url "https://github.com/getsentry/toolkit/releases/download/cli@{{version}}/sentry-darwin-arm64.gz"
-                sha256 "{{checksums.sentry-darwin-arm64__gz}}"
-              elsif Hardware::CPU.intel?
-                url "https://github.com/getsentry/toolkit/releases/download/cli@{{version}}/sentry-darwin-x64.gz"
-                sha256 "{{checksums.sentry-darwin-x64__gz}}"
-              else
-                raise "Unsupported macOS CPU architecture: #{Hardware::CPU.type}"
-              end
-            elsif OS.linux?
-              if Hardware::CPU.arm? && Hardware::CPU.is_64_bit?
-                url "https://github.com/getsentry/toolkit/releases/download/cli@{{version}}/sentry-linux-arm64.gz"
-                sha256 "{{checksums.sentry-linux-arm64__gz}}"
-              elsif Hardware::CPU.intel? && Hardware::CPU.is_64_bit?
-                url "https://github.com/getsentry/toolkit/releases/download/cli@{{version}}/sentry-linux-x64.gz"
-                sha256 "{{checksums.sentry-linux-x64__gz}}"
-              else
-                raise "Unsupported Linux CPU architecture: #{Hardware::CPU.type} (only 64-bit arm and x86_64 are supported)"
-              end
-            else
-              raise "Unsupported operating system"
-            end
-
-            def install
-              bin.install Dir["sentry-*"].first => "sentry"
-              # The release asset is a bare gzip, so the unpacked binary has no
-              # exec bit. Homebrew's cleaner only fixes that after `install`.
-              chmod 0755, bin/"sentry"
-              # Homebrew-managed completion dirs survive the build sandbox and
-              # are cleaned up by `brew uninstall`. Writing into $HOME from
-              # post_install does not work: it runs under a throwaway HOME.
-              generate_completions_from_executable(bin/"sentry", "cli", "completion")
-            end
-
-            def caveats
-              <<~EOS
-                Shell completions for bash, zsh, and fish are installed by Homebrew.
-
-                Version 4 of the Sentry CLI installs a `sentry` command, not
-                `sentry-cli`. See https://cli.sentry.dev/migrating-from-v3/
 
                 To install the Sentry CLI skill for detected AI coding agents, run:
                   sentry cli setup --no-modify-path --no-completions

@@ -74,7 +74,7 @@ installs `sentry-cli`. Pin the major version to stay on v3.
 | v3 channel | What a v4 upgrade does | Stay on v3 |
 |------------|------------------------|------------|
 | npm `@sentry/cli` | Installs `@sentry/cli@4`, the `sentry` package under the old name. It is deprecated: switch to `sentry`. | `@sentry/cli@^3` |
-| Homebrew `getsentry/tools/sentry-cli` | `brew upgrade` installs v4. The formula conflicts with `getsentry/tools/sentry`, so install only one of them. | `brew pin sentry-cli` before upgrading |
+| Homebrew `getsentry/tools/sentry-cli` | The formula is renamed to `getsentry/tools/sentry`. `brew update` moves your install to it, and `brew upgrade` installs v4. | `brew pin sentry-cli` before updating |
 | PyPI `sentry-cli` | Installs the standalone v4 binary as `sentry`. | `sentry-cli<4` |
 | `downloads.sentry-cdn.com/sentry-cli/<version>/` | v4 versions hold the v4 binaries, named like `sentry-linux-x64` and `sentry-darwin-arm64.gz`. | Use a 3.x version in the URL |
 | Release registry `app:sentry-cli` | `latest` is v4, with download URLs on `downloads.sentry-cdn.com`. | `apps/sentry-cli/3` |
@@ -88,9 +88,8 @@ downloads one of them keeps getting v3, never a v4 binary that it would run as
 
 A global install of `@sentry/cli@4` and one of `sentry` both provide the
 `sentry` command, so npm refuses to install the second. Uninstall
-`@sentry/cli` first. `sentry cli upgrade` keeps upgrading the npm package or
-Homebrew formula that you installed, so it upgrades `@sentry/cli` and
-`sentry-cli` installs in place.
+`@sentry/cli` first. `sentry cli upgrade` keeps upgrading the npm package that
+you installed, so it upgrades an `@sentry/cli` install in place.
 
 The PyPI wheels need macOS 13.5 or later, or Linux with glibc 2.28 or later, on
 x64 or arm64, or Windows on x64. There are no musl (Alpine) wheels; use

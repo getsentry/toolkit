@@ -35,7 +35,6 @@ import {
   getGitHubLatestReleaseUrl,
   getGitHubReleaseByTagUrl,
   getGitHubRepositoryUrl,
-  getHomebrewFormulaRef,
   getNpmPackageName,
   getPlatformBinaryName,
   type InstallationMethod,
@@ -1356,8 +1355,7 @@ async function downloadFullBinary(
 /**
  * Execute upgrade via Homebrew.
  *
- * Runs `brew upgrade getsentry/tools/<formula>` for the formula the CLI was
- * installed from (`sentry` or `sentry-cli`), which fetches the latest
+ * Runs `brew upgrade getsentry/tools/sentry` which fetches the latest
  * formula from the tap and installs the new version. The version argument
  * is intentionally ignored: Homebrew manages versioning through the formula
  * file in the tap and does not support pinning to an arbitrary release.
@@ -1366,7 +1364,7 @@ async function downloadFullBinary(
  */
 function executeUpgradeHomebrew(): Promise<void> {
   return new Promise((resolve, reject) => {
-    const proc = spawn("brew", ["upgrade", getHomebrewFormulaRef()], {
+    const proc = spawn("brew", ["upgrade", "getsentry/tools/sentry"], {
       stdio: "inherit",
       shell: process.platform === "win32",
     });

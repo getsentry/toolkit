@@ -23,7 +23,6 @@ import { sentry } from "../../lib/app-identity.js";
 import {
   compareVersions,
   determineInstallDir,
-  getHomebrewFormulaRef,
   getPackageManagerUninstallCommand,
   isDowngrade,
   isNightlyVersion,
@@ -432,7 +431,7 @@ function validateMethod(
     }
     throw new UpgradeError(
       "unsupported_operation",
-      `Homebrew does not support installing a specific version. Run 'brew upgrade ${getHomebrewFormulaRef()}' to upgrade to the latest formula version.`,
+      "Homebrew does not support installing a specific version. Run 'brew upgrade getsentry/tools/sentry' to upgrade to the latest formula version.",
     );
   }
   // Offline mode is only supported for curl-installed binaries — package
