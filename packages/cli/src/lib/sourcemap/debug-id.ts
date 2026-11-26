@@ -152,13 +152,23 @@ export type SourcemapStampResult = {
  *
  * Some toolchains save maps with a BOM, which `JSON.parse` rejects.
  *
- * @throws {SyntaxError} When the file is not JSON
+ * @throws {SyntaxError} When the file is not JSON, or not shaped like a
+ *   sourcemap: an object whose `sources`, when present, is an array. Editing
+ *   anything else would throw a `TypeError` partway through a run.
  */
 export async function readSourcemapFile(
   mapPath: string,
 ): Promise<SourcemapJson> {
   const text = (await readFile(mapPath, "utf-8")).replace(/^\uFEFF/, "");
-  return JSON.parse(text) as SourcemapJson;
+  const map: unknown = JSON.parse(text);
+  if (typeof map !== "object" || map === null || Array.isArray(map)) {
+    throw new SyntaxError("expected a JSON object");
+  }
+  const { sources } = map as { sources?: unknown };
+  if (sources !== undefined && !Array.isArray(sources)) {
+    throw new SyntaxError("expected `sources` to be an array");
+  }
+  return map;
 }
 
 /**

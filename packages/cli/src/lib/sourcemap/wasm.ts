@@ -33,7 +33,11 @@ import {
 } from "../wasm/build-id.js";
 import { isDebugCompanionPath } from "../wasm/prepare.js";
 import { ensureBuildIdOnDisk } from "../wasm/stamp.js";
-import { readSourcemapFile, setSourcemapDebugId } from "./debug-id.js";
+import {
+  readSourcemapFile,
+  type SourcemapStampResult,
+  setSourcemapDebugId,
+} from "./debug-id.js";
 import {
   type DiscoveryDiagnostic,
   type PathFilter,
@@ -86,8 +90,9 @@ export type WasmSyncResult = {
    */
   moduleStamped: boolean;
   /**
-   * Why the pair was left alone, when it was. A skipped pair has no debug ID,
-   * wrote nothing, and is not uploaded.
+   * Why the pair was left alone, when it was. A skipped pair has no debug ID
+   * and is not uploaded. It wrote nothing unless `moduleStamped` is set: the
+   * map write can still fail after the module got its `build_id`.
    */
   skipped?: string;
 };
@@ -154,7 +159,7 @@ function skipReason(error: unknown): string | undefined {
     return `not a valid wasm module: ${error.message}`;
   }
   if (error instanceof SyntaxError) {
-    return `sourcemap is not valid JSON: ${error.message}`;
+    return `sourcemap is not a valid JSON sourcemap: ${error.message}`;
   }
   const code = (error as NodeJS.ErrnoException | undefined)?.code;
   if (code && UNWRITABLE_CODES.has(code)) {
@@ -163,10 +168,19 @@ function skipReason(error: unknown): string | undefined {
   return undefined;
 }
 
-/** Warn about a pair and report it as untouched. */
-function skip(pair: WasmPair, reason: string): WasmSyncResult {
+/**
+ * Warn about a pair and report it as skipped.
+ *
+ * @param moduleStamped - Whether the module was already given a `build_id`
+ *   before the pair had to be skipped
+ */
+function skip(
+  pair: WasmPair,
+  reason: string,
+  moduleStamped = false,
+): WasmSyncResult {
   log.warn(`Skipping ${pair.wasmPath}: ${reason}`);
-  return { ...pair, mapWritten: false, moduleStamped: false, skipped: reason };
+  return { ...pair, mapWritten: false, moduleStamped, skipped: reason };
 }
 
 async function reconcilePair(
@@ -206,9 +220,24 @@ async function reconcilePair(
     return { wasmPath, mapPath, mapWritten: moduleStamped, moduleStamped };
   }
 
-  const stamp = await setSourcemapDebugId(mapPath, debugId, {
-    dryRun: options.dryRun,
-  });
+  let stamp: SourcemapStampResult;
+  try {
+    stamp = await setSourcemapDebugId(mapPath, debugId, {
+      dryRun: options.dryRun,
+    });
+  } catch (error) {
+    const reason = skipReason(error);
+    if (!reason || !moduleStamped || options.dryRun) {
+      throw error;
+    }
+    // The module already carries its new id, so say so rather than report
+    // a pair that wrote nothing.
+    return skip(
+      pair,
+      `${reason}; ${wasmPath} was already given build_id ${formatBuildId(buildId as Uint8Array)}`,
+      true,
+    );
+  }
   if (stamp.replaced) {
     log.debug(
       `${mapPath} carried debug ID ${stamp.replaced}; replaced with the module's build_id ${debugId}`,

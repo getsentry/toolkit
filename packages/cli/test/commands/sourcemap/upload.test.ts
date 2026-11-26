@@ -1197,6 +1197,29 @@ describe("sourcemap upload command — --allow-empty behavior", () => {
     }
   });
 
+  test("fails like an empty directory when no wasm pair is usable", async () => {
+    await writeFile(join(dir, "broken.wasm"), "<html>Not Found</html>");
+    await writeFile(
+      join(dir, "broken.wasm.map"),
+      JSON.stringify({ version: 3, sources: [], names: [], mappings: "" }),
+    );
+
+    const uploadSpy = vi
+      .spyOn(sourcemapsApi, "uploadSourcemaps")
+      .mockResolvedValue(undefined);
+    try {
+      const ctx = makeContext();
+      await expect(func.call(ctx, {}, dir)).rejects.toThrow(
+        /1 wasm sourcemap pair\(s\).*none can be uploaded/,
+      );
+      // --allow-empty turns it into a no-op, with no upload either.
+      await func.call(ctx, { "allow-empty": true }, dir);
+      expect(uploadSpy).not.toHaveBeenCalled();
+    } finally {
+      uploadSpy.mockRestore();
+    }
+  });
+
   test("DWARF companions are not uploaded as sourcemap artifacts", async () => {
     await writeWasmPair(dir, "app", WASM_DEBUG_ID);
     await writeWasmPair(

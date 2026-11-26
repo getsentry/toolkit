@@ -11,7 +11,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import ignore from "ignore";
 import picomatch from "picomatch";
-import { beforeEach, describe, expect, test } from "vitest";
+import { beforeEach, describe, expect, test, vi } from "vitest";
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
+import * as replaceFileModule from "../../../src/lib/replace-file.js";
 import { buildEmptyDiscoveryError } from "../../../src/lib/sourcemap/inject.js";
 import {
   addWasmDiscoveryCounts,
@@ -156,9 +158,56 @@ describe("syncWasmSourcemap", () => {
 
     const result = await syncWasmSourcemap({ wasmPath, mapPath });
 
-    expect(result.skipped).toMatch(/not valid JSON/);
+    expect(result.skipped).toMatch(/not a valid JSON sourcemap/);
     expect(result.moduleStamped).toBe(false);
     expect(await readFile(wasmPath)).toEqual(before);
+  });
+
+  test.each([
+    ["an array", "[]"],
+    ["null", "null"],
+    ["a map whose sources is not an array", '{"version":3,"sources":"app.c"}'],
+  ])("skips %s without stamping the module", async (_label, contents) => {
+    const wasmPath = await writeWasm("app.wasm");
+    const before = await readFile(wasmPath);
+    const mapPath = join(dir, "app.wasm.map");
+    await writeFile(mapPath, contents);
+
+    const result = await syncWasmSourcemap({ wasmPath, mapPath });
+
+    expect(result.skipped).toMatch(/not a valid JSON sourcemap/);
+    expect(result.moduleStamped).toBe(false);
+    expect(await readFile(wasmPath)).toEqual(before);
+    expect(await readFile(mapPath, "utf-8")).toBe(contents);
+  });
+
+  test("reports the stamp when the map write fails after it", async () => {
+    const wasmPath = await writeWasm("app.wasm");
+    const mapPath = await writeMap("app.wasm.map");
+    const mapBefore = await readFile(mapPath);
+    const realReplace = replaceFileModule.replaceFile;
+    const spy = vi
+      .spyOn(replaceFileModule, "replaceFile")
+      .mockImplementation(async (path, data) => {
+        if (path === mapPath) {
+          throw Object.assign(new Error("permission denied"), {
+            code: "EACCES",
+          });
+        }
+        return await realReplace(path, data);
+      });
+
+    try {
+      const result = await syncWasmSourcemap({ wasmPath, mapPath });
+
+      expect(result.skipped).toMatch(/cannot write files \(EACCES\)/);
+      expect(result.skipped).toMatch(/was already given build_id/);
+      expect(result.moduleStamped).toBe(true);
+      expect(await countBuildIdSections(wasmPath)).toBe(1);
+      expect(await readFile(mapPath)).toEqual(mapBefore);
+    } finally {
+      spy.mockRestore();
+    }
   });
 
   test("reads a map saved with a BOM", async () => {

@@ -43,6 +43,7 @@ import {
   addWasmDiscoveryCounts,
   discoverWasmPairs,
   syncWasmPairs,
+  type WasmPair,
   type WasmSyncResult,
 } from "../../lib/sourcemap/wasm.js";
 import { sentry } from "../../lib/app-identity.js";
@@ -469,8 +470,25 @@ export const uploadCommand = buildCommand({
       include: target.include,
     });
 
-    if (pairs.length === 0 && wasmPairs.length === 0) {
+    // Read-only pass, so pairs that can't be used (a `.wasm` that isn't a
+    // module, a broken map) count as nothing to upload before any credential
+    // check or write. Each skipped pair is warned about here, once.
+    const usableWasmPairs: WasmPair[] = (
+      await syncWasmPairs(wasmPairs, { dryRun: true })
+    )
+      .filter((result) => !result.skipped)
+      .map(({ wasmPath, mapPath }) => ({ wasmPath, mapPath }));
+
+    if (pairs.length === 0 && usableWasmPairs.length === 0) {
       if (!flags["allow-empty"]) {
+        if (wasmPairs.length > 0) {
+          throw new ValidationError(
+            `Found ${wasmPairs.length} wasm sourcemap pair(s) in '${dir}' ` +
+              "but none can be uploaded; see the warnings above. Pass " +
+              "--allow-empty to suppress.",
+            "directory",
+          );
+        }
         const diag = await addWasmDiscoveryCounts(
           target.dir,
           await diagnoseEmptyDiscovery(target.dir, {
@@ -532,7 +550,7 @@ export const uploadCommand = buildCommand({
     // pair, so it rides along on the manifest entries.
     // Skipped pairs were already warned about and are left out of the upload.
     const wasmResults = (
-      await syncWasmPairs(wasmPairs, { dryRun: flags["no-rewrite"] })
+      await syncWasmPairs(usableWasmPairs, { dryRun: flags["no-rewrite"] })
     ).filter((result) => !result.skipped);
 
     const urlPrefix = flags["url-prefix"] ?? "~/";
