@@ -28,6 +28,7 @@ the old flags translated:
 - `--force-install`, `--ignore-git-changes`, `-f` and `--force` become `-f`.
 - `-u`/`--url <url>` sets `SENTRY_URL` for the run.
 - `--spotlight` sets `SENTRY_SPOTLIGHT=1` for the run.
+- `--app-target <name>` and `--hosted-test-target <name>` pass through.
 - Positional arguments and `--help` pass through.
 
 Every other old flag is ignored with a notice, including `--project` without

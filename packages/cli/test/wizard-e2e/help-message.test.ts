@@ -28,9 +28,11 @@ describe("sentry wizard --help", () => {
         SENTRY_SPOTLIGHT=1 sentry wizard nextjs # Set up Next.js for Spotlight, without a Sentry account
 
       FLAGS
-        -f [--force]  Change a project with uncommitted changes without asking, and install the SDK even when the package manager's checks fail [default = false]
-        -h  --help    Print help information and exit
-            --        All subsequent inputs should be interpreted as arguments
+        -f [--force]               Change a project with uncommitted changes without asking, and install the SDK even when the package manager's checks fail [default = false]
+           [--app-target]          Xcode app target that SnapshotPreviews uses, instead of picking one (appleSnapshots only)
+           [--hosted-test-target]  Hosted XCTest target that renders the snapshots, instead of picking one (appleSnapshots only)
+        -h  --help                 Print help information and exit
+            --                     All subsequent inputs should be interpreted as arguments
 
       ARGUMENTS
         org/project-or-integration...  <org>/<project> to set up (skips the project picker), then the integration (skips the integration picker)

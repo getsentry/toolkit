@@ -429,6 +429,95 @@ describe("runAppleSnapshotsWizard", () => {
     });
   });
 
+  it("uses --app-target and --hosted-test-target without prompting among several targets when non-interactive", async () => {
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "snapshots-wizard-"));
+    const xcodeProject = {
+      getBundleIdentifierForTarget: vi.fn(() => "com.getsentry.App"),
+      getAllTargets: vi.fn(() => ["App", "OtherApp"]),
+      getHostedUnitTestTargetNames: vi.fn(() => [
+        "AppTests",
+        "AppSnapshotTests",
+      ]),
+      getHostedUnitTestTargetNamesForApplicationTarget: vi.fn(() => [
+        "AppTests",
+        "AppSnapshotTests",
+      ]),
+      write: mocks.write,
+      xcodeprojPath: path.join(tempDir, "App.xcodeproj"),
+    };
+    mocks.lookupXcodeProject.mockResolvedValue(xcodeProject);
+
+    await runAppleSnapshotsWizard({
+      telemetryEnabled: true,
+      projectDir: tempDir,
+      ignoreGitChanges: true,
+      nonInteractive: true,
+      appTarget: "OtherApp",
+      hostedTestTarget: "AppSnapshotTests",
+    });
+
+    expect(mocks.askForItemSelection).not.toHaveBeenCalled();
+    expect(mocks.error).not.toHaveBeenCalled();
+    expect(mocks.configureSnapshotPreviewsXcodeProject).toHaveBeenCalledWith({
+      xcodeProject,
+      hostedTestTargetName: "AppSnapshotTests",
+      previewTargetNames: ["OtherApp"],
+    });
+  });
+
+  it("aborts with the app targets when --app-target names an unknown target", async () => {
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "snapshots-wizard-"));
+    const xcodeProject = {
+      getAllTargets: vi.fn(() => ["App", "OtherApp"]),
+      xcodeprojPath: path.join(tempDir, "App.xcodeproj"),
+    };
+    mocks.lookupXcodeProject.mockResolvedValue(xcodeProject);
+
+    await expect(
+      runAppleSnapshotsWizard({
+        telemetryEnabled: true,
+        projectDir: tempDir,
+        ignoreGitChanges: true,
+        nonInteractive: false,
+        appTarget: "Missing",
+      }),
+    ).rejects.toThrow("aborted");
+
+    expect(mocks.askForItemSelection).not.toHaveBeenCalled();
+    expect(mocks.error).toHaveBeenCalledWith(
+      "Xcode app target Missing was not found. Available app targets: App, OtherApp.",
+    );
+    expect(mocks.configureSnapshotPreviewsXcodeProject).not.toHaveBeenCalled();
+  });
+
+  it("aborts with the hosted XCTest targets when --hosted-test-target names an unknown target", async () => {
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "snapshots-wizard-"));
+    const xcodeProject = {
+      getAllTargets: vi.fn(() => ["App"]),
+      getHostedUnitTestTargetNames: vi.fn(() => ["AppTests"]),
+      getHostedUnitTestTargetNamesForApplicationTarget: vi.fn(() => [
+        "AppTests",
+      ]),
+      xcodeprojPath: path.join(tempDir, "App.xcodeproj"),
+    };
+    mocks.lookupXcodeProject.mockResolvedValue(xcodeProject);
+
+    await expect(
+      runAppleSnapshotsWizard({
+        telemetryEnabled: true,
+        projectDir: tempDir,
+        ignoreGitChanges: true,
+        nonInteractive: true,
+        hostedTestTarget: "Missing",
+      }),
+    ).rejects.toThrow("aborted");
+
+    expect(mocks.error).toHaveBeenCalledWith(
+      "Hosted XCTest target Missing was not found or does not define TEST_HOST. Available hosted XCTest targets: AppTests.",
+    );
+    expect(mocks.configureSnapshotPreviewsXcodeProject).not.toHaveBeenCalled();
+  });
+
   it("aborts when app target selection is ambiguous in non-interactive mode", async () => {
     const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "snapshots-wizard-"));
     const xcodeProject = {
@@ -449,7 +538,7 @@ describe("runAppleSnapshotsWizard", () => {
     expect(mocks.askForItemSelection).not.toHaveBeenCalled();
     expect(mocks.error).toHaveBeenCalledWith(
       expect.stringContaining(
-        "Run the wizard in a terminal to choose the app target",
+        "Pass --app-target <target-name> to select the app target",
       ),
     );
     expect(mocks.configureSnapshotPreviewsXcodeProject).not.toHaveBeenCalled();
@@ -486,7 +575,7 @@ describe("runAppleSnapshotsWizard", () => {
     expect(mocks.askForItemSelection).not.toHaveBeenCalled();
     expect(mocks.error).toHaveBeenCalledWith(
       expect.stringContaining(
-        "Run the wizard in a terminal to choose the target",
+        "Pass --hosted-test-target <target-name> to select the target",
       ),
     );
     expect(mocks.error).toHaveBeenCalledWith(
