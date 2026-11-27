@@ -292,6 +292,9 @@ export function addSentrySerializerRequireToMetroConfig(
 export function addSentryMetroRequireToMetroConfig(
   program: t.Program,
 ): boolean {
+  if (declaresWithSentryConfig(program)) {
+    return true;
+  }
   const lastRequireIndex = getLastRequireIndex(program);
   const sentryMetroRequire = createSentryMetroRequire();
   const sentryImportIndex = lastRequireIndex + 1;
@@ -308,7 +311,33 @@ export function addSentryMetroRequireToMetroConfig(
 function wrapWithSentryConfig(
   configObj: t.Identifier | t.CallExpression | t.ObjectExpression,
 ): t.CallExpression {
+  if (
+    configObj.type === "CallExpression" &&
+    configObj.callee.type === "Identifier" &&
+    configObj.callee.name === "withSentryConfig"
+  ) {
+    return configObj;
+  }
   return b.callExpression(b.identifier("withSentryConfig"), [configObj]);
+}
+
+/** Whether a top-level `const { withSentryConfig } = ...` already exists. */
+function declaresWithSentryConfig(program: t.Program): boolean {
+  return program.body.some(
+    (statement) =>
+      statement.type === "VariableDeclaration" &&
+      statement.declarations.some(
+        (declarator) =>
+          declarator.type === "VariableDeclarator" &&
+          declarator.id.type === "ObjectPattern" &&
+          declarator.id.properties.some(
+            (property) =>
+              property.type === "ObjectProperty" &&
+              property.value.type === "Identifier" &&
+              property.value.name === "withSentryConfig",
+          ),
+      ),
+  );
 }
 
 function replaceModuleExportsRight(
