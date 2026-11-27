@@ -78,6 +78,7 @@ import {
 } from "../../lib/sentry-url-parser.js";
 import { buildEventSearchUrl } from "../../lib/sentry-web-urls.js";
 import { getSpanTreeLines } from "../../lib/span-tree.js";
+import { getTargetScope } from "../../lib/target-scope.js";
 import { setOrgProjectContext } from "../../lib/telemetry.js";
 import type { InferOutput } from "valibot";
 import type { SentryEvent } from "../../types/index.js";
@@ -1139,8 +1140,16 @@ async function resolveIssueIdShortcut(
     parsed.type === ProjectSpecificationType.Explicit
       ? parsed.project
       : undefined;
-  const projectPromise = explicitProject
-    ? Promise.resolve(explicitProject)
+  // A target-scoped invocation checks the issue (`getIssueInOrg`) before it
+  // reads the issue's events: the ID names no project, and an explicit one
+  // need not be the issue's.
+  const scopedProject = getTargetScope()
+    ? (await getIssueInOrg(org, issueId, { collapse: ISSUE_DETAIL_COLLAPSE }))
+        .project?.slug
+    : undefined;
+  const knownProject = explicitProject ?? scopedProject;
+  const projectPromise = knownProject
+    ? Promise.resolve(knownProject)
     : tryResolveIssueProject(org, issueId);
   const [event, project] = await Promise.all([
     getLatestEvent(org, issueId),

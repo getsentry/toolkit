@@ -18,7 +18,12 @@ import { homedir } from "node:os";
 import type { Span } from "@sentry/core";
 import type { Writer } from "../types/index.js";
 import { type AsyncChannel, createAsyncChannel } from "./async-channel.js";
-import { NO_PERSISTENCE_ENV_VAR, withInvocation } from "./env.js";
+import {
+  NO_PERSISTENCE_ENV_VAR,
+  SCOPE_ORG_ENV_VAR,
+  SCOPE_PROJECT_ENV_VAR,
+  withInvocation,
+} from "./env.js";
 import { stringifyUnknown } from "./errors.js";
 import { SentryError, type SentryOptions } from "./sdk-types.js";
 import generatedStreamingCommands from "../generated/streaming-commands.json" with { type: "json" };
@@ -32,7 +37,8 @@ const STREAMING_COMMANDS: StreamingCommands = generatedStreamingCommands;
 
 /**
  * Build an isolated env from options, starting from `options.env` or the
- * consumer's process.env. Sets auth token, host URL, default org/project,
+ * consumer's process.env. Sets auth token, host URL, org/project (as
+ * defaults and, unless `limitToTarget` is `false`, as the target scope),
  * output format, and the no-persistence flag.
  */
 function buildIsolatedEnv(
@@ -55,6 +61,12 @@ function buildIsolatedEnv(
   }
   if (options?.project) {
     env["SENTRY_PROJECT"] = options.project;
+  }
+  if (options?.limitToTarget !== false && options?.org) {
+    env[SCOPE_ORG_ENV_VAR] = options.org;
+    if (options.project) {
+      env[SCOPE_PROJECT_ENV_VAR] = options.project;
+    }
   }
   if (jsonByDefault && !options?.text) {
     env["SENTRY_OUTPUT_FORMAT"] = "json";
@@ -303,7 +315,8 @@ type CaptureContext = {
       stdin: NodeJS.ReadStream & { fd: 0 };
       env: NodeJS.ProcessEnv;
       cwd: () => string;
-      exitCode: number;
+      /** Unset until something fails, as on Node's own `process`. */
+      exitCode: number | undefined;
     };
     stdout: Writer;
     stderr: Writer;
@@ -365,7 +378,9 @@ async function buildCaptureContext(
     stdin: process.stdin,
     env,
     cwd: () => cwd,
-    exitCode: 0,
+    // Unset, as on Node's `process`: Stricli's `run()` records a failure
+    // with `exitCode ??= code`, which a 0 here would swallow.
+    exitCode: undefined,
   };
 
   if (opts?.abortSignal) {
@@ -443,11 +458,9 @@ async function executeWithCapture<T>(
       await flushTelemetry();
 
       // Check exit code (Stricli sets it without throwing for some errors)
-      if (captureCtx.context.process.exitCode !== 0) {
-        throw buildSdkError(
-          captureCtx.stderrChunks,
-          captureCtx.context.process.exitCode,
-        );
+      const exitCode = captureCtx.context.process.exitCode ?? 0;
+      if (exitCode !== 0) {
+        throw buildSdkError(captureCtx.stderrChunks, exitCode);
       }
 
       return parseOutput(
@@ -512,13 +525,9 @@ function executeWithStream<T>(
         });
 
         // Check exit code — Stricli sets it without throwing for some errors
-        if (captureCtx.context.process.exitCode !== 0) {
-          channel.error(
-            buildSdkError(
-              captureCtx.stderrChunks,
-              captureCtx.context.process.exitCode,
-            ),
-          );
+        const exitCode = captureCtx.context.process.exitCode ?? 0;
+        if (exitCode !== 0) {
+          channel.error(buildSdkError(captureCtx.stderrChunks, exitCode));
         } else {
           // Drain any raw stdout the command wrote directly (via stdout.write)
           // instead of yielding via captureObject — e.g. a binary Uint8Array

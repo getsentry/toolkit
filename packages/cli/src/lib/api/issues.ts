@@ -31,6 +31,7 @@ import {
 } from "../custom-ca.js";
 import { applyCustomHeaders } from "../custom-headers.js";
 import { ApiError, ValidationError } from "../errors.js";
+import { assertIssueInScope, assertOrgInScope } from "../target-scope.js";
 
 import {
   getOrgSdkConfig,
@@ -325,19 +326,24 @@ export async function listIssuesAllPages(
  * @param orgSlug - Organization slug (used for region routing)
  * @param issueId - Numeric issue ID
  * @param options - Optional collapse fields to skip expensive backend queries
+ * @throws {ResolutionError} When the issue is outside the invocation's
+ *   target scope (`limitToTarget`)
  */
 export async function getIssueInOrg(
   orgSlug: string,
   issueId: string,
   options?: { collapse?: IssueCollapseField[] },
 ): Promise<SentryIssue> {
+  assertOrgInScope(orgSlug, issueId);
   const collapse = toIssueDetailsCollapse(options?.collapse);
   const result = await getOrganizationIssue({
     ...getOrgSdkConfig(),
     path: { organization_id_or_slug: orgSlug, issue_id: issueId },
     ...(collapse && { query: { collapse } }),
   });
-  return unwrapResult<SentryIssue>(result, "Failed to get issue");
+  const issue = unwrapResult<SentryIssue>(result, "Failed to get issue");
+  assertIssueInScope(orgSlug, issue);
+  return issue;
 }
 
 /**
@@ -398,6 +404,8 @@ export async function findIssueInOrgs(
  * @param orgSlug - Organization slug
  * @param shortId - Short ID (e.g., "CLI-G5", "SPOTLIGHT-ELECTRON-4D")
  * @param options - Optional collapse fields to skip expensive backend queries
+ * @throws {ResolutionError} When the issue is outside the invocation's
+ *   target scope (`limitToTarget`)
  */
 export async function getIssueByShortId(
   orgSlug: string,
@@ -405,6 +413,7 @@ export async function getIssueByShortId(
   options?: { collapse?: IssueCollapseField[] },
 ): Promise<SentryIssue> {
   const normalizedShortId = shortId.toUpperCase();
+  assertOrgInScope(orgSlug, normalizedShortId);
   const config = getOrgSdkConfig();
 
   let data: { group?: SentryIssue };
@@ -444,6 +453,7 @@ export async function getIssueByShortId(
       "Issue not found",
     );
   }
+  assertIssueInScope(orgSlug, data.group);
   return data.group;
 }
 
