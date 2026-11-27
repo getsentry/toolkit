@@ -248,6 +248,28 @@ export default {
       expect(writtenConfig).toContain("ssr: true");
     });
 
+    it('flips a quoted "ssr": false instead of adding a second key', async () => {
+      const existingConfig = `export default {
+  "ssr": false
+};`;
+
+      const writtenFiles: Record<string, string> = {};
+
+      vi.mocked(existsSync).mockReturnValue(true);
+      vi.mocked(promises.readFile).mockResolvedValue(existingConfig);
+      vi.mocked(promises.writeFile).mockImplementation((filePath, content) => {
+        writtenFiles[filePath as string] = content as string;
+        return Promise.resolve();
+      });
+
+      const result = await instrumentReactRouterConfig(true);
+
+      expect(result.ssrWasChanged).toBe(true);
+      const writtenConfig = Object.values(writtenFiles)[0];
+      expect(writtenConfig).not.toContain("false");
+      expect(writtenConfig?.match(/ssr/g)).toHaveLength(1);
+    });
+
     it("should report ssrWasChanged when changing ssr from false to true", async () => {
       const existingConfig = `export default {
   ssr: false

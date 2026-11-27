@@ -3,6 +3,7 @@ import type { namedTypes as t } from "ast-types";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   addReactRouterPluginToViteConfig,
+  getViteConfigFilename,
   instrumentViteConfig,
 } from "../../../../../src/lib/wizard/react-router/codemods/vite.js";
 
@@ -310,5 +311,33 @@ export default defineConfig(function(config) {
       expect(writtenConfig).toContain("optimizeDeps");
       expect(writtenConfig).toMatch(/exclude.*@sentry\/react-router/s);
     });
+  });
+});
+
+describe("getViteConfigFilename", () => {
+  beforeEach(() => {
+    vi.spyOn(process, "cwd").mockReturnValue("/mock/project");
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("names an existing vite.config.js in a TypeScript project", () => {
+    vi.mocked(existsSync).mockImplementation(
+      (p) => p === "/mock/project/vite.config.js",
+    );
+    expect(getViteConfigFilename(true)).toBe("vite.config.js");
+  });
+
+  it("prefers an existing vite.config.ts, as the codemod does", () => {
+    vi.mocked(existsSync).mockReturnValue(true);
+    expect(getViteConfigFilename(false)).toBe("vite.config.ts");
+  });
+
+  it("falls back to the project language when neither exists", () => {
+    vi.mocked(existsSync).mockReturnValue(false);
+    expect(getViteConfigFilename(true)).toBe("vite.config.ts");
+    expect(getViteConfigFilename(false)).toBe("vite.config.js");
   });
 });

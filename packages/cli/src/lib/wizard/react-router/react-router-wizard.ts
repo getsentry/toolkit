@@ -36,6 +36,7 @@ import {
 } from "./sdk-version.js";
 import { debug } from "../utils/debug.js";
 import { getReactRouterConfigFilename } from "./codemods/react-router-config.js";
+import { getViteConfigFilename } from "./codemods/vite.js";
 import { createExamplePage } from "./sdk-example.js";
 import {
   isReactRouterV7,
@@ -83,6 +84,7 @@ async function runReactRouterWizardWithTelemetry(
 ): Promise<void> {
   printWelcome({
     wizardName: "Sentry React Router Wizard",
+    telemetryEnabled: options.telemetryEnabled,
   });
 
   const packageJson = await getPackageDotJson();
@@ -420,7 +422,7 @@ Please create your entry files manually using React Router v7 commands.`);
       );
 
       await showCopyPasteInstructions({
-        filename: `vite.config.${typeScriptDetected ? "ts" : "js"}`,
+        filename: getViteConfigFilename(typeScriptDetected),
         codeSnippet: getManualViteConfigContent(
           selectedProject.organization.slug,
           selectedProject.slug,

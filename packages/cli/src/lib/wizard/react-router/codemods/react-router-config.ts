@@ -13,10 +13,7 @@ import { parseModule, generateCode } from "magicast";
 import { clack } from "../../utils/clack/prompts.js";
 import chalk from "chalk";
 
-import {
-  findProperty,
-  preserveTrailingNewline,
-} from "../../utils/ast-utils.js";
+import { preserveTrailingNewline } from "../../utils/ast-utils.js";
 import { getSentryReactRouterVitePluginImportPath } from "../sdk-version.js";
 
 /**
@@ -72,21 +69,13 @@ export function addSentryBuildEndToReactRouterConfig(program: t.Program): {
     return { success: false, ssrWasChanged: false };
   }
 
-  // `buildEnd: async () => {}` is a property, `async buildEnd() {}` a method.
-  const hasBuildEnd = configObj.properties.some(
-    (p) =>
-      (p.type === "ObjectProperty" || p.type === "ObjectMethod") &&
-      ((p.key.type === "Identifier" && p.key.name === "buildEnd") ||
-        (p.key.type === "StringLiteral" && p.key.value === "buildEnd")),
-  );
-
-  if (hasBuildEnd) {
+  if (findConfigProperty(configObj, "buildEnd")) {
     throw new Error(
       "A buildEnd hook already exists in your React Router config.",
     );
   }
 
-  const ssrProp = findProperty(configObj, "ssr");
+  const ssrProp = findConfigProperty(configObj, "ssr");
 
   if (!ssrProp) {
     const ssrProperty = b.objectProperty(
@@ -103,8 +92,9 @@ export function addSentryBuildEndToReactRouterConfig(program: t.Program): {
     configObj.properties.unshift(ssrProperty);
     ssrWasChanged = true;
   } else if (
-    ssrProp.value.type === "BooleanLiteral" ||
-    ssrProp.value.type === "Literal"
+    ssrProp.type === "ObjectProperty" &&
+    (ssrProp.value.type === "BooleanLiteral" ||
+      ssrProp.value.type === "Literal")
   ) {
     const wasExplicitlyFalse = ssrProp.value.value === false;
 
@@ -245,4 +235,20 @@ export default {
   await promises.writeFile(configPath, code);
 
   return { ssrWasChanged };
+}
+
+/**
+ * A config key, whether written `key`, `"key"` or as a method (`key() {}`), so
+ * an existing entry is updated or detected instead of shadowed by a new one.
+ */
+function findConfigProperty(
+  configObj: t.ObjectExpression,
+  name: string,
+): t.ObjectProperty | t.ObjectMethod | undefined {
+  return configObj.properties.find(
+    (p): p is t.ObjectProperty | t.ObjectMethod =>
+      (p.type === "ObjectProperty" || p.type === "ObjectMethod") &&
+      ((p.key.type === "Identifier" && p.key.name === name) ||
+        (p.key.type === "StringLiteral" && p.key.value === name)),
+  );
 }
