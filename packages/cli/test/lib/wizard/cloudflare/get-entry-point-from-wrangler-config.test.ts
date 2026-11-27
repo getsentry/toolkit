@@ -44,6 +44,17 @@ compatibility_date = "2024-01-01"`,
     expect(result).toBe("src/worker.ts");
   });
 
+  it("stops at the closing quote of main in wrangler.toml", () => {
+    fs.writeFileSync(
+      path.join(tmpDir, "wrangler.toml"),
+      `main = "src/worker.ts"  # see "docs" or 'more docs'`,
+    );
+
+    const result = getEntryPointFromWranglerConfig();
+
+    expect(result).toBe("src/worker.ts");
+  });
+
   it("parses main from wrangler.json", () => {
     fs.writeFileSync(
       path.join(tmpDir, "wrangler.json"),

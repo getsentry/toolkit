@@ -167,6 +167,12 @@ describe("findOutDir", () => {
     expect(outDir).toBe("someplace");
   });
 
+  it("handles more than one space before the outdir value", () => {
+    const outDir = findOutDir("wrangler deploy --outdir  someplace");
+
+    expect(outDir).toBe("someplace");
+  });
+
   it('handles --outdir "./someplace.js"', () => {
     const outDir = findOutDir('wrangler deploy --outdir "./someplace.js"');
 

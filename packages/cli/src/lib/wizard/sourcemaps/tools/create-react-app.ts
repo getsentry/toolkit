@@ -10,7 +10,7 @@ import { clack } from "../../utils/clack/prompts.js";
 export async function configureCRASourcemapGenerationFlow(): Promise<void> {
   await abortIfCancelled(
     clack.select({
-      message: `Verify that you are generating source maps when building your React app.\nGenerally this should already happen unless you set the GENERATE_SOURCEMAPS environment variable to false.`,
+      message: `Verify that you are generating source maps when building your React app.\nGenerally this should already happen unless you set the GENERATE_SOURCEMAP environment variable to false.`,
       options: [
         {
           label: "I checked!",

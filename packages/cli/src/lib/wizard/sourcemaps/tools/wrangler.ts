@@ -81,6 +81,7 @@ Otherwise, let's proceed with the Wrangler setup.`,
   });
 
   if (!(await askContinueIfHasSentrySourcemapsScript())) {
+    await abort("Exiting the wizard.", 0);
     return;
   }
 
@@ -397,7 +398,8 @@ async function getWranglerOutDir(deployScript: string): Promise<string> {
 export function findOutDir(deployCommand: string): string {
   const args = getWranglerDeployCommand(deployCommand)
     ?.split(" ")
-    .map((arg) => arg.trim());
+    .map((arg) => arg.trim())
+    .filter(Boolean);
 
   if (!args) {
     return DIST_DIR;

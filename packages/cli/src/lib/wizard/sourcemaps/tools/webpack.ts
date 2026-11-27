@@ -73,7 +73,7 @@ export const configureWebPackPlugin: SourceMapUploadToolConfigurationFunction =
       successfullyAdded = await createNewConfigFile(
         path.join(process.cwd(), "webpack.config.js"),
         getCodeSnippet(options, false, importPath),
-        "More information about Webpack configs: https://vitejs.dev/config/",
+        "More information about Webpack configs: https://webpack.js.org/configuration/",
       );
       Sentry.setTag(
         "created-new-config",

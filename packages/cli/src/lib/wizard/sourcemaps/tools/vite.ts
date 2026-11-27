@@ -13,6 +13,7 @@ import recast from "recast";
 
 import { Sentry } from "../../telemetry.js";
 import {
+  getObjectProperty,
   hasSentryContent,
   preserveTrailingNewline,
 } from "../../utils/ast-utils.js";
@@ -190,7 +191,7 @@ function enableSourcemapGeneration(program: t.Program): boolean {
 
   const b = recast.types.builders;
 
-  const buildProp = findPropertyByName(configObj.properties, "build");
+  const buildProp = getObjectProperty(configObj, "build");
 
   // case 1: build property doesn't exist yet, so we can just add it
   if (!buildProp) {
@@ -205,15 +206,12 @@ function enableSourcemapGeneration(program: t.Program): boolean {
     return true;
   }
 
-  if (
-    buildProp.type !== "ObjectProperty" ||
-    buildProp.value.type !== "ObjectExpression"
-  ) {
+  if (buildProp.value.type !== "ObjectExpression") {
     return false;
   }
 
   const buildObj = buildProp.value;
-  const sourceMapsProp = findPropertyByName(buildObj.properties, "sourcemap");
+  const sourceMapsProp = getObjectProperty(buildObj, "sourcemap");
 
   // case 2: build.sourcemap property doesn't exist yet, so we just add it
   if (!sourceMapsProp) {
@@ -221,10 +219,6 @@ function enableSourcemapGeneration(program: t.Program): boolean {
       b.objectProperty(b.identifier("sourcemap"), b.booleanLiteral(true)),
     );
     return true;
-  }
-
-  if (sourceMapsProp.type !== "ObjectProperty") {
-    return false;
   }
 
   // case 3: build.sourcemap property exists, and it's set to 'hidden'
@@ -240,17 +234,6 @@ function enableSourcemapGeneration(program: t.Program): boolean {
   //         or it is already true in which case this is a noop
   sourceMapsProp.value = b.booleanLiteral(true);
   return true;
-}
-
-/** The property of `properties` whose identifier key is `name`. */
-function findPropertyByName(
-  properties: t.ObjectExpression["properties"],
-  name: string,
-): t.ObjectMethod | t.ObjectProperty | t.Property | undefined {
-  return properties.find(
-    (p): p is t.ObjectMethod | t.ObjectProperty | t.Property =>
-      "key" in p && p.key.type === "Identifier" && p.key.name === name,
-  );
 }
 
 function getViteConfigObject(

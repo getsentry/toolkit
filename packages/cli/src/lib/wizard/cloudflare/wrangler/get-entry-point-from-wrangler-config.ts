@@ -28,9 +28,9 @@ export function getEntryPointFromWranglerConfig(): string | undefined {
 
   switch (extname) {
     case ".toml": {
-      const mainMatch = configContent.match(/^main\s*=\s*["'](.+)["']/m);
+      const mainMatch = configContent.match(/^main\s*=\s*(["'])(.+?)\1/m);
 
-      return mainMatch?.[1];
+      return mainMatch?.[2];
     }
 
     case ".json":

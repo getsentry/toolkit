@@ -30,6 +30,7 @@ export type SupportedTools =
  */
 const TOOL_PACKAGE_MAP: Record<string, SupportedTools> = {
   "@angular/core": "angular",
+  "react-scripts": "create-react-app",
   "create-react-app": "create-react-app",
   wrangler: "wrangler",
   webpack: "webpack",

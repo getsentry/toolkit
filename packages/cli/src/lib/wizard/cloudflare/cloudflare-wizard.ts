@@ -40,6 +40,9 @@ import {
 } from "./wrangler/get-entry-point-from-wrangler-config.js";
 import { updateWranglerConfig } from "./wrangler/update-wrangler-config.js";
 
+/** The `@sentry/cloudflare` range the wizard installs. */
+const SDK_INSTALL_RANGE = "^11";
+
 /** Run the Cloudflare wizard (`sentry wizard -i cloudflare`). */
 export async function runCloudflareWizard(
   options: WizardOptions,
@@ -93,7 +96,7 @@ async function runCloudflareWizardWithTelemetry(
   printSdkV11MigrationGuideIfOutdated("@sentry/cloudflare", packageJson);
 
   await installPackage({
-    packageName: "@sentry/cloudflare@^11",
+    packageName: `@sentry/cloudflare@${SDK_INSTALL_RANGE}`,
     packageNameDisplayLabel: "@sentry/cloudflare",
     alreadyInstalled: hasPackageInstalled("@sentry/cloudflare", packageJson),
     forceInstall,
@@ -119,7 +122,7 @@ async function runCloudflareWizardWithTelemetry(
   // From v11 on, the SDK collects rich context by default, so offer to
   // reduce collection of data that can identify users.
   const reduceDataCollection =
-    sdkSupportsDataCollection(installedSdkVersion, "^10") &&
+    sdkSupportsDataCollection(installedSdkVersion, SDK_INSTALL_RANGE) &&
     (await askShouldReduceDataCollection());
 
   await traceStep("Create Sentry initialization", async () => {

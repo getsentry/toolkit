@@ -156,4 +156,38 @@ export default cfg;
       expect(addedCode).toBe(true);
     },
   );
+
+  it("recognizes quoted build and sourcemap keys", async () => {
+    updateFileContent(`
+export default defineConfig({
+  plugins: [vue()],
+  "build": {
+    outDir: "out",
+    "sourcemap": "hidden",
+  },
+})
+`);
+
+    const addedCode = await addVitePluginToConfig(
+      "",
+      {
+        authToken: "",
+        orgSlug: "my-org",
+        projectSlug: "my-project",
+        selfHosted: false,
+        url: "https://sentry.io/",
+      },
+      "@sentry/bundler-plugins/vite",
+    );
+
+    expect(addedCode).toBe(true);
+    const written = writeFileSpy.mock.calls[0]?.[1];
+    if (typeof written !== "string") {
+      throw new Error("expected the config to be written as a string");
+    }
+    expect(written.match(/build/g)).toHaveLength(1);
+    expect(written).toContain('outDir: "out"');
+    expect(written).toContain('"sourcemap": "hidden"');
+    expect(written).not.toContain("sourcemap: true");
+  });
 });
