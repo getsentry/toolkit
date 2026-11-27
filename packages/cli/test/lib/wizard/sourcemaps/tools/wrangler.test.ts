@@ -246,6 +246,18 @@ describe("getWranglerDeployCommand", () => {
     expect(getWranglerDeployCommand(`tsc && ${command}`)?.trim()).toBe(command);
   });
 
+  it.each([
+    "wrangler pages deploy ./public",
+    "npx wrangler pages deploy",
+    "yarn wrangler versions deploy",
+    "pnpm exec wrangler --env production versions deploy",
+  ])("ignores non-Workers deploy commands: %s", (command) => {
+    expect(getWranglerDeployCommand(command)).toBeUndefined();
+    expect(
+      safeInsertArgsToWranglerDeployCommand(command, "dist"),
+    ).toBeUndefined();
+  });
+
   it("ignores commands that only mention wrangler deploy", () => {
     expect(getWranglerDeployCommand("echo wrangler deploy")).toBeUndefined();
   });

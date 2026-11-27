@@ -558,8 +558,15 @@ function isWranglerRunnerArg(arg: string): boolean {
 }
 
 /**
+ * Wrangler commands with their own `deploy` subcommand, which doesn't take
+ * the Workers flags this wizard adds.
+ */
+const NON_WORKER_DEPLOY_COMMANDS = new Set(["pages", "versions"]);
+
+/**
  * The command of `deployCommand` that runs `wrangler deploy`, directly or
- * through a runner such as `npx`.
+ * through a runner such as `npx`. `wrangler pages deploy` and
+ * `wrangler versions deploy` don't count.
  *
  * Exported for testing
  */
@@ -582,10 +589,18 @@ function findWranglerDeployCommand(
     const wranglerIndex = argv.findIndex(
       (arg) => arg === "wrangler" || arg.startsWith("wrangler@"),
     );
+    if (
+      wranglerIndex === -1 ||
+      !argv.slice(0, wranglerIndex).every(isWranglerRunnerArg)
+    ) {
+      return false;
+    }
+    const deployIndex = argv.indexOf("deploy", wranglerIndex + 1);
     return (
-      wranglerIndex !== -1 &&
-      argv.slice(0, wranglerIndex).every(isWranglerRunnerArg) &&
-      argv.slice(wranglerIndex + 1).includes("deploy")
+      deployIndex !== -1 &&
+      !argv
+        .slice(wranglerIndex + 1, deployIndex)
+        .some((arg) => NON_WORKER_DEPLOY_COMMANDS.has(arg))
     );
   });
 }
