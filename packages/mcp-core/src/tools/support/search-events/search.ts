@@ -403,6 +403,28 @@ function preservesSearchTokens(originalQuery: string, repairedQuery: string) {
   );
 }
 
+// `issue:` or `issue.id:` filters at a token start or after `(`, with a quoted,
+// bracketed list, or bare value, e.g. `(!issue:"PROJ-1" OR issue:[A, B])`.
+const ISSUE_FILTER_PATTERN =
+  /(?<=^|[\s(])!?issue(?:\.id)?:(?:"[^"]*"|\[[^\]]*\]|[^\s()]+)/g;
+
+/**
+ * Whether the agent changed or dropped an explicit `issue:` filter.
+ *
+ * Issue IDs are exact identifiers, but the agent has rewritten them, for
+ * example `issue:PROJ-2B3` to `issue:PROJ-2B`. Sentry then rejects the search
+ * or matches a different issue, and validateSearch can't catch it because the
+ * errors dataset skips validation.
+ */
+function changesIssueFilter(originalQuery: string, repairedQuery: string) {
+  const repairedFilters = new Set(
+    repairedQuery.match(ISSUE_FILTER_PATTERN) ?? [],
+  );
+  return (originalQuery.match(ISSUE_FILTER_PATTERN) ?? []).some(
+    (filter) => !repairedFilters.has(filter),
+  );
+}
+
 function choosePreservingRepairedQuery(params: {
   originalQuery: string;
   repairedQuery?: string | null;
@@ -977,11 +999,12 @@ async function executeSearchEvents(
           dataset,
         })
       : looksLikeSentrySearchSyntax(params.query, dataset) &&
-          isSemanticFilterDowngrade(
+          (isSemanticFilterDowngrade(
             params.query ?? "",
             parsed.query || "",
             dataset,
-          )
+          ) ||
+            changesIssueFilter(params.query ?? "", parsed.query || ""))
         ? (params.query ?? "")
         : parsed.query || "";
     sortParam =
