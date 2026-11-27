@@ -17,6 +17,7 @@ import {
   parseCustomHeaders,
   setCustomHeadersOverride,
 } from "../../src/lib/custom-headers.js";
+import { setAuthToken } from "../../src/lib/db/auth.js";
 import { setDefaultHeaders } from "../../src/lib/db/defaults.js";
 import { resetEnvTokenHostForTesting } from "../../src/lib/env-token-host.js";
 import { mintSntrysToken, useTestConfigDir } from "../helpers.js";
@@ -248,7 +249,7 @@ describe("getCustomHeaders", () => {
     expect(getCustomHeaders()).toEqual([["X-IAP-Token", "abc123"]]);
   });
 
-  test("sends custom headers to a claim-routed self-hosted instance", () => {
+  test("enables custom headers for a claim-routed self-hosted instance", () => {
     const previousToken = process.env["SENTRY_AUTH_TOKEN"];
     process.env["SENTRY_AUTH_TOKEN"] = mintSntrysToken({
       iat: 1,
@@ -257,9 +258,13 @@ describe("getCustomHeaders", () => {
     process.env["SENTRY_CUSTOM_HEADERS"] = "X-IAP-Token: scoped-value";
     resetEnvTokenHostForTesting();
     try {
+      expect(getCustomHeaders()).toEqual([["X-IAP-Token", "scoped-value"]]);
+
+      // The share lookup and other unauthenticated requests trust only a
+      // login, not the token's claim; authenticated requests check the claim.
       const trusted = new Headers();
       applyCustomHeaders(trusted, "https://sentry.example.com/api/0/");
-      expect(trusted.get("X-IAP-Token")).toBe("scoped-value");
+      expect(trusted.get("X-IAP-Token")).toBeNull();
 
       const other = new Headers();
       applyCustomHeaders(other, "https://other.example.com/api/0/");
@@ -406,6 +411,8 @@ describe("setCustomHeadersOverride", () => {
 // ---------------------------------------------------------------------------
 
 describe("applyCustomHeaders", () => {
+  useTestConfigDir("custom-headers-apply-");
+
   let savedHeaders: string | undefined;
   let savedHost: string | undefined;
 
@@ -433,9 +440,10 @@ describe("applyCustomHeaders", () => {
 
   test("applies custom headers to Headers instance when request host matches", () => {
     process.env["SENTRY_CUSTOM_HEADERS"] = "X-Test: hello; X-Other: world";
-    // Pin env-token scope to the self-hosted instance so headers apply.
-    // Pin env-token scope to the self-hosted instance so headers apply.
     process.env["SENTRY_HOST"] = "https://sentry.example.com";
+    setAuthToken("stored-token", undefined, undefined, {
+      host: "https://sentry.example.com",
+    });
 
     const headers = new Headers({ Accept: "application/json" });
     applyCustomHeaders(
@@ -450,6 +458,9 @@ describe("applyCustomHeaders", () => {
   test("does not clobber unrelated existing headers", () => {
     process.env["SENTRY_CUSTOM_HEADERS"] = "X-Test: hello";
     process.env["SENTRY_HOST"] = "https://sentry.example.com";
+    setAuthToken("stored-token", undefined, undefined, {
+      host: "https://sentry.example.com",
+    });
 
     const headers = new Headers({ Accept: "application/json" });
     applyCustomHeaders(

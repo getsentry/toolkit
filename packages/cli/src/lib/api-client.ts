@@ -173,6 +173,7 @@ export {
   createReleaseDeploy,
   deleteRelease,
   explainSetCommitsError,
+  getPreviousReleaseCommit,
   getRelease,
   type ListReleasesOptions,
   listProjectEnvironments,

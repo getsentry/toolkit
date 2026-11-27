@@ -244,6 +244,11 @@ for (const [key, patchPath] of Object.entries(patches)) {
  * `-v`=version alias in `runApplication` so `-v` stays the Sentry CLI's
  * `--verbose` alias at every position; `--version` remains the version flag.
  * The stale marker is the original `inputs[0] === "-v"` version check.
+ *
+ * @stricli/core (`inlineOnly` parsed flags): the patch lets a parsed flag take
+ * its value only as `--flag=value`, so bare `--wait` never consumes the next
+ * argument. Pure insertion, guarded by the `inlineOnly` required marker. Its
+ * absence means `sourcemap upload --wait ./dist` reads `./dist` as the limit.
  */
 const CONTENT_ASSERTIONS: ReadonlyArray<{
   /** Installed file to inspect, relative to the resolved node_modules dir. */
@@ -317,6 +322,18 @@ const CONTENT_ASSERTIONS: ReadonlyArray<{
     requiredMarker: "renderHelp",
     description:
       "@stricli/core CJS: pluggable `renderHelp` hook missing (`sentry --help --json` will fall back to text help instead of structured JSON)",
+  },
+  {
+    file: "@stricli/core/dist/index.js",
+    requiredMarker: "inlineOnly",
+    description:
+      "@stricli/core ESM: `inlineOnly` flag scanning missing (`sentry sourcemap upload --wait ./dist` will read `./dist` as the wait limit)",
+  },
+  {
+    file: "@stricli/core/dist/index.cjs",
+    requiredMarker: "inlineOnly",
+    description:
+      "@stricli/core CJS: `inlineOnly` flag scanning missing (`sentry sourcemap upload --wait ./dist` will read `./dist` as the wait limit)",
   },
 ];
 

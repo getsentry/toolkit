@@ -13,6 +13,7 @@ The project is a pnpm monorepo with clear separation of concerns:
 ```
 packages/
 ├── cli/                 # Sentry CLI, including the `sentry mcp` stdio server
+├── http/                # HTTP response cache, body codec, and retries (@sentry/http on npm)
 ├── toolkit-core/        # Shared CLI/MCP primitives
 ├── mcp-core/            # Core MCP implementation (private package)
 ├── mcp-server/          # stdio transport (@sentry/mcp-server on npm)

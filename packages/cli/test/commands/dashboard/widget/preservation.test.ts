@@ -1,7 +1,23 @@
-import { beforeAll, beforeEach, afterAll, expect, test } from "vitest";
+import { run } from "@stricli/core";
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  beforeEach,
+  expect,
+  test,
+} from "vitest";
+import { app } from "../../../../src/app.js";
+import { buildContext } from "../../../../src/context.js";
+import { setAuthToken } from "../../../../src/lib/db/auth.js";
+import { resetAuthenticatedFetch } from "../../../../src/lib/sentry-client.js";
 import type { DashboardDetail } from "../../../../src/types/dashboard.js";
-import { createE2EContext, type E2EContext } from "../../../fixture.js";
-import { useTestConfigDir, at } from "../../../helpers.js";
+import {
+  at,
+  resetHostScopingState,
+  useEnvSandbox,
+  useTestConfigDir,
+} from "../../../helpers.js";
 import { TEST_TOKEN } from "../../../mocks/routes.js";
 import { createMockServer } from "../../../mocks/server.js";
 
@@ -65,8 +81,14 @@ const savedDashboard: DashboardDetail = {
 };
 
 let stored: DashboardDetail;
-let ctx: E2EContext;
+let originalFetch: typeof globalThis.fetch;
 const getConfigDir = useTestConfigDir("dashboard-preservation-");
+useEnvSandbox([
+  "SENTRY_AUTH_TOKEN",
+  "SENTRY_TOKEN",
+  "SENTRY_URL",
+  "SENTRY_HOST",
+]);
 const endpoint = "/api/0/organizations/test-org/dashboards/123/";
 const server = createMockServer(
   [
@@ -122,10 +144,47 @@ afterAll(() => {
 });
 
 beforeEach(async () => {
+  await resetHostScopingState();
+  resetAuthenticatedFetch();
   stored = structuredClone(savedDashboard);
-  ctx = createE2EContext(getConfigDir(), server.url);
-  await ctx.setAuthToken(TEST_TOKEN);
+  process.env["SENTRY_URL"] = server.url;
+  setAuthToken(TEST_TOKEN, undefined, undefined, { host: server.url });
+  // The preload blocks network access; the mock server listens on localhost.
+  originalFetch = globalThis.fetch;
+  globalThis.fetch = (globalThis as { __originalFetch?: typeof fetch })
+    .__originalFetch as typeof fetch;
 });
+
+afterEach(async () => {
+  globalThis.fetch = originalFetch;
+  resetAuthenticatedFetch();
+  await resetHostScopingState();
+});
+
+/** Run the CLI in this process against the mock server. */
+async function runCli(args: string[]) {
+  const output = { stdout: "", stderr: "" };
+  const process_ = {
+    env: process.env,
+    cwd: () => getConfigDir(),
+    stdin: process.stdin,
+    exitCode: undefined as number | undefined,
+    stdout: {
+      write: (chunk: string) => {
+        output.stdout += chunk;
+        return true;
+      },
+    },
+    stderr: {
+      write: (chunk: string) => {
+        output.stderr += chunk;
+        return true;
+      },
+    },
+  };
+  await run(app, args, buildContext(process_ as unknown as NodeJS.Process));
+  return { ...output, exitCode: process_.exitCode ?? 0 };
+}
 
 test.each([
   ["add", ["add", "New widget", "--display", "line", "--query", "count"]],
@@ -134,7 +193,7 @@ test.each([
   ["move", ["edit", "--index", "0", "--row", "4"]],
   ["filter", ["edit", "--index", "0", "--where", "span.op:queue"]],
 ])("preserves transformations after %s and reload", async (name, args) => {
-  const result = await ctx.run([
+  const result = await runCli([
     "dashboard",
     "widget",
     at(args, 0),
@@ -144,7 +203,7 @@ test.each([
   ]);
   expect(result.exitCode, result.stderr).toBe(0);
 
-  const reload = await ctx.run(["api", endpoint]);
+  const reload = await runCli(["api", endpoint]);
   expect(reload.exitCode, reload.stderr).toBe(0);
   const expected = structuredClone(savedDashboard);
   const transformed = at(expected.widgets!, 0);
@@ -171,7 +230,7 @@ test.each([
 });
 
 test("describes saved transformations after an edit", async () => {
-  const result = await ctx.run([
+  const result = await runCli([
     "dashboard",
     "widget",
     "edit",
@@ -200,7 +259,7 @@ test("reports unavailable transformation settings after an edit", async () => {
     delete query.transformations;
   }
 
-  const result = await ctx.run([
+  const result = await runCli([
     "dashboard",
     "widget",
     "edit",
@@ -223,7 +282,7 @@ test("reports unavailable transformation settings after an edit", async () => {
 });
 
 test("reports the saved widget transformations in edit JSON", async () => {
-  const result = await ctx.run([
+  const result = await runCli([
     "dashboard",
     "widget",
     "edit",

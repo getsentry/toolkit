@@ -2,7 +2,8 @@ name: Test
 
 on:
   push:
-    branches: [main]
+    # Release branches too, so Craft finds the checks on a release commit.
+    branches: [main, "release/**"]
   pull_request:
   merge_group:
 

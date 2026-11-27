@@ -29,6 +29,11 @@ const UNCHECKED = [
       "wizard codemod input fixtures copied from sentry-wizard, read as text by the codemod tests",
   },
   {
+    pattern: /^packages\/http\/test\/package\/consumer\//,
+    reason:
+      "packed-package consumer, compiled against the tarball by test/package/check.sh",
+  },
+  {
     pattern: /^packages\/logger\/test\/package\/consumer\//,
     reason:
       "packed-package consumer, compiled against the tarball by test/package/check.sh",

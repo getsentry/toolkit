@@ -24,6 +24,7 @@ import { normalizeUrl } from "./constants.js";
 import { hasStoredAccountForHost } from "./db/auth.js";
 import { CONFIG_DIR_ENV_VAR, getConfigDir } from "./db/index.js";
 import { getEnv, invocationState } from "./env.js";
+import { scopeRcTokenToClaim } from "./env-token-host.js";
 import { HostScopeError } from "./errors.js";
 import { parseIni } from "./ini.js";
 import { logger } from "./logger.js";
@@ -391,6 +392,7 @@ export async function applySentryCliRcEnvShim(cwd: string): Promise<void> {
     );
     env["SENTRY_AUTH_TOKEN"] = config.token;
     rcInjectedTokenSource().path = config.sources.token;
+    scopeRcTokenToClaim();
   }
 
   const normalizedRcUrl = config.url ? normalizeUrl(config.url) : undefined;
@@ -429,6 +431,18 @@ export async function assertRcUrlTrusted(cwd: string): Promise<void> {
   // account selection then uses that account for the server, like a pasted
   // URL). No token at all is also a refusal — the rc URL by itself isn't a
   // trust source.
+  //
+  // A `sntrys_` token from `.sentryclirc` has the host of its own `url`
+  // claim (`scopeRcTokenToClaim`), so an rc URL that matches the claim is
+  // trusted. The attack this blocks: someone who can write or append to a
+  // `.sentryclirc`, or add a project-level one under a global rc that holds
+  // the token, but can't read the token, points the token at their own host
+  // by changing only the URL. The URL is compared against the claim inside
+  // the token, which they can't change without replacing the token, and
+  // never against anything else in the file: a rule such as "the URL and
+  // token come from the same file" fails against an append-only write.
+  // Opaque rc tokens carry no claim, so they keep the boot host and a
+  // self-hosted rc URL is refused for them.
   const tokenHost = getActiveTokenHost();
   if (
     (tokenHost && isHostTrusted(normalizedRcUrl, tokenHost)) ||

@@ -13357,6 +13357,230 @@
     }
   },
   {
+    "name": "search_attributes",
+    "title": "Search Attributes",
+    "description": "Find span, log, or metric attribute keys in Sentry by meaning or partial name, with their types, descriptions, examples, and deprecation status. Alternatively, list the spans, logs, or metric attributes available. Use it to get information about attributes or find the exact key before searching traces, logs, or metrics. For attribute values, use search_traces, search_logs, or search_metrics; for issue tag values, use get_issue_tag_values.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "organizationSlug": {
+          "type": "string",
+          "description": "The organization slug, from `find_organizations`. In `org/project` notation, the part before the slash."
+        },
+        "projectSlug": {
+          "default": null,
+          "anyOf": [
+            {
+              "type": "string",
+              "description": "The project slug. In `org/project` notation, the part after the slash."
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "query": {
+          "description": "What attribute to find, in plain English or as part of a key. Omit to list the dataset's attributes.",
+          "type": "string"
+        },
+        "period": {
+          "type": "string",
+          "pattern": "^\\d+[mhdw]$",
+          "description": "Relative time window, e.g. `30m`, `24h`, `7d`, `90d`."
+        },
+        "regionUrl": {
+          "default": null,
+          "anyOf": [
+            {
+              "type": "string",
+              "description": "The organization's region URL from `find_organizations`, e.g. `https://us.sentry.io`. Omit for self-hosted Sentry."
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "limit": {
+          "description": "Maximum attributes to return. Defaults to 10 with a query and 50 when listing.",
+          "type": "number",
+          "minimum": 1,
+          "maximum": 100
+        },
+        "dataset": {
+          "type": "string",
+          "enum": ["spans", "logs", "metrics"],
+          "description": "Dataset to search: spans for requests, latency, DB, or AI calls; logs for log lines; metrics for counters, gauges, and distributions."
+        },
+        "fresh": {
+          "description": "Bypass cached reads.",
+          "type": "boolean"
+        }
+      },
+      "required": ["organizationSlug", "dataset"]
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "dataset": {
+          "type": "string",
+          "enum": ["spans", "logs", "metrics"]
+        },
+        "period": {
+          "type": "string"
+        },
+        "query": {
+          "type": ["string", "null"]
+        },
+        "resultType": {
+          "type": "string",
+          "enum": ["list", "matches"],
+          "description": "list: the dataset's attributes. matches: the attributes that answer query."
+        },
+        "best": {
+          "anyOf": [
+            {
+              "type": "object",
+              "properties": {
+                "key": {
+                  "type": "string",
+                  "description": "The exact key to use with search_traces, search_logs, or search_metrics."
+                },
+                "type": {
+                  "type": "string",
+                  "enum": ["string", "number", "boolean", "array"]
+                },
+                "addedBySentry": {
+                  "type": "boolean"
+                },
+                "description": {
+                  "type": ["string", "null"]
+                },
+                "examples": {
+                  "type": "array",
+                  "items": {
+                    "type": ["string", "number", "boolean"]
+                  }
+                },
+                "aliases": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "deprecated": {
+                  "type": "boolean"
+                },
+                "replacementKey": {
+                  "description": "The key that replaces this one, when it's deprecated.",
+                  "type": ["string", "null"]
+                }
+              },
+              "required": [
+                "key",
+                "type",
+                "addedBySentry",
+                "description",
+                "examples",
+                "aliases",
+                "deprecated",
+                "replacementKey"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "With matches, the one key that clearly answers query, if any."
+        },
+        "attributes": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "key": {
+                "type": "string",
+                "description": "The exact key to use with search_traces, search_logs, or search_metrics."
+              },
+              "type": {
+                "type": "string",
+                "enum": ["string", "number", "boolean", "array"]
+              },
+              "addedBySentry": {
+                "type": "boolean"
+              },
+              "description": {
+                "type": ["string", "null"]
+              },
+              "examples": {
+                "type": "array",
+                "items": {
+                  "type": ["string", "number", "boolean"]
+                }
+              },
+              "aliases": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "deprecated": {
+                "type": "boolean"
+              },
+              "replacementKey": {
+                "description": "The key that replaces this one, when it's deprecated.",
+                "type": ["string", "null"]
+              }
+            },
+            "required": [
+              "key",
+              "type",
+              "addedBySentry",
+              "description",
+              "examples",
+              "aliases",
+              "deprecated",
+              "replacementKey"
+            ],
+            "additionalProperties": false
+          },
+          "description": "With list, the attributes shown. With matches, the other candidates, most relevant first."
+        },
+        "totalAttributes": {
+          "type": "integer",
+          "minimum": -9007199254740991,
+          "maximum": 9007199254740991,
+          "description": "How many attributes this result was picked from, before limit."
+        },
+        "presentationHint": {
+          "description": "How best to present this data.",
+          "type": ["string", "null"]
+        },
+        "notes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "dataset",
+        "period",
+        "query",
+        "resultType",
+        "best",
+        "attributes",
+        "totalAttributes",
+        "presentationHint",
+        "notes"
+      ],
+      "additionalProperties": false
+    },
+    "requiredScopes": ["event:read"],
+    "skills": ["inspect"],
+    "surface": "direct"
+  },
+  {
     "name": "search_docs",
     "title": "Search Sentry Docs",
     "description": "Search Sentry documentation for SDK setup, framework integrations, instrumentation, and configuration such as sampling, data scrubbing, and source maps. Returns matching page paths and snippets only. Use the Sentry tool `get_doc` to read a full page.",

@@ -14,7 +14,7 @@ import {
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { CacheEntry } from "@sentry/api/client";
+import type { CacheEntry } from "@sentry/http";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import {
   createFileStore,
@@ -42,7 +42,6 @@ function entry(path: string, size = 100, identity = "a"): CacheEntry {
   return {
     url: `${API}${path}`,
     identity,
-    tier: "stable",
     status: 200,
     headers: {},
     body: { bytes: new Uint8Array(size), encoding: "identity", rawSize: size },
@@ -171,7 +170,6 @@ describe("createFileStore", () => {
       expect(JSON.parse(Buffer.from(cached!.body.bytes).toString())).toEqual({
         id: "old",
       });
-      expect(cached?.tier).toBe("volatile");
     });
 
     test("expire by their URL tier when they have no expiresAt", async () => {

@@ -22,16 +22,6 @@ pagination, response cache policy, errors, and endpoint wrappers) is
 so the CLI, the MCP, and other hosts share one copy. That includes bearer token
 validation, API URL assembly, and path identifier encoding.
 
-## Response cache codec
-
-`response-cache/codec` compresses cached response bodies with `node:zlib`, so
-it stays here rather than in the portable client: zstd level 3 where the
-runtime has it (Node 22.15+, Workers with `nodejs_compat`), brotli quality 4
-otherwise, and no compression below 256 bytes. It implements the client's
-`BodyCodec`. Each entry records its encoding and original size; `decode`
-returns `undefined` for an entry this runtime cannot read, such as zstd on
-older Node, so the caller treats it as a miss.
-
 ## Markdown
 
 `markdown` builds Markdown for untrusted values. Pick the helper by what the

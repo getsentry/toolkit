@@ -11,12 +11,18 @@ import type { ServerContext } from "../../types";
 import { SEARCH_ATTRIBUTES_DATASETS } from "../support/search-attributes/config";
 import { searchAttributesOutputSchema } from "../support/search-attributes/format";
 import { runSearchAttributes } from "../support/search-attributes/search";
-import { searchToolBase } from "../support/search-events/search";
+import {
+  logSearchEventsError,
+  SEARCH_EVENTS_ANNOTATIONS,
+} from "../support/search-events/search";
 
 export default defineTool({
-  ...searchToolBase("search_attributes"),
-  experimental: true,
-  includeInSkillDefinitions: false,
+  skills: ["inspect"],
+  requiredScopes: ["event:read"],
+  annotations: SEARCH_EVENTS_ANNOTATIONS,
+  onError: (error, params, context) => {
+    logSearchEventsError("search_attributes", error, params, context);
+  },
   name: "search_attributes",
   title: "Search Attributes",
   description:
@@ -43,9 +49,8 @@ export default defineTool({
       ),
     dataset: z
       .enum(SEARCH_ATTRIBUTES_DATASETS)
-      .optional()
       .describe(
-        "Dataset whose attribute keys to list: spans for requests, latency, DB, or AI calls; logs for log lines; metrics for counters, gauges, and distributions.",
+        "Dataset to search: spans for requests, latency, DB, or AI calls; logs for log lines; metrics for counters, gauges, and distributions.",
       ),
   },
   outputSchema: searchAttributesOutputSchema,
