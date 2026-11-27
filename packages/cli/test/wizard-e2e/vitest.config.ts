@@ -22,8 +22,11 @@ export default defineConfig({
   test: {
     include: ["test/wizard-e2e/**/*.test.ts"],
     globalSetup: ["test/wizard-e2e/global-setup.ts"],
-    testTimeout: 360_000,
-    hookTimeout: 360_000,
+    // A `beforeAll` runs a whole scripted wizard run, whose step timeouts
+    // (up to 5 minutes for a package install) add up, so leave room for all
+    // of them within the 20-minute CI job.
+    testTimeout: 900_000,
+    hookTimeout: 900_000,
     fileParallelism: false,
   },
 });
