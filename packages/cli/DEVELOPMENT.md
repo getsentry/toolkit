@@ -71,7 +71,6 @@ When creating your Sentry OAuth application:
   - `member:read`
   - `team:read`, `team:write`, `team:admin`
   - `alerts:read`, `alerts:write`
-  - `user_preference:read`, `user_preference:write`
 <!-- GENERATED:END oauth-scopes -->
 
 ## Environment Variables

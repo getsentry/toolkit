@@ -27,9 +27,11 @@ describe("dataset-fields agent tool", () => {
           "https://sentry.io/api/0/organizations/sentry-mcp-evals/tags/",
           ({ request }) => {
             const url = new URL(request.url);
-            expect(url.searchParams.get("dataset")).toBe("search_issues");
             expect(url.searchParams.get("project")).toBe("4509062593708032");
             expect(url.searchParams.get("statsPeriod")).toBe("14d");
+            if (url.searchParams.get("dataset") !== "search_issues") {
+              return HttpResponse.json([]);
+            }
 
             return HttpResponse.json([
               {
@@ -80,6 +82,48 @@ describe("dataset-fields agent tool", () => {
         pattern: "is:unresolved",
         description: "Open issues",
       });
+    });
+
+    it("lists custom tags that only error events carry for search_issues", async () => {
+      // Error events live in the events dataset, not search_issues, so a tag
+      // set only on errors is missing from the search_issues tag list.
+      const requestedDatasets: Array<string | null> = [];
+      mswServer.use(
+        http.get(
+          "https://sentry.io/api/0/organizations/sentry-mcp-evals/tags/",
+          ({ request }) => {
+            const dataset = new URL(request.url).searchParams.get("dataset");
+            requestedDatasets.push(dataset);
+            if (dataset === "search_issues") {
+              return HttpResponse.json([
+                { key: "level", name: "Level", totalValues: 5 },
+                { key: "screen", name: "Screen", totalValues: 10 },
+              ]);
+            }
+            return HttpResponse.json([
+              { key: "level", name: "Level", totalValues: 3 },
+              { key: "custom_screen", name: "Custom Screen", totalValues: 7 },
+            ]);
+          },
+        ),
+      );
+
+      const result = await discoverDatasetFields(
+        apiService,
+        "sentry-mcp-evals",
+        "search_issues",
+        { projectId: "4509062593708032" },
+      );
+
+      expect(requestedDatasets).toHaveLength(2);
+      expect(requestedDatasets).toEqual(
+        expect.arrayContaining(["events", "search_issues"]),
+      );
+      expect(result.fields.map((field) => field.key)).toEqual([
+        "level",
+        "screen",
+        "custom_screen",
+      ]);
     });
 
     it("should discover fields for events dataset (examples always included)", async () => {
