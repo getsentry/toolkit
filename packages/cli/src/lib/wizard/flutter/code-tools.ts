@@ -185,11 +185,7 @@ export async function patchMain(
   }
   try {
     let mainContent = readFileSync(mainFile, "utf8");
-    if (
-      /import\s+['"]package[:]sentry_flutter\/sentry_flutter\.dart['"];?/i.test(
-        mainContent,
-      )
-    ) {
+    if (matchesCode(mainContent, /\bSentryFlutter\.init\(/g)) {
       // sentry is already configured
       clack.log.success(
         chalk.greenBright(
@@ -259,11 +255,13 @@ export function patchMainContent(
     replay: boolean;
   },
 ): string {
-  const importIndex = getLastImportLineLocation(mainContent);
-  mainContent =
-    mainContent.slice(0, importIndex) +
-    sentryImport +
-    mainContent.slice(importIndex);
+  if (!matchesCode(mainContent, SENTRY_IMPORT)) {
+    const importIndex = getLastImportLineLocation(mainContent);
+    mainContent =
+      mainContent.slice(0, importIndex) +
+      sentryImport +
+      mainContent.slice(importIndex);
+  }
 
   mainContent = arrowMainToBlock(mainContent);
 
@@ -272,9 +270,11 @@ export function patchMainContent(
   );
 
   // Make the `main` function async if it's not already
-  mainContent = mainContent.replace(
+  const source = mainContent;
+  mainContent = source.replace(
     /(?:Future<void>|void)\s+main\s*\(([^)]*)\)\s*\{/g,
-    "Future<void> main($1) async {",
+    (match, params: string, offset: number) =>
+      isCode(source, offset) ? `Future<void> main(${params}) async {` : match,
   );
 
   return mainContent;
@@ -347,6 +347,20 @@ function replaceRunAppCalls(
     runAppCall.lastIndex = cursor;
   }
   return result + source.slice(cursor);
+}
+
+const SENTRY_IMPORT =
+  /import\s+['"]package:sentry_flutter\/sentry_flutter\.dart['"]/g;
+
+/** Whether the global `pattern` matches outside every comment and string. */
+function matchesCode(source: string, pattern: RegExp): boolean {
+  pattern.lastIndex = 0;
+  for (let match = pattern.exec(source); match; match = pattern.exec(source)) {
+    if (isCode(source, match.index)) {
+      return true;
+    }
+  }
+  return false;
 }
 
 /** Whether `index` is outside every comment and string in `source`. */

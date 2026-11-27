@@ -104,6 +104,27 @@ describe("runFlutterWizard", () => {
     expect(reportCliError).not.toHaveBeenCalled();
   });
 
+  it.each([
+    "import 'package:sentry_flutter/sentry_flutter.dart';\n\n",
+    "// import 'package:sentry_flutter/sentry_flutter.dart';\n\n",
+  ])(
+    "adds SentryFlutter.init when main.dart only imports Sentry (%#)",
+    async (imports) => {
+      writeFileSync(path.join(projectDir, "pubspec.yaml"), PUBSPEC);
+      mkdirSync(path.join(projectDir, "lib"));
+      const mainFile = path.join(projectDir, "lib", "main.dart");
+      writeFileSync(
+        mainFile,
+        `${imports}void main() {\n  runApp(const MyApp());\n}\n`,
+      );
+
+      await runFlutterWizard(OPTIONS);
+
+      expect(readFileSync(mainFile, "utf8")).toContain("SentryFlutter.init(");
+      expect(copyPasteFiles()).toEqual([]);
+    },
+  );
+
   it("exits when the feature prompt is cancelled", async () => {
     writeFileSync(path.join(projectDir, "pubspec.yaml"), PUBSPEC);
     mkdirSync(path.join(projectDir, "lib"));

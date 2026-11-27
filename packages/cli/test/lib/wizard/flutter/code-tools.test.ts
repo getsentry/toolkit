@@ -152,6 +152,20 @@ ${main} {
       );
     });
 
+    it("leaves main text inside strings and comments alone", () => {
+      const source = `import 'package:flutter/widgets.dart';\n\n// void main() {\nvoid main() {\n  print('void main() {');\n  runApp(const MyApp());\n}\n`;
+      expect(patchMainContent("dsn", source, selectedFeaturesMap)).toBe(
+        `import 'package:flutter/widgets.dart';\nimport 'package:sentry_flutter/sentry_flutter.dart';\n\n// void main() {\nFuture<void> main() async {\n  print('void main() {');\n  ${initSnippet("dsn", selectedFeaturesMap, "const MyApp()")}\n}\n`,
+      );
+    });
+
+    it("keeps an existing Sentry import and adds no second one", () => {
+      const source = `import 'package:flutter/widgets.dart';\nimport 'package:sentry_flutter/sentry_flutter.dart';\n\nvoid main() {\n  runApp(const MyApp());\n}\n`;
+      expect(patchMainContent("dsn", source, selectedFeaturesMap)).toBe(
+        `import 'package:flutter/widgets.dart';\nimport 'package:sentry_flutter/sentry_flutter.dart';\n\nFuture<void> main() async {\n  ${initSnippet("dsn", selectedFeaturesMap, "const MyApp()")}\n}\n`,
+      );
+    });
+
     it("leaves a commented-out arrow main alone", () => {
       const source = `import 'package:flutter/widgets.dart';\n\n// void main() => runApp(const OldApp());\nvoid main() {\n  runApp(const MyApp());\n}\n`;
       expect(patchMainContent("dsn", source, selectedFeaturesMap)).toBe(
