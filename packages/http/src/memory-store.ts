@@ -27,10 +27,11 @@ export type MemoryStoreOptions = {
   maxRawBytes?: number;
 };
 
-export type MemoryStore = CacheStore & {
-  /** Current entry count and bytes charged against the budget. */
-  stats(): { entries: number; bytes: number };
-};
+export type MemoryStore = CacheStore &
+  Required<Pick<CacheStore, "deleteMatching">> & {
+    /** Current entry count and bytes charged against the budget. */
+    stats(): { entries: number; bytes: number };
+  };
 
 type Slot = { entry: CacheEntry; size: number; expiresAt: number };
 
