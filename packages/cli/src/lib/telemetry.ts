@@ -177,19 +177,6 @@ export function isTelemetryEnabled(): boolean {
 }
 
 /**
- * Stop sending telemetry for the rest of this run, after `withTelemetry`
- * already started it: the client drops every envelope from now on, including
- * the command's own transaction. For flags such as `sentry wizard
- * --disable-telemetry` that opt out of one run.
- */
-export function disableTelemetryForRun(): void {
-  const client = Sentry.getClient();
-  if (client) {
-    client.getOptions().enabled = false;
-  }
-}
-
-/**
  * Attributes a Snake score metric may carry. Everything else the SDK adds
  * (user.*, replay ids, ...) is dropped so a score cannot be linked to a user.
  */

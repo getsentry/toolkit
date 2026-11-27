@@ -89,13 +89,13 @@ describe("Next.js Utils", () => {
       const mockAppFolderPath = "/mock/app";
       const supportedExtensions = ["jsx", "tsx", "js"];
 
-      supportedExtensions.forEach((ext) => {
+      for (const ext of supportedExtensions) {
         (fs.existsSync as Mock).mockImplementation((filePath: string) => {
           return filePath === `/mock/app/layout.${ext}`;
         });
 
         expect(hasRootLayoutFile(mockAppFolderPath)).toBe(true);
-      });
+      }
     });
 
     it("returns false when no layout file exists", () => {

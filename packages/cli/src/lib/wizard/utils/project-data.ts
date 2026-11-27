@@ -9,8 +9,11 @@
  *   agent handoff from `SENTRY_HANDOFF`) when there is none. A new login asks
  *   for `org:tokens` and `org:ci` too, so the auth token below needs no second
  *   approval.
- * - The org from `--org`, the handoff, or a prompt; then the project from
- *   `--project` or a prompt that can also create one for the wizard's
+ * - The Sentry instance the rest of the CLI uses: `SENTRY_URL`, or the
+ *   stored login's.
+ * - The org and project of the `<org>/<project>` target, resolved like other
+ *   commands' targets; else the org from the handoff or a prompt, then the
+ *   project from a prompt that can also create one for the wizard's
  *   platform, like the old browser page could.
  * - The project's DSN from its client keys.
  * - A new org auth token for the build plugins and `sentry` commands that
@@ -33,17 +36,18 @@ import {
   MEMBER_PROJECT_CREATION_DISABLED_DETAIL,
 } from "../../api/projects.js";
 import { assertAutoLoginHostTrusted } from "../../auto-auth.js";
-import { DEFAULT_SENTRY_URL } from "../../constants.js";
 import { getAuthConfig } from "../../db/auth.js";
 import { getEnv } from "../../env.js";
 import { ApiError } from "../../errors.js";
 import { runInteractiveLogin } from "../../interactive-login.js";
 import { logger } from "../../logger.js";
 import { OAUTH_SCOPES, resolveOAuthScopeString } from "../../oauth.js";
+import { resolveOrgOptionalTarget } from "../../resolve-target.js";
 import { resolveOrCreateTeam } from "../../resolve-team.js";
 import { ensureScopesForAction } from "../../scope-recovery.js";
-import { getSentryBaseUrl, isSentrySaasUrl } from "../../sentry-urls.js";
-import { registerLoginTrustAnchor } from "../../token-host.js";
+import { isSentrySaasUrl } from "../../sentry-urls.js";
+import { getApiBaseUrl } from "../../sentry-client.js";
+import { isRequestOriginTrusted } from "../../token-host.js";
 import { slugify } from "../../utils.js";
 import { sentry } from "../../app-identity.js";
 import type {
@@ -100,7 +104,7 @@ export type WizardProjectData =
  * `options.preSelectedProject`, or one the user picks (or creates) after
  * logging in.
  *
- * @param options - Wizard options (`--url`, `--saas`, `--org`, `--project`, …)
+ * @param options - Wizard options (the `<org>/<project>` target, Spotlight, …)
  * @param platform - Platform for a project the user creates
  */
 export async function getOrAskForProjectData(
@@ -118,28 +122,33 @@ export async function getOrAskForProjectData(
   if (options.preSelectedProject) {
     return {
       selfHosted: options.preSelectedProject.selfHosted,
-      sentryUrl: withTrailingSlash(options.url ?? DEFAULT_SENTRY_URL),
+      sentryUrl: withTrailingSlash(getApiBaseUrl()),
       authToken: options.preSelectedProject.authToken,
       selectedProject: options.preSelectedProject.project,
       spotlight: false,
     };
   }
 
-  await traceStep("ask-self-hosted", () =>
-    selectSentryUrl(options.url, options.saas),
-  );
   const handoffOrg = await traceStep("login", ensureLoggedIn);
 
-  const sentryUrl = withTrailingSlash(getSentryBaseUrl());
+  // `SENTRY_URL`, or the stored login's instance.
+  const sentryUrl = withTrailingSlash(getApiBaseUrl());
   const selfHosted = !isSentrySaasUrl(sentryUrl);
   Sentry.setTag("url", sentryUrl);
   Sentry.setTag("self-hosted", selfHosted);
 
+  const parsedTarget = options.target;
+  const target =
+    parsedTarget && parsedTarget.type !== "auto-detect"
+      ? await traceStep("resolve-target", () =>
+          resolveOrgOptionalTarget(parsedTarget, process.cwd(), "wizard"),
+        )
+      : undefined;
   const org = await traceStep("select-org", () =>
-    selectOrganization(options.orgSlug ?? handoffOrg),
+    selectOrganization(target?.org ?? handoffOrg),
   );
   const project = await traceStep("select-project", () =>
-    selectProject(org, options.projectSlug, platform),
+    selectProject(org, target?.project, platform),
   );
   Sentry.setTag("project", project.slug);
   Sentry.setUser({ id: org.slug });
@@ -164,90 +173,6 @@ export async function getOrAskForProjectData(
 }
 
 /**
- * Point this run at the Sentry instance the user chose: SaaS for `--saas`,
- * the `--url` instance, or the answer to a SaaS/self-hosted prompt. Without
- * any of them and with a stored login, the login's instance is used.
- *
- * An instance the user names here (flag or prompt) is trusted for login, the
- * same as `sentry auth login --url`.
- */
-async function selectSentryUrl(
-  urlFromArgs: string | undefined,
-  saas: boolean | undefined,
-): Promise<void> {
-  if (saas) {
-    useSentryUrl(DEFAULT_SENTRY_URL);
-    return;
-  }
-  if (!urlFromArgs && getAuthConfig()) {
-    return;
-  }
-
-  if (!urlFromArgs) {
-    const choice = await abortIfCancelled(
-      clack.select({
-        message: "Are you using Sentry SaaS or self-hosted Sentry?",
-        options: [
-          { value: "saas", label: "Sentry SaaS (sentry.io)" },
-          {
-            value: "self-hosted",
-            label: "Self-hosted/on-premise/single-tenant",
-          },
-        ],
-      }),
-    );
-    if (choice === "saas") {
-      useSentryUrl(DEFAULT_SENTRY_URL);
-      return;
-    }
-  }
-
-  let pending = urlFromArgs;
-  for (;;) {
-    const url =
-      pending ||
-      (await abortIfCancelled(
-        clack.text({
-          message: `Please enter the URL of your ${
-            urlFromArgs ? "" : "self-hosted "
-          }Sentry instance.`,
-          placeholder: "https://sentry.io/",
-        }),
-      ));
-    pending = undefined;
-    const origin = parseOrigin(url);
-    if (origin) {
-      useSentryUrl(origin);
-      return;
-    }
-    clack.log.error(
-      `Please enter a valid URL. (It should look something like "https://sentry.mydomain.com/", got ${url})`,
-    );
-  }
-}
-
-/** The origin of `url`, or `undefined` when it isn't an HTTP(S) URL. */
-function parseOrigin(url: string): string | undefined {
-  try {
-    const parsed = new URL(url);
-    return parsed.protocol === "https:" || parsed.protocol === "http:"
-      ? parsed.origin
-      : undefined;
-  } catch (error) {
-    log.debug(`Invalid Sentry URL ${url}`, error);
-    return;
-  }
-}
-
-/** Send this run's API requests and login to `url`, trusted as user input. */
-function useSentryUrl(url: string): void {
-  const env = getEnv();
-  env["SENTRY_HOST"] = url;
-  env["SENTRY_URL"] = url;
-  registerLoginTrustAnchor(url);
-}
-
-/**
  * Make sure the CLI has a login for the selected instance: claim the agent
  * handoff in `SENTRY_HANDOFF`, keep a stored login, or run the device flow.
  *
@@ -261,7 +186,8 @@ async function ensureLoggedIn(): Promise<string | undefined> {
     return handoff.organizationSlug;
   }
 
-  if (getAuthConfig()) {
+  // A login for another instance than the selected one can't be used.
+  if (getAuthConfig() && isRequestOriginTrusted(getApiBaseUrl())) {
     Sentry.setTag("login-method", "stored");
     return;
   }
@@ -399,7 +325,7 @@ async function createProject(
   spinner.start("Creating your Sentry project");
   try {
     const team = await resolveOrCreateTeam(orgSlug, {
-      usageHint: sentry`wizard --org <org>`,
+      usageHint: sentry`wizard <org>/`,
       autoCreateSlug: slugify(body.name),
     });
     const { project } = await createProjectWithDsn(orgSlug, team.slug, body);
@@ -464,7 +390,7 @@ async function createAuthToken(
   Sentry.setTag("auth-token-created", false);
   const settingsUrl = isSentrySaasUrl(sentryUrl)
     ? `https://${orgSlug}.sentry.io/settings/auth-tokens/`
-    : `${sentryUrl}organizations/${orgSlug}/settings/auth-tokens/`;
+    : `${sentryUrl}settings/${orgSlug}/auth-tokens/`;
   clack.log.warn(
     `Could not create an auth token for you. We'll add a placeholder (${chalk.cyan(
       `"${DUMMY_AUTH_TOKEN}"`,

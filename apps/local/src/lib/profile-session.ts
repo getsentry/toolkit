@@ -128,8 +128,8 @@ export function mergeProfileChunks(
     const frameMap = new Map<number, number>(),
       stackMap = new Map<number, number>();
     if (Array.isArray(profile["frames"]))
-      profile["frames"].forEach((frame, index) => {
-        if (!Object.keys(record(frame)).length) return;
+      for (const [index, frame] of profile["frames"].entries()) {
+        if (!Object.keys(record(frame)).length) continue;
         const key = profileValueKey(frame);
         let id = frameIds.get(key);
         if (id === undefined) {
@@ -138,15 +138,15 @@ export function mergeProfileChunks(
           frameIds.set(key, id);
         }
         frameMap.set(index, id);
-      });
+      }
     if (Array.isArray(profile["stacks"]))
-      profile["stacks"].forEach((stack, index) => {
-        if (!Array.isArray(stack)) return;
+      stacks: for (const [index, stack] of profile["stacks"].entries()) {
+        if (!Array.isArray(stack)) continue;
         const mapped: number[] = [];
         for (const frame of stack) {
           const id =
             typeof frame === "number" ? frameMap.get(frame) : undefined;
-          if (id === undefined) return; // Broken indexes cannot silently describe another frame.
+          if (id === undefined) continue stacks; // Broken indexes cannot silently describe another frame.
           mapped.push(id);
         }
         const key = JSON.stringify(mapped);
@@ -157,7 +157,7 @@ export function mergeProfileChunks(
           stackIds.set(key, id);
         }
         stackMap.set(index, id);
-      });
+      }
     const chunkThreads = new Map<string, Record<string, unknown>[]>();
     if (Array.isArray(profile["samples"]))
       for (const value of profile["samples"]) {

@@ -110,11 +110,11 @@ export async function instrumentRoot(rootFileName: string): Promise<void> {
   let foundErrorBoundary = false as boolean;
   const withSentryAlreadyUsed = isWithSentryAlreadyUsed(rootRouteAst);
 
-  namedExports.forEach((namedExport) => {
+  for (const namedExport of namedExports) {
     const declaration = namedExport.declaration;
 
     if (!declaration) {
-      return;
+      continue;
     }
 
     if (declaration.type === "FunctionDeclaration") {
@@ -124,14 +124,14 @@ export async function instrumentRoot(rootFileName: string): Promise<void> {
     } else if (declaration.type === "VariableDeclaration") {
       const declarations = declaration.declarations;
 
-      declarations.forEach((declaration) => {
+      for (const declaration of declarations) {
         // @ts-expect-error - id should always have a name in this case
         if (declaration.id?.name === "ErrorBoundary") {
           foundErrorBoundary = true;
         }
-      });
+      }
     }
-  });
+  }
 
   if (!foundErrorBoundary) {
     rootRouteAst.imports.$add({

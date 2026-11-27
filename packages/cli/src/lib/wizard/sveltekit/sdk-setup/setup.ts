@@ -22,7 +22,8 @@ import {
   isUsingTypeScript,
   showCopyPasteInstructions,
 } from "../../utils/clack/index.js";
-import { findFile, hasSentryContent } from "../../utils/ast-utils.js";
+import { findFile } from "../../../dsn/fs-utils.js";
+import { hasSentryContent } from "../../utils/ast-utils.js";
 import { getDataCollectionSnippet } from "../../utils/data-collection.js";
 
 import recast from "recast";
@@ -61,13 +62,13 @@ export async function createOrMergeSvelteKitFiles(
   const { clientHooksPath, serverHooksPath } = getHooksConfigDirs(svelteConfig);
 
   // full file paths with correct file ending (or undefined if not found)
-  const originalClientHooksFile = findFile(clientHooksPath);
-  const originalServerHooksFile = findFile(serverHooksPath);
-  const originalInstrumentationServerFile = findFile(
+  const originalClientHooksFile = await findFile(clientHooksPath);
+  const originalServerHooksFile = await findFile(serverHooksPath);
+  const originalInstrumentationServerFile = await findFile(
     path.resolve(process.cwd(), "src", "instrumentation.server"),
   );
 
-  const viteConfig = findFile(path.resolve(process.cwd(), "vite.config"));
+  const viteConfig = await findFile(path.resolve(process.cwd(), "vite.config"));
 
   const fileEnding = isUsingTypeScript() ? "ts" : "js";
 
@@ -568,14 +569,14 @@ function wrapHandleError(mod: ProxifiedModule): void {
 
   let foundHandleError = false as boolean;
 
-  namedExports.forEach((modExport) => {
+  for (const modExport of namedExports) {
     const declaration = modExport.declaration;
     if (!declaration) {
-      return;
+      continue;
     }
     if (declaration.type === "FunctionDeclaration") {
       if (declaration.id?.name !== "handleError") {
-        return;
+        continue;
       }
       foundHandleError = true;
       const userCode = recast.print(declaration).code;
@@ -589,22 +590,22 @@ function wrapHandleError(mod: ProxifiedModule): void {
       modAst.body = modAst.body.filter((node) => node !== modExport);
     } else if (declaration.type === "VariableDeclaration") {
       const declarations = declaration.declarations;
-      declarations.forEach((declaration) => {
+      for (const declaration of declarations) {
         if (
           declaration.type !== "VariableDeclarator" ||
           declaration.id.type !== "Identifier" ||
           declaration.id.name !== "handleError"
         ) {
-          return;
+          continue;
         }
         foundHandleError = true;
         const userCode = declaration.init;
         const stringifiedUserCode = userCode ? recast.print(userCode).code : "";
         // @ts-expect-error - we can just place a string here, magicast will convert it to a node
         declaration.init = `Sentry.handleErrorWithSentry(${stringifiedUserCode})`;
-      });
+      }
     }
-  });
+  }
 
   if (!foundHandleError) {
     mod.exports["handleError"] = builders.functionCall(
@@ -622,14 +623,14 @@ function wrapHandle(mod: ProxifiedModule): void {
 
   let foundHandle = false as boolean;
 
-  namedExports.forEach((modExport) => {
+  for (const modExport of namedExports) {
     const declaration = modExport.declaration;
     if (!declaration) {
-      return;
+      continue;
     }
     if (declaration.type === "FunctionDeclaration") {
       if (declaration.id?.name !== "handle") {
-        return;
+        continue;
       }
       foundHandle = true;
       const userCode = recast.print(declaration).code;
@@ -643,22 +644,22 @@ function wrapHandle(mod: ProxifiedModule): void {
       modAst.body = modAst.body.filter((node) => node !== modExport);
     } else if (declaration.type === "VariableDeclaration") {
       const declarations = declaration.declarations;
-      declarations.forEach((declaration) => {
+      for (const declaration of declarations) {
         if (
           declaration.type !== "VariableDeclarator" ||
           declaration.id.type !== "Identifier" ||
           (declaration.id.name && declaration.id.name !== "handle")
         ) {
-          return;
+          continue;
         }
         const userCode = declaration.init;
         const stringifiedUserCode = userCode ? recast.print(userCode).code : "";
         // @ts-expect-error - we can just place a string here, magicast will convert it to a node
         declaration.init = `sequence(Sentry.sentryHandle(), ${stringifiedUserCode})`;
         foundHandle = true;
-      });
+      }
     }
-  });
+  }
 
   if (!foundHandle) {
     // can't use builders.functionCall here because it doesn't yet

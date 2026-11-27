@@ -9,7 +9,7 @@ import chalk from "chalk";
 import path from "node:path";
 
 import { traceStep, withTelemetry } from "../telemetry.js";
-import { findFile } from "../utils/ast-utils.js";
+import { findFile } from "../../dsn/fs-utils.js";
 import {
   addDotEnvSentryBuildPluginFile,
   addSentryCliConfig,
@@ -126,7 +126,7 @@ async function runRemixWizardWithTelemetry(
   const dsn = selectedProject.keys[0].dsn.public;
 
   const isTS = isUsingTypeScript();
-  const viteConfig = findFile("vite.config");
+  const viteConfig = await findFile("vite.config");
   const selectedFeatures = await featureSelectionPrompt([
     {
       id: "performance",

@@ -175,14 +175,14 @@ describe("instrumentRoot", () => {
         const appDir = path.join(tmpDir, "app");
         if (existsSync(appDir)) {
           const files = readdirSync(appDir);
-          files.forEach((file) => {
+          for (const file of files) {
             unlinkSync(path.join(appDir, file));
-          });
+          }
           rmdirSync(appDir);
         }
 
         const files = readdirSync(tmpDir);
-        files.forEach((file) => {
+        for (const file of files) {
           const filePath = path.join(tmpDir, file);
           const stat = statSync(filePath);
           if (stat.isDirectory()) {
@@ -190,7 +190,7 @@ describe("instrumentRoot", () => {
           } else {
             unlinkSync(filePath);
           }
-        });
+        }
       } catch (error) {
         // Ignore cleanup errors in tests
       }

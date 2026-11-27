@@ -109,7 +109,7 @@ export function instrumentHandleRequest(
     let foundRenderToPipeableStreamImport = false as boolean;
     let foundCreateReadableStreamFromReadableImport = false as boolean;
 
-    originalEntryServerMod.imports.$items.forEach((item) => {
+    for (const item of originalEntryServerMod.imports.$items) {
       if (item.imported === "ServerRouter" && item.from === "react-router") {
         foundServerRouterImport = true;
       }
@@ -125,7 +125,7 @@ export function instrumentHandleRequest(
       ) {
         foundCreateReadableStreamFromReadableImport = true;
       }
-    });
+    }
 
     if (!foundServerRouterImport) {
       originalEntryServerMod.imports.$add({

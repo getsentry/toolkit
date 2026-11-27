@@ -69,12 +69,12 @@ function matchRoute(
     if (match) {
       const [, ...values] = match;
       const params: Record<string, string> = {};
-      route.paramNames.forEach((name, i) => {
+      for (const [i, name] of route.paramNames.entries()) {
         const value = values[i];
         if (value !== undefined) {
           params[name] = value;
         }
-      });
+      }
       return { route, params };
     }
   }

@@ -6,7 +6,7 @@
 import { loadFile } from "magicast";
 import { statSync } from "node:fs";
 
-import { findFile } from "../../utils/ast-utils.js";
+import { findFile } from "../../../dsn/fs-utils.js";
 
 // Try to find the Express server implementation that contains `createRequestHandler` from `@remix-run/express`
 export async function findCustomExpressServerImplementation() {
@@ -18,7 +18,7 @@ export async function findCustomExpressServerImplementation() {
   ];
 
   for (const filePath of possiblePaths) {
-    const filename = findFile(filePath);
+    const filename = await findFile(filePath);
 
     if (!filename) {
       continue;
