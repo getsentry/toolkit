@@ -35,3 +35,16 @@ export function getSentryReactRouterVitePluginImportPath(
     ? SENTRY_REACT_ROUTER_VITE_IMPORT_PATH
     : SENTRY_REACT_ROUTER_ROOT_IMPORT_PATH;
 }
+
+/**
+ * The `@sentry/profiling-node` range matching the installed SDK's major, so a
+ * kept v10 SDK doesn't get a v11 profiler. Falls back to the install range.
+ */
+export function getProfilingNodeRange(
+  installedSdkVersion: string | undefined,
+): string {
+  const sdkMajor = getMajorVersion(installedSdkVersion);
+  return sdkMajor === undefined
+    ? SENTRY_REACT_ROUTER_SDK_RANGE
+    : `^${sdkMajor}`;
+}
