@@ -8,18 +8,21 @@
  */
 
 import { UserInputError } from "../errors";
+import { ParamEventId } from "../schema";
 import { resolveScopedOrganizationSlug } from "./url-scope";
 
 /**
  * Extracts the Sentry issue ID and organization slug from a full URL
  *
  * @param url - A full Sentry issue URL
- * @returns Object containing the numeric issue ID and organization slug (if found)
+ * @returns Object containing the issue ID, organization slug, and the event ID
+ *   when the URL points at one event (`/issues/{issueId}/events/{eventId}/`)
  * @throws Error if the input is invalid
  */
 export function extractIssueId(url: string): {
   issueId: string;
   organizationSlug: string;
+  eventId?: string;
 } {
   if (!url || typeof url !== "string") {
     throw new UserInputError(
@@ -75,6 +78,14 @@ export function extractIssueId(url: string): {
     );
   }
 
+  // Only a 32-character event ID selects an event; `/events/latest/` and
+  // other aliases resolve to the issue's latest event like a plain issue URL.
+  const eventsIndex = pathParts.indexOf("events", pathParts.indexOf("issues"));
+  const eventId = eventsIndex === -1 ? undefined : pathParts[eventsIndex + 1];
+  if (eventId && ParamEventId.safeParse(eventId).success) {
+    return { issueId, organizationSlug, eventId };
+  }
+
   return { issueId, organizationSlug };
 }
 
@@ -119,7 +130,8 @@ export function parseIssueId(issueId: string) {
  * Parses issue parameters from a variety of formats.
  *
  * @param params - Object containing issue URL, issue ID, and organization slug
- * @returns Object containing the parsed organization slug and issue ID
+ * @returns Object containing the parsed organization slug and issue ID, plus
+ *   the event ID when `issueUrl` points at one event
  * @throws Error if the input is invalid
  */
 export function parseIssueParams({
@@ -133,6 +145,7 @@ export function parseIssueParams({
 }): {
   organizationSlug: string;
   issueId: string;
+  eventId?: string;
 } {
   if (issueUrl) {
     const resolved = extractIssueId(issueUrl);
@@ -143,6 +156,7 @@ export function parseIssueParams({
         urlOrganizationSlug: resolved.organizationSlug,
       }),
       issueId: parseIssueId(resolved.issueId),
+      ...(resolved.eventId ? { eventId: resolved.eventId } : {}),
     };
   }
 
