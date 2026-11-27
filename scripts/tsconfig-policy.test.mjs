@@ -24,9 +24,9 @@ const UNCHECKED = [
       "codemod input and expected-output fixtures, compared as text by `jssg test`",
   },
   {
-    pattern: /^packages\/cli\/test\/lib\/wizard\/cloudflare\/fixtures\//,
+    pattern: /^packages\/cli\/test\/lib\/wizard\/.*\/fixtures\//,
     reason:
-      "upstream sentry-wizard Worker sources the Cloudflare wizard rewrites, read and compared as text",
+      "wizard codemod input fixtures copied from sentry-wizard, read as text by the codemod tests",
   },
   {
     pattern: /^packages\/http\/test\/package\/consumer\//,
