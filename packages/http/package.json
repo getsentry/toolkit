@@ -1,6 +1,6 @@
 {
   "name": "@sentry/http",
-  "version": "1.0.0-dev.0",
+  "version": "1.0.0",
   "description": "HTTP response caching, body compression, and retries over the Fetch API, with pluggable cache stores",
   "type": "module",
   "license": "MIT",
