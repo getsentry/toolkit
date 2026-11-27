@@ -352,6 +352,16 @@ export async function updateBuildScript(args: {
     (args.url ? ` --url ${args.url}` : "") +
     (args.isHydrogen ? " --buildPath ./dist" : "");
 
+  if (
+    packageJson.scripts["build"]?.includes("@sentry/remix --upload-sourcemaps")
+  ) {
+    // Already set up by an earlier run; replacing again would duplicate it.
+    clack.log.info(
+      `${chalk.cyan("build")} script already uploads sourcemaps, skipping.`,
+    );
+    return;
+  }
+
   if (!packageJson.scripts["build"]) {
     packageJson.scripts["build"] = instrumentedBuildCommand;
   } else if (packageJson.scripts["build"].includes(buildCommand)) {
