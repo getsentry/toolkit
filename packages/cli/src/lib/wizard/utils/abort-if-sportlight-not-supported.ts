@@ -1,9 +1,10 @@
 /**
- * Stops wizards whose platform has no Spotlight-only setup yet.
+ * Stop a wizard whose platform has no Spotlight setup when Spotlight mode
+ * (`SENTRY_SPOTLIGHT`) is on.
  */
 
-import { abort } from "./clack/index.js";
 import { clack } from "./clack/prompts.js";
+import { abort } from "./clack/index.js";
 
 /**
  * Aborts the wizard with a message that Spotlight mode is not yet supported

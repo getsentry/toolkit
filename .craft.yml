@@ -138,8 +138,10 @@ workspaces:
   # `merge-jobs.yml` packs every one of them. To publish another package
   # from `packages/`, add its directory name here and to release.yml's
   # `product` options. No preReleaseCommand:
-  # Craft bumps package.json through the npm target.
-  packages/{http,logger}:
+  # Craft bumps package.json through the npm target. `wizard` is the
+  # deprecated @sentry/wizard forwarder; it starts at 10.0.0 so npm's `latest`
+  # moves forward from 9.x, and CLI releases don't bump or publish it.
+  packages/{http,logger,wizard}:
     changelog:
       policy: auto
     releaseBranchPrefix: "release/{{workspaceName}}"

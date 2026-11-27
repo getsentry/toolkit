@@ -42,7 +42,8 @@ toolkit/
 │   ├── mcp-cloudflare/      # Web app + OAuth
 │   ├── mcp-server-evals/    # AI evaluation tests
 │   ├── mcp-server-mocks/    # MSW mocks
-│   └── mcp-test-client/     # CLI test client
+│   ├── mcp-test-client/     # CLI test client
+│   └── wizard/              # Deprecated @sentry/wizard, forwards to `sentry wizard`
 └── docs/                    # Toolkit contributor docs for CLI and MCP
 ```
 

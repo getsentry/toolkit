@@ -3,6 +3,7 @@
   "include": [
     "**/*.ts",
     "../src/global.d.ts",
+    "../src/lib/wizard/xcode.d.ts",
     "../grammar/**/*.ts",
     "../vitest.config.ts"
   ]
