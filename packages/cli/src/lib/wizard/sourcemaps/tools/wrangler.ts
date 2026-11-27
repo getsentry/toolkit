@@ -558,27 +558,24 @@ function isWranglerRunnerArg(arg: string): boolean {
 }
 
 /**
- * Runner flags whose value is the next arg, such as the directory in
- * `pnpm -C wrangler deploy`, so a `wrangler` there isn't the CLI.
+ * Per runner, the flags whose value is the next arg, such as the directory
+ * in `pnpm -C wrangler deploy`, so a `wrangler` there isn't the CLI. Keyed
+ * by runner because short flags differ: `npx -p` takes a package, while
+ * `pnpm -w` and `yarn -p` take no value.
  */
-const RUNNER_FLAGS_WITH_VALUE = new Set([
-  "-C",
-  "--dir",
-  "-F",
-  "--filter",
-  "--cwd",
-  "-w",
-  "--workspace",
-  "--prefix",
-  "-p",
-  "--package",
-]);
+const RUNNER_FLAGS_WITH_VALUE: Record<string, ReadonlySet<string>> = {
+  pnpm: new Set(["-C", "--dir", "-F", "--filter"]),
+  yarn: new Set(["--cwd"]),
+  bun: new Set(["--cwd"]),
+  npx: new Set(["-p", "--package", "-w", "--workspace", "--prefix"]),
+};
 
 /**
  * Where `argv` runs `wrangler`, after only runner args (see
  * {@link isWranglerRunnerArg}), or -1 when it doesn't.
  */
 function findWranglerIndex(argv: string[]): number {
+  const flagsWithValue = RUNNER_FLAGS_WITH_VALUE[argv[0] ?? ""];
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i] ?? "";
     if (arg === "wrangler" || arg.startsWith("wrangler@")) {
@@ -587,7 +584,7 @@ function findWranglerIndex(argv: string[]): number {
     if (!isWranglerRunnerArg(arg)) {
       return -1;
     }
-    if (RUNNER_FLAGS_WITH_VALUE.has(arg)) {
+    if (flagsWithValue?.has(arg)) {
       i += 1;
     }
   }

@@ -267,6 +267,13 @@ describe("getWranglerDeployCommand", () => {
     expect(getWranglerDeployCommand(command)).toBeUndefined();
   });
 
+  it.each(["pnpm -w wrangler deploy", "yarn -p wrangler deploy"])(
+    "finds wrangler after a runner flag without a value: %s",
+    (command) => {
+      expect(getWranglerDeployCommand(command)).toBe(command);
+    },
+  );
+
   it("finds wrangler after a flag value: npx -p wrangler wrangler deploy", () => {
     expect(getWranglerDeployCommand("npx -p wrangler wrangler deploy")).toBe(
       "npx -p wrangler wrangler deploy",
