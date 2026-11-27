@@ -630,9 +630,9 @@
     "name": "Hono",
     "docsUrl": "https://docs.sentry.io/platforms/javascript/guides/hono/",
     "signals": {
-      "traces": "https://docs.sentry.io/platforms/javascript/guides/hono/tracing/",
-      "logs": "https://docs.sentry.io/platforms/javascript/guides/hono/logs/",
-      "metrics": "https://docs.sentry.io/platforms/javascript/guides/hono/metrics/"
+      "traces": "https://docs.sentry.io/platforms/javascript/guides/node/tracing/",
+      "logs": "https://docs.sentry.io/platforms/javascript/guides/node/logs/",
+      "metrics": "https://docs.sentry.io/platforms/javascript/guides/node/metrics/"
     }
   },
   "node-gcpfunctions": {
