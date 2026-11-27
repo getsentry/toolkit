@@ -10,7 +10,7 @@
 
 import { marked } from "marked";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
-import { UPGRADE_SOURCES } from "../../src/lib/binary.js";
+import { UPGRADE_SOURCE } from "../../src/lib/binary.js";
 import {
   fetchRecentReleases,
   type GitHubRelease,
@@ -302,8 +302,7 @@ describe("countListItems", () => {
 });
 
 describe("fetchChangelog source affinity", () => {
-  const toolkitSource = UPGRADE_SOURCES[0];
-  const legacySource = UPGRADE_SOURCES[1];
+  const toolkitSource = UPGRADE_SOURCE;
   let originalFetch: typeof globalThis.fetch;
 
   beforeEach(() => {
@@ -354,9 +353,6 @@ describe("fetchChangelog source affinity", () => {
     expect(requestedUrls).toEqual([
       "https://api.github.com/repos/getsentry/toolkit/releases?per_page=30",
     ]);
-    expect(requestedUrls.some((url) => url.includes("getsentry/cli"))).toBe(
-      false,
-    );
   });
 
   test("builds a Toolkit changelog from normalized prefetched releases", async () => {
@@ -386,19 +382,6 @@ describe("fetchChangelog source affinity", () => {
     expect(changelog?.sections[0]?.markdown).toContain(
       "Reuse prefetched releases",
     );
-  });
-
-  test("rejects normalized releases from another source", async () => {
-    const releases = await fetchRecentReleases(undefined, toolkitSource);
-    const changelog = await fetchChangelog({
-      channel: "stable",
-      fromVersion: "0.20.0",
-      toVersion: "0.21.0",
-      source: UPGRADE_SOURCES[1],
-      prefetchedReleases: releases,
-    });
-
-    expect(changelog).toBeNull();
   });
 
   test("rejects raw prefetched Toolkit releases without fetching", async () => {
@@ -455,34 +438,6 @@ describe("fetchChangelog source affinity", () => {
     expect(changelog).toBeNull();
   });
 
-  test("fetches stable releases only from the explicitly selected legacy source", async () => {
-    const requestedUrls: string[] = [];
-    globalThis.fetch = mockFetch(async (input) => {
-      requestedUrls.push(extractInputUrl(input));
-      return new Response(
-        JSON.stringify([
-          makeRelease(
-            "0.21.0",
-            "### Bug Fixes 🐛\n\n- Keep the legacy bridge working",
-          ),
-        ]),
-        { status: 200 },
-      );
-    });
-
-    const changelog = await fetchChangelog({
-      channel: "stable",
-      fromVersion: "0.20.0",
-      toVersion: "0.21.0",
-      source: legacySource,
-    });
-
-    expect(changelog?.totalItems).toBe(1);
-    expect(requestedUrls).toEqual([
-      "https://api.github.com/repos/getsentry/cli/releases?per_page=30",
-    ]);
-  });
-
   test("fetches nightly commits only from the explicitly selected Toolkit source", async () => {
     const requestedUrls: string[] = [];
     globalThis.fetch = mockFetch(async (input) => {
@@ -506,8 +461,5 @@ describe("fetchChangelog source affinity", () => {
     expect(requestedUrls).toEqual([
       "https://api.github.com/repos/getsentry/toolkit/commits?sha=main&since=1970-01-01T00:01:41.000Z&until=1970-01-01T00:03:21.000Z&per_page=100",
     ]);
-    expect(requestedUrls.some((url) => url.includes("getsentry/cli"))).toBe(
-      false,
-    );
   });
 });

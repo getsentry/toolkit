@@ -1,0 +1,10 @@
+{
+  // The main entry runs without Node APIs: in browsers and Workers.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "types": []
+  },
+  "include": ["src/**/*.ts"],
+  "exclude": ["src/**/*.test.ts", "src/codec.ts"]
+}

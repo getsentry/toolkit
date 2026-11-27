@@ -2462,6 +2462,10 @@ function getMaxChangelogLines(): number {
   );
 }
 
+/** GitHub releases page filtered to CLI releases (tags `cli@<version>`). */
+const CLI_RELEASES_URL =
+  "https://github.com/getsentry/toolkit/releases?q=cli%40";
+
 /**
  * Format the changelog section as markdown for rendering.
  *
@@ -2488,7 +2492,7 @@ function formatChangelog(data: UpgradeResult): string {
   if (changelog.truncated) {
     const more = changelog.originalCount - changelog.totalItems;
     lines.push(
-      `<muted>...and ${more} more changes — https://github.com/getsentry/cli/releases</muted>`,
+      `<muted>...and ${more} more changes — ${CLI_RELEASES_URL}</muted>`,
     );
   }
 
@@ -2506,8 +2510,8 @@ function formatChangelog(data: UpgradeResult): string {
   const remaining = changelog.originalCount - changelog.totalItems;
   const moreText =
     remaining > 0
-      ? "...and more — https://github.com/getsentry/cli/releases"
-      : "...truncated — https://github.com/getsentry/cli/releases";
+      ? `...and more — ${CLI_RELEASES_URL}`
+      : `...truncated — ${CLI_RELEASES_URL}`;
   clamped.push(isPlainOutput() ? moreText : muted(moreText));
   return clamped.join("\n");
 }

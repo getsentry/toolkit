@@ -85,7 +85,26 @@ export type DebugFilesUploadOptions = {
    * e.g. to size-gate the scan against the server's `maxFileSize`).
    */
   serverOptions?: ChunkServerOptions | undefined;
+  /** Called as the upload moves through its phases, to report progress. */
+  onProgress?: ((event: DebugFilesUploadProgress) => void) | undefined;
 };
+
+/**
+ * Progress of {@link uploadDebugFiles}, reported through `onProgress`.
+ *
+ * - `up-to-date`: the server already holds every chunk of every file.
+ * - `uploading`: chunk upload starts; `files` files miss `totalBytes` bytes.
+ * - `upload-progress`: a chunk batch finished; `uploadedBytes` are done.
+ * - `uploaded`: every missing chunk was delivered.
+ * - `processing` (wait mode only): `processed` of `total` files have reached
+ *   a terminal state on the server.
+ */
+export type DebugFilesUploadProgress =
+  | { phase: "up-to-date"; files: number }
+  | { phase: "uploading"; files: number; totalBytes: number }
+  | { phase: "upload-progress"; uploadedBytes: number; totalBytes: number }
+  | { phase: "uploaded"; files: number }
+  | { phase: "processing"; processed: number; total: number };
 
 /** Per-file result of a debug information file upload. */
 export type DebugFileUploadResult = {
@@ -142,6 +161,8 @@ type AssembleEvaluation = {
   done: boolean;
   /** SHA-1 checksums the server still needs uploaded. */
   missingChecksums: Set<string>;
+  /** Number of files in a terminal state (`ok`/`error`). */
+  terminalCount: number;
 };
 
 // ── Helpers ─────────────────────────────────────────────────────────
@@ -204,22 +225,27 @@ function evaluateAssembly(
 ): AssembleEvaluation {
   const missingChecksums = new Set<string>();
   let allHeld = true;
-  let allTerminal = true;
+  let terminalCount = 0;
 
   for (const cd of chunked) {
     const result = classifyEntry(response[cd.overallChecksum], cd);
     if (!result.held) {
       allHeld = false;
     }
-    if (!result.terminal) {
-      allTerminal = false;
+    if (result.terminal) {
+      terminalCount += 1;
     }
     for (const sha1 of result.missing) {
       missingChecksums.add(sha1);
     }
   }
 
-  return { done: wait ? allTerminal : allHeld, missingChecksums };
+  const allTerminal = terminalCount === chunked.length;
+  return {
+    done: wait ? allTerminal : allHeld,
+    missingChecksums,
+    terminalCount,
+  };
 }
 
 /**
@@ -267,6 +293,9 @@ function classifyEntry(
 /**
  * Upload every chunk the server reported missing, across all files, in
  * batched requests. A chunk shared by several files is sent once.
+ *
+ * When `onProgress` is given, reports the `uploading`, `upload-progress`,
+ * and `uploaded` phases.
  */
 async function uploadMissing(params: {
   chunked: ChunkedDif[];
@@ -274,32 +303,54 @@ async function uploadMissing(params: {
   serverOptions: ChunkServerOptions;
   encoding: UploadEncoding | undefined;
   regionUrl: string;
+  onProgress?: ((event: DebugFilesUploadProgress) => void) | undefined;
 }): Promise<void> {
-  const { chunked, missingChecksums, serverOptions, encoding, regionUrl } =
-    params;
+  const {
+    chunked,
+    missingChecksums,
+    serverOptions,
+    encoding,
+    regionUrl,
+    onProgress,
+  } = params;
   if (missingChecksums.size === 0) {
     return;
   }
   const payloads: ChunkPayload[] = [];
   const queued = new Set<string>();
+  let files = 0;
+  let totalBytes = 0;
   for (const cd of chunked) {
+    if (cd.chunks.some((chunk) => missingChecksums.has(chunk.sha1))) {
+      files += 1;
+    }
     for (const chunk of cd.chunks) {
       if (!missingChecksums.has(chunk.sha1) || queued.has(chunk.sha1)) {
         continue;
       }
       queued.add(chunk.sha1);
+      totalBytes += chunk.size;
       payloads.push({
         sha1: chunk.sha1,
         data: cd.dif.content.subarray(chunk.offset, chunk.offset + chunk.size),
       });
     }
   }
+  onProgress?.({ phase: "uploading", files, totalBytes });
+  let uploadedBytes = 0;
   await uploadChunkPayloads({
     chunks: payloads,
     serverOptions,
     encoding,
     regionUrl,
+    onUploaded: onProgress
+      ? (bytes) => {
+          uploadedBytes += bytes;
+          onProgress({ phase: "upload-progress", uploadedBytes, totalBytes });
+        }
+      : undefined,
   });
+  onProgress?.({ phase: "uploaded", files });
 }
 
 /** POST one assemble request per batch and merge the keyed responses. */
@@ -434,7 +485,7 @@ function clampMaxWait(requestedMs: number, serverMaxWaitSec: number): number {
 export async function uploadDebugFiles(
   options: DebugFilesUploadOptions,
 ): Promise<DebugFileUploadResult[]> {
-  const { org, project, difs, wait, maxWaitMs } = options;
+  const { org, project, difs, wait, maxWaitMs, onProgress } = options;
 
   if (difs.length === 0) {
     return [];
@@ -492,12 +543,25 @@ export async function uploadDebugFiles(
       serverOptions,
       encoding,
       regionUrl,
+      onProgress,
     });
     // The server only starts assembling once it is asked again with the
     // chunks in place, so re-assemble right after delivering them.
     response = await postAssemble(org, project, bodies);
     evaluation = evaluateAssembly(response, chunked, wait);
+  } else {
+    onProgress?.({ phase: "up-to-date", files: chunked.length });
   }
+  const reportProcessing = () => {
+    if (wait) {
+      onProgress?.({
+        phase: "processing",
+        processed: evaluation.terminalCount,
+        total: chunked.length,
+      });
+    }
+  };
+  reportProcessing();
 
   // The wait budget covers server-side processing, not the chunk upload,
   // which for large sets can itself take longer than the budget.
@@ -523,12 +587,15 @@ export async function uploadDebugFiles(
     await new Promise((r) => setTimeout(r, ASSEMBLE_POLL_INTERVAL_MS));
     response = await postAssemble(org, project, bodies);
     evaluation = evaluateAssembly(response, chunked, wait);
+    reportProcessing();
+    // Re-sends report progress too, so a long retry does not look hung.
     await uploadMissing({
       chunked,
       missingChecksums: evaluation.missingChecksums,
       serverOptions,
       encoding,
       regionUrl,
+      onProgress,
     });
   }
 

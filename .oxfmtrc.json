@@ -4,12 +4,12 @@
   "tabWidth": 2,
   "sortPackageJson": false,
   "ignorePatterns": [
+    "**/CHANGELOG.md",
     "apps/cli-docs/**",
     "packages/cli/plugins/**",
     "packages/cli/README.md",
     "packages/cli/DEVELOPMENT.md",
     "packages/cli/CONTRIBUTING.md",
-    "packages/cli/CHANGELOG.md",
     "packages/cli/AGENTS.md",
     "packages/mcp-server-mocks/src/fixtures/**",
     "packages/mcp-core/src/ui/chart-app.generated.ts",

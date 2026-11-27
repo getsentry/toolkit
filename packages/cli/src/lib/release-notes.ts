@@ -17,7 +17,7 @@ import {
   compareVersions,
   getGitHubHeaders,
   getGitHubReleasesUrl,
-  PRIMARY_UPGRADE_SOURCE,
+  UPGRADE_SOURCE,
   type UpgradeSource,
 } from "./binary.js";
 import { customFetch } from "./custom-ca.js";
@@ -468,7 +468,7 @@ function buildChangelogSummaryForSource(
 }
 
 /**
- * Build a changelog summary from releases with legacy unprefixed tags.
+ * Build a changelog summary from releases whose tags are bare versions.
  *
  * @param releases - GitHub releases (newest first)
  * @param fromVersion - Current version (exclusive lower bound)
@@ -744,7 +744,7 @@ export type FetchChangelogOptions = {
   maxItems?: number | undefined;
   /** Pre-fetched releases to avoid redundant API call (stable channel only) */
   prefetchedReleases?: NormalizedGitHubReleases | undefined;
-  /** Release source selected during version discovery; defaults to the primary source */
+  /** Release source used during version discovery; defaults to UPGRADE_SOURCE */
   source?: UpgradeSource | undefined;
 };
 
@@ -768,7 +768,7 @@ export async function fetchChangelog(
       toVersion,
       maxItems,
       prefetchedReleases,
-      source = PRIMARY_UPGRADE_SOURCE,
+      source = UPGRADE_SOURCE,
     } = opts;
     if (channel === "nightly") {
       return await fetchNightlyChangelog(

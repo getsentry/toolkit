@@ -262,43 +262,15 @@ jobs:
 
       - name: Comment on PR
         uses: actions/github-script@v7
-        # Skip for fork PRs (no write permissions). Posts on every run, since
-        # a view can change while the tool token count stays the same.
+        # Skip for fork PRs (no write permissions). Comments only when the tool
+        # definitions or MCP Apps views differ from main, and keeps an existing
+        # comment up to date.
         if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
         continue-on-error: true # Don't fail workflow if comment creation fails
         with:
           script: |
-            const fs = require('fs');
-            const report = fs.readFileSync('packages/mcp-core/token-report.md', 'utf8');
-
-            // Find existing comment
-            const comments = await github.rest.issues.listComments({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: context.issue.number,
-            });
-
-            const botComment = comments.data.find(comment =>
-              comment.user.type === 'Bot' &&
-              comment.body.includes('📊 MCP Server Token Cost Report')
-            );
-
-            // Update or create comment
-            if (botComment) {
-              await github.rest.issues.updateComment({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                comment_id: botComment.id,
-                body: report
-              });
-            } else {
-              await github.rest.issues.createComment({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                issue_number: context.issue.number,
-                body: report
-              });
-            }
+            const { upsertTokenCostComment } = await import(`${process.env.GITHUB_WORKSPACE}/scripts/token-cost-comment.mjs`);
+            await upsertTokenCostComment({ github, context, core });
 
       - name: Upload token stats artifact
         uses: actions/upload-artifact@v4

@@ -2091,14 +2091,18 @@ describe("local receiver to viewer integration", () => {
       "http://127.0.0.1:8969/_local/v1/sessions/closing-run/stream?cap=read",
     );
     renderBareViewer();
-    await act(async () =>
-      ControllableEventSource.instances[0]!.onopen?.(new Event("open")),
-    );
+    const liveSource = ControllableEventSource.instances[0]!;
+    await act(async () => liveSource.onopen?.(new Event("open")));
     fireEvent.click(captureAction("Stop capture"));
     await screen.findByText("Saved capture", { exact: true });
     // The close response can overtake SSE delivery. The current feed must still
     // consume the final archive before its terminal lifecycle notification.
-    const finalSource = ControllableEventSource.instances.at(-1)!;
+    // The archive replay opens in an effect that can run after the header shows.
+    const finalSource = await waitFor(() => {
+      const source = ControllableEventSource.instances.at(-1)!;
+      expect(source).not.toBe(liveSource);
+      return source;
+    });
     await act(async () => {
       finalSource.onopen?.(new Event("open"));
       finalSource.dispatchEvent(

@@ -1036,12 +1036,25 @@ describe("serveMcp .sentryclirc URLs", () => {
       expect(served.calls).toHaveLength(0);
     });
 
-    test("refuses an rc org token whose claim names the rc URL", async () => {
+    test("serves an rc org token whose claim names the rc URL", async () => {
+      const token = mintSntrysToken({
+        iat: 1,
+        url: "https://sentry.example.com",
+        org: "acme",
+      });
+      await inRcDir("https://sentry.example.com", token);
+
+      const { config, options } = await start([]);
+      expect(config.sentryHost).toBe("sentry.example.com");
+      expect(options.accessToken).toBe(token);
+    });
+
+    test("refuses an rc org token whose claim names another host than the rc URL", async () => {
       await inRcDir(
         "https://evil.example.com",
         mintSntrysToken({
           iat: 1,
-          url: "https://evil.example.com",
+          url: "https://sentry.example.com",
           org: "acme",
         }),
       );
