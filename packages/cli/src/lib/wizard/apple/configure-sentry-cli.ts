@@ -76,7 +76,7 @@ function createSentryCLIRC(
     writeFileSync(gitignorePath, ".sentryclirc");
   } else {
     const gitIgnore = readFileSync(gitignorePath).toString();
-    if (!gitIgnore.includes(".sentryclirc")) {
+    if (!ignoresSentryCliRc(gitIgnore)) {
       clack.log.info(
         `Appending .sentryclirc to .gitignore file at path: ${chalk.cyan(
           gitignorePath,
@@ -85,4 +85,16 @@ function createSentryCLIRC(
       appendFileSync(gitignorePath, "\n.sentryclirc\n");
     }
   }
+}
+
+/**
+ * Whether `.gitignore` already has a line that ignores `.sentryclirc`. Only an
+ * exact `.sentryclirc` or `/.sentryclirc` line counts, so a comment or another
+ * pattern that mentions the name does not.
+ */
+function ignoresSentryCliRc(gitIgnore: string): boolean {
+  return gitIgnore.split(/\r?\n/).some((line) => {
+    const pattern = line.trim();
+    return pattern === ".sentryclirc" || pattern === "/.sentryclirc";
+  });
 }
