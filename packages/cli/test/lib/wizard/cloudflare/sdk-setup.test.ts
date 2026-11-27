@@ -223,6 +223,20 @@ describe("createSentryInitFile", () => {
       });
     });
 
+    it("writes a JavaScript starter worker to a missing .js entry point", async () => {
+      getEntryPointFromWranglerConfigMock.mockReturnValue("src/worker.js");
+
+      await createSentryInitFile(testDsn, testFeatures, false);
+
+      const content = fs.readFileSync(
+        path.join(tmpDir, "src/worker.js"),
+        "utf-8",
+      );
+      expect(content).toContain("Sentry.withSentry(");
+      expect(content).not.toContain("satisfies");
+      expect(content).not.toContain("Promise<Response>");
+    });
+
     describe("and the entry point file does not exist", () => {
       beforeEach(() => {
         getEntryPointFromWranglerConfigMock.mockReturnValue("src/worker.ts");

@@ -39,9 +39,15 @@ export default Sentry.withSentry(
 `;
 }
 
-export function getCloudflareWorkerTemplateWithHandler(): string {
+/**
+ * A starter worker. With `typescript` unset, it leaves out the type
+ * annotations, for a `.js` or `.mjs` entry point.
+ */
+export function getCloudflareWorkerTemplateWithHandler(
+  typescript: boolean,
+): string {
   return `export default {
-	async fetch(request, env, ctx): Promise<Response> {
+	async fetch(request, env, ctx)${typescript ? ": Promise<Response>" : ""} {
 		const url = new URL(request.url);
 		switch (url.pathname) {
 			case '/message':
@@ -52,6 +58,6 @@ export function getCloudflareWorkerTemplateWithHandler(): string {
 				return new Response('Not Found', { status: 404 });
 		}
 	},
-} satisfies ExportedHandler<Env>;
+}${typescript ? " satisfies ExportedHandler<Env>" : ""};
 `;
 }

@@ -45,7 +45,7 @@ export async function createSentryInitFile(
     await promises.mkdir(path.dirname(entryPointPath), { recursive: true });
     await promises.writeFile(
       entryPointPath,
-      getCloudflareWorkerTemplateWithHandler(),
+      getCloudflareWorkerTemplateWithHandler(/\.[cm]?tsx?$/.test(entryPoint)),
       { encoding: "utf-8", flag: "w" },
     );
 
