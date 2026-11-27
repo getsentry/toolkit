@@ -280,7 +280,19 @@ There is no search or execute meta-tool; harnesses search the tool list
 themselves. A call is checked against the command's schema and the
 session's constraints before a runner executes it. The stdio runner
 (`packages/cli/src/lib/mcp/command-surface.ts`) runs calls through
-`createSentrySDK().run()`; the hosted server will pass its own.
+`createSentrySDK().run()` with `limitToTarget`, so the CLI's API transport
+also limits every request to the session's scope: what an ID alone names
+(`issue view 12345`, `@latest`, `event view <event-id>`) is checked against
+the session's project, organization endpoints are filtered to it,
+read-only organization metadata (members, integrations, DSN lookups) is
+allowed, and a request no rule covers is refused before it is sent, so a new
+endpoint fails closed until it gets a rule. Endpoints declare their rule in
+Sentry with the `x-sentry-project-scope` OpenAPI extension, which
+`@sentry/api` carries into its operation catalog;
+`packages/cli/src/lib/target-scope-rules.ts` adds rules only for what the
+schema can't say. Until the installed `@sentry/api` carries the
+extension, the rules come from an interim copy of the declarations in
+`packages/cli/src/lib/interim-project-scope-operations.json`. The hosted server will pass its own.
 `--read-only` drops the write tools.
 
 ### 6. Error Handling Philosophy

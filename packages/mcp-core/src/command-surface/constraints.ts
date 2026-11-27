@@ -7,7 +7,9 @@
  * uses when a call names no target. This module checks the targets a call
  * does name and refuses one outside the session, or rewrites a bare project
  * into the session's organization. A short ID (`WEB-1`) names its project
- * but no organization; a numeric issue ID names neither.
+ * but no organization; a numeric issue ID or an event, trace or replay ID
+ * names neither, so the runner checks what it finds (the stdio runner,
+ * with the CLI SDK's `limitToTarget`).
  */
 
 import { UserInputError } from "../errors";
