@@ -6,6 +6,7 @@
 
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import createSentrySDK from "../../src/index.js";
+import { __resetScopeLookupsForTests } from "../../src/lib/target-scope.js";
 import issueFixture from "../fixtures/issue.json";
 import { mockFetch, useTestConfigDir } from "../helpers.js";
 
@@ -30,14 +31,17 @@ function sentryApi(): typeof fetch {
   });
 }
 
-function viewIssue(options: { limitToTarget?: boolean }): Promise<unknown> {
-  const sdk = createSentrySDK({
+function sdkFor(options: { limitToTarget?: boolean }) {
+  return createSentrySDK({
     token: `sntryu_${"a".repeat(64)}`,
     org: "acme",
     project: "web",
     ...options,
   });
-  return sdk.run("issue", "view", "200") as Promise<unknown>;
+}
+
+function viewIssue(options: { limitToTarget?: boolean }): Promise<unknown> {
+  return sdkFor(options).run("issue", "view", "200") as Promise<unknown>;
 }
 
 describe("createSentrySDK({ org, project })", () => {
@@ -45,6 +49,7 @@ describe("createSentrySDK({ org, project })", () => {
   let originalFetch: typeof fetch;
 
   beforeEach(() => {
+    __resetScopeLookupsForTests();
     originalFetch = globalThis.fetch;
     globalThis.fetch = sentryApi();
   });
@@ -63,5 +68,18 @@ describe("createSentrySDK({ org, project })", () => {
     expect(await viewIssue({ limitToTarget: false })).toMatchObject({
       shortId: "API-1",
     });
+  });
+
+  // `sentry api` sends a path the caller picks; the transport refuses it
+  // like any other request.
+  test.each([
+    "organizations/other/issues/",
+    "/api/0/organizations/other/issues/",
+    "projects/acme/api/",
+    "issues/200/",
+  ])("refuses `sentry api %s`", async (path) => {
+    await expect(sdkFor({}).run("api", path)).rejects.toThrow(
+      /outside this session's scope \(acme\/web\)/,
+    );
   });
 });

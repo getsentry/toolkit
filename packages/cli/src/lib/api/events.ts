@@ -17,7 +17,6 @@ import pLimit from "p-limit";
 import type { IssueEvent, SentryEvent } from "../../types/index.js";
 
 import { ApiError, AuthError } from "../errors.js";
-import { assertOrgInScope, assertProjectInScope } from "../target-scope.js";
 
 import {
   API_MAX_PER_PAGE,
@@ -61,16 +60,12 @@ export async function getLatestEvent(
 /**
  * Get a specific event by ID.
  * Uses region-aware routing for multi-region support.
- *
- * @throws {ResolutionError} When `orgSlug`/`projectSlug` is outside the
- *   invocation's target scope (`limitToTarget`)
  */
 export async function getEvent(
   orgSlug: string,
   projectSlug: string,
   eventId: string,
 ): Promise<SentryEvent> {
-  assertProjectInScope(orgSlug, projectSlug, `Event ${eventId}`);
   const config = getOrgSdkConfig();
 
   const result = await getProjectEvent({
@@ -141,15 +136,11 @@ export type ResolvedEvent = {
  *
  * Returns the resolved org, project, and full event on success,
  * or null if the event is not found in the given org.
- *
- * @throws {ResolutionError} When the org, or the event's project, is outside
- *   the invocation's target scope (`limitToTarget`)
  */
 export async function resolveEventInOrg(
   orgSlug: string,
   eventId: string,
 ): Promise<ResolvedEvent | null> {
-  assertOrgInScope(orgSlug, `Event ${eventId}`);
   const config = getOrgSdkConfig();
 
   const result = await sdkResolveAnEventId({
@@ -157,9 +148,17 @@ export async function resolveEventInOrg(
     path: { organization_id_or_slug: orgSlug, event_id: eventId },
   });
 
-  let data: { organizationSlug: string; projectSlug: string; event: unknown };
   try {
-    data = unwrapResult<typeof data>(result, "Failed to resolve event ID");
+    const data = unwrapResult<{
+      organizationSlug: string;
+      projectSlug: string;
+      event: unknown;
+    }>(result, "Failed to resolve event ID");
+    return {
+      org: data.organizationSlug,
+      project: data.projectSlug,
+      event: data.event as SentryEvent,
+    };
   } catch (error) {
     // 404 means the event doesn't exist in this org — not an error
     if (error instanceof ApiError && error.status === 404) {
@@ -167,16 +166,6 @@ export async function resolveEventInOrg(
     }
     throw error;
   }
-  assertProjectInScope(
-    data.organizationSlug,
-    data.projectSlug,
-    `Event ${eventId}`,
-  );
-  return {
-    org: data.organizationSlug,
-    project: data.projectSlug,
-    event: data.event as SentryEvent,
-  };
 }
 
 /** Options for {@link findEventAcrossOrgs}. */

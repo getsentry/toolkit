@@ -48,6 +48,7 @@ import { getAuthToken } from "../db/auth.js";
 import { ApiError, TimeoutError, ValidationError } from "../errors.js";
 import { logger } from "../logger.js";
 import { resolveOrgRegion } from "../region.js";
+import { withTargetScope } from "../target-scope.js";
 import {
   ASSEMBLE_MAX_WAIT_MS,
   ASSEMBLE_POLL_INTERVAL_MS,
@@ -175,14 +176,18 @@ export async function downloadBuildArtifact(
   destPath: string,
 ): Promise<void> {
   const headers: Record<string, string> = {};
+  // A download from the API goes out with the token, so the invocation's
+  // target scope applies to it; a presigned URL elsewhere carries neither.
+  let send = customFetch;
   if (isRegionOrigin(url, regionUrl)) {
+    send = withTargetScope(customFetch);
     const token = getAuthToken();
     if (token) {
       headers["Authorization"] = formatAuthHeader(token);
     }
   }
 
-  const response = await customFetch(url, { headers });
+  const response = await send(url, { headers });
   if (!(response.ok && response.body)) {
     throw new ApiError(
       "Failed to download build artifact",
@@ -633,7 +638,8 @@ export async function openSnapshotArchive(
   if (token) {
     headers["Authorization"] = formatAuthHeader(token);
   }
-  const response = await customFetch(url, { headers });
+  // Sent with the token outside the transport, so apply the target scope.
+  const response = await withTargetScope(customFetch)(url, { headers });
   if (!response.ok) {
     throw new ApiError(
       "Failed to download snapshot archive",
