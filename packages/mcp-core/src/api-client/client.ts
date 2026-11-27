@@ -2984,7 +2984,6 @@ export class SentryApiService {
    * @param params.project Numeric project ID to filter tags
    * @param params.statsPeriod Time range for tag statistics (e.g., "24h", "7d")
    * @param params.useCache Whether to use cached results
-   * @param params.useFlagsBackend Whether to use flags backend features
    * @param opts Request options
    * @returns Array of available tags with metadata
    *
@@ -3009,7 +3008,6 @@ export class SentryApiService {
       start,
       end,
       useCache,
-      useFlagsBackend,
     }: {
       organizationSlug: string;
       dataset?: "events" | "errors" | "replays" | "search_issues";
@@ -3018,7 +3016,6 @@ export class SentryApiService {
       start?: string | undefined;
       end?: string | undefined;
       useCache?: boolean;
-      useFlagsBackend?: boolean;
     },
     opts?: RequestOptions,
   ): Promise<TagList> {
@@ -3032,9 +3029,6 @@ export class SentryApiService {
     applyTimeParams(searchQuery, statsPeriod, start, end);
     if (useCache !== undefined) {
       searchQuery.set("useCache", useCache ? "1" : "0");
-    }
-    if (useFlagsBackend !== undefined) {
-      searchQuery.set("useFlagsBackend", useFlagsBackend ? "1" : "0");
     }
 
     const body = await this.requestJSON(
