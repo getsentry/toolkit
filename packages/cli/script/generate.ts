@@ -105,6 +105,7 @@ function schemaFiles(): StepFiles {
     outputs: [
       "src/generated/api-schema.json",
       "src/generated/idempotent-operations.json",
+      "src/generated/project-scope-operations.json",
     ],
   };
 }
