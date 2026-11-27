@@ -66,6 +66,7 @@ import { listCommand as traceListCommand } from "./commands/trace/list.js";
 import { trialRoute } from "./commands/trial/index.js";
 import { listCommand as trialListCommand } from "./commands/trial/list.js";
 import { wasmSplitCommand } from "./commands/wasm-split.js";
+import { wizardCommand } from "./commands/wizard.js";
 import { buildSentryApp, buildSentryRoutes } from "./app-root.js";
 import { registerGraphicsBanner } from "./graphics-banner.js";
 
@@ -116,6 +117,7 @@ export const routes = buildSentryRoutes({
   trace: traceRoute,
   trial: trialRoute,
   init: initCommand,
+  wizard: wizardCommand,
   info: infoCommand,
   local: localRoute,
   api: apiCommand,

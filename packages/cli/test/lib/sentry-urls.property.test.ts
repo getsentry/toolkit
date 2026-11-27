@@ -19,6 +19,7 @@ import {
   buildDashboardsListUrl,
   buildDashboardUrl,
   buildEventSearchUrl,
+  buildProjectIssuesUrl,
   buildLogsUrl,
   buildOrgSettingsUrl,
   buildOrgUrl,
@@ -297,6 +298,21 @@ describe("buildEventSearchUrl properties", () => {
         expect(url.searchParams.get("query")).toContain(eventId);
       }),
       { numRuns: DEFAULT_NUM_RUNS },
+    );
+  });
+});
+
+describe("buildProjectIssuesUrl", () => {
+  test("filters the org-subdomain issue stream to the project on SaaS", () => {
+    expect(buildProjectIssuesUrl("my-org", "1234567")).toBe(
+      "https://my-org.sentry.io/issues/?project=1234567",
+    );
+  });
+
+  test("uses the organizations path on self-hosted", () => {
+    process.env["SENTRY_URL"] = "https://sentry.example.com";
+    expect(buildProjectIssuesUrl("my-org", "42")).toBe(
+      "https://sentry.example.com/organizations/my-org/issues/?project=42",
     );
   });
 });

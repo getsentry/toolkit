@@ -35,9 +35,9 @@ describe("client.ts request path invariant", () => {
   it("interpolates every request path through apiPath", () => {
     const offenders: string[] = [];
 
-    source.split("\n").forEach((line, index) => {
+    for (const [index, line] of source.split("\n").entries()) {
       const trimmed = line.trim();
-      if (trimmed.startsWith("//") || trimmed.startsWith("*")) return;
+      if (trimmed.startsWith("//") || trimmed.startsWith("*")) continue;
 
       // A template literal opening with a slash is an API request path.
       for (let i = 0; i < line.length - 1; i++) {
@@ -53,7 +53,7 @@ describe("client.ts request path invariant", () => {
           offenders.push(`${index + 1}: ${trimmed}`);
         }
       }
-    });
+    }
 
     expect(
       offenders,

@@ -52,6 +52,7 @@ export const TOP_LEVEL_BRIEFS = {
   trace: "View distributed traces",
   trial: "Manage product trials",
   init: "Print instructions for a coding agent to set up Sentry",
+  wizard: "Set up the Sentry SDK in your project interactively",
   info: "Print configuration and verify authentication",
   local: "Sentry for local development",
   api: "Make an authenticated API request",

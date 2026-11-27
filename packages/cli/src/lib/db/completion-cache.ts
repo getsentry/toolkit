@@ -114,7 +114,7 @@ export function cacheCompletionEntities(
       )
       .get(kind, orgSlug) as { latest: number | null } | undefined;
     const now = Math.max(Date.now(), (latest?.latest ?? 0) + valid.length);
-    valid.forEach((entity, index) => {
+    for (const [index, entity] of valid.entries()) {
       runUpsert(
         db,
         "completion_cache",
@@ -127,7 +127,7 @@ export function cacheCompletionEntities(
         },
         ["kind", "org_slug", "value"],
       );
-    });
+    }
     db.query(
       `DELETE FROM completion_cache
        WHERE kind = ? AND org_slug = ? AND rowid NOT IN (

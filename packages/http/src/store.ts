@@ -49,6 +49,8 @@ export type CacheStore = {
   /**
    * Remove `identity`'s entries whose URL starts with `urlPrefix`, such as
    * the prefixes a mutation invalidates. Other identities' entries are kept.
+   * Optional: nothing in this package calls it, and a store with hashed keys
+   * cannot find entries by URL.
    */
-  deleteMatching(identity: string, urlPrefix: string): Promise<void>;
+  deleteMatching?(identity: string, urlPrefix: string): Promise<void>;
 };

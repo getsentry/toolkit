@@ -1,7 +1,6 @@
+import type { RetryRequest } from "@sentry/api/client";
 import { describe, expect, it, vi } from "vitest";
-import { withSentryRetry } from "./sentry-retry";
-
-const URL_ = "https://us.sentry.io/api/0/organizations/acme/issues/";
+import { sentryRetry } from "./sentry-retry";
 
 const policy = {
   maxRetries: 2,
@@ -10,9 +9,18 @@ const policy = {
   maxTotalDelayMs: 1000,
 };
 
+function request(method: string, idempotent = false): RetryRequest {
+  return {
+    method,
+    url: "https://us.sentry.io/api/0/organizations/acme/issues/",
+    idempotent,
+    signal: undefined,
+  };
+}
+
 function answering(...statuses: number[]) {
   return vi.fn(
-    async (_input: Request | string | URL, _init?: RequestInit) =>
+    async () =>
       new Response(null, {
         status: statuses.shift() ?? 200,
         headers: {
@@ -23,55 +31,61 @@ function answering(...statuses: number[]) {
   );
 }
 
-describe("withSentryRetry", () => {
+describe("sentryRetry", () => {
   it("replays a rate-limited write, since Sentry rejects it before the view runs", async () => {
-    const request = answering(429);
+    const attempt = answering(429);
 
-    const response = await withSentryRetry({ request }, { policy }).request(
-      URL_,
-      {
-        method: "POST",
-      },
-    );
+    const response = await sentryRetry({ policy })(attempt, request("POST"));
 
     expect(response.status).toBe(200);
-    expect(request).toHaveBeenCalledTimes(2);
+    expect(attempt).toHaveBeenCalledTimes(2);
   });
 
   it("does not replay a write after a 5xx", async () => {
-    const request = answering(503);
+    const attempt = answering(503);
 
-    const response = await withSentryRetry({ request }, { policy }).request(
-      URL_,
-      {
-        method: "PUT",
-      },
-    );
+    const response = await sentryRetry({ policy })(attempt, request("PUT"));
 
     expect(response.status).toBe(503);
-    expect(request).toHaveBeenCalledTimes(1);
+    expect(attempt).toHaveBeenCalledTimes(1);
   });
 
-  it("replays a write the request marks idempotent, and passes its options on", async () => {
-    const request = vi.fn(
-      async (
-        _input: Request | string | URL,
-        _init?: RequestInit,
-        _options?: { idempotent?: boolean },
-      ) =>
-        new Response(null, {
-          status: request.mock.calls.length === 1 ? 503 : 200,
-        }),
-    );
+  it("replays a write the transport marks idempotent", async () => {
+    const attempt = answering(503);
 
-    const response = await withSentryRetry({ request }, { policy }).request(
-      URL_,
-      { method: "PUT" },
-      { idempotent: true },
+    const response = await sentryRetry({ policy })(
+      attempt,
+      request("PUT", true),
     );
 
     expect(response.status).toBe(200);
-    expect(request).toHaveBeenCalledTimes(2);
-    expect(request.mock.calls[1]?.[2]).toEqual({ idempotent: true });
+    expect(attempt).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not retry an error the host calls permanent", async () => {
+    const error = new Error("certificate has expired");
+    const attempt = vi.fn(async (): Promise<Response> => {
+      throw error;
+    });
+
+    await expect(
+      sentryRetry({ policy, isRetryableError: (e) => e !== error })(
+        attempt,
+        request("GET"),
+      ),
+    ).rejects.toBe(error);
+    expect(attempt).toHaveBeenCalledTimes(1);
+  });
+
+  it("tells onRetry which request it retries", async () => {
+    const onRetry = vi.fn();
+    const get = request("GET");
+
+    await sentryRetry({ policy, onRetry })(answering(502), get);
+
+    expect(onRetry).toHaveBeenCalledWith(
+      expect.objectContaining({ attempt: 0, status: 502 }),
+      get,
+    );
   });
 });

@@ -501,8 +501,43 @@ describe("sentry cli upgrade", () => {
 
       expect(getOutput()).not.toContain("Using cached target");
       expect(errors).not.toEqual([]);
-      expect(requests).toHaveLength(1);
-      expect(requests[0]).toContain("getsentry/toolkit");
+      expect(requests).toHaveLength(2);
+      expect(requests[0]).toBe(
+        "https://release-registry.services.sentry.io/apps/sentry/latest",
+      );
+      expect(requests[1]).toContain("getsentry/toolkit");
+    });
+
+    test("uses the release registry when GitHub returns HTTP 403", async () => {
+      const requests: string[] = [];
+      mockFetch(async (url) => {
+        const request = extractInputUrl(url);
+        requests.push(request);
+        return new URL(request).hostname ===
+          "release-registry.services.sentry.io"
+          ? Response.json({ version: "1.0.0" })
+          : new Response("Forbidden", { status: 403 });
+      });
+      const { context, errors, getOutput, restore } = createMockContext({
+        homeDir: testDir,
+      });
+      restoreStderr = restore;
+
+      await run(
+        app,
+        ["cli", "upgrade", "--check", "--method", "curl"],
+        context,
+      );
+
+      expect(errors).toEqual([]);
+      expect(getOutput()).toContain("1.0.0");
+      // The changelog still comes from GitHub and is best-effort.
+      expect(requests[0]).toBe(
+        "https://release-registry.services.sentry.io/apps/sentry/latest",
+      );
+      expect(requests).not.toContain(
+        "https://api.github.com/repos/getsentry/toolkit/releases?per_page=100",
+      );
     });
   });
 

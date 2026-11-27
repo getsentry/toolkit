@@ -78,6 +78,7 @@ const store: CacheStore = {
     /* keep it for ttlMs; drop the old entry if this one is over your limits */
   },
   async delete(key) {},
+  // Optional: only a host that invalidates by URL prefix calls it.
   async deleteMatching(identity, urlPrefix) {
     /* remove identity's entries whose url starts with urlPrefix */
   },
