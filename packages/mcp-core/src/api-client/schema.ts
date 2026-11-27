@@ -1402,7 +1402,8 @@ export const EventsResponseSchema = z.object({
   data: z.array(z.unknown()),
   meta: z
     .object({
-      fields: z.record(z.string(), z.string()),
+      // Older self-hosted Sentry versions omit `meta.fields` from the events response.
+      fields: z.record(z.string(), z.string()).optional(),
     })
     .passthrough(),
 });

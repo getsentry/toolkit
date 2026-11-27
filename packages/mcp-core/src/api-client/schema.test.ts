@@ -12,6 +12,7 @@ import {
   AutofixRunSchema,
   AutofixRunStateSchema,
   ClientKeySchema,
+  ErrorsSearchResponseSchema,
   EventSchema,
   FlamegraphSchema,
   IssueSchema,
@@ -533,6 +534,21 @@ describe("EventSchema", () => {
 
     const result = EventSchema.parse(eventWithMalformedTag);
     expect(result.tags).toEqual([{ key: "level", value: "error" }]);
+  });
+});
+
+describe("ErrorsSearchResponseSchema", () => {
+  it("accepts responses without meta.fields from older Sentry versions", () => {
+    const row = {
+      issue: "PROJ-1",
+      "issue.id": 1,
+      project: "app-backend",
+      title: "TypeError: Cannot read properties of undefined (reading 'name')",
+      "count()": 3,
+      "last_seen()": "2026-01-01T00:00:00Z",
+    };
+    const result = ErrorsSearchResponseSchema.parse({ data: [row], meta: {} });
+    expect(result.data).toEqual([row]);
   });
 });
 
