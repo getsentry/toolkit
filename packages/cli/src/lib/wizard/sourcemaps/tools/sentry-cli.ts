@@ -62,6 +62,7 @@ export async function configureSentryCLI(
   await installPackage({
     packageName: "sentry@^4",
     alreadyInstalled: hasPackageInstalled("sentry", packageDotJson),
+    devDependency: true,
   });
 
   let validPath = false;
@@ -88,7 +89,9 @@ export async function configureSentryCLI(
     );
 
     if (path.isAbsolute(rawArtifactPath)) {
-      relativeArtifactPath = path.relative(process.cwd(), rawArtifactPath);
+      // The project root itself is "" relative to cwd; the CLI needs ".".
+      relativeArtifactPath =
+        path.relative(process.cwd(), rawArtifactPath) || ".";
     } else {
       relativeArtifactPath = rawArtifactPath;
     }
@@ -190,10 +193,26 @@ export async function setupNpmScriptInCI(): Promise<void> {
 export function getSentryCliNpmScript(
   relativePosixArtifactPath: string,
 ): string {
+  const artifactPath = quoteShellArg(relativePosixArtifactPath);
   // The script runs the `sentry` binary of the package installed above, so
   // it names `sentry` itself, not the program running the wizard.
   // oxlint-disable-next-line sentry-cli/no-hardcoded-sentry-command -- a package.json script, not a hint.
-  return `sentry sourcemap inject ${relativePosixArtifactPath} && sentry sourcemap upload ${relativePosixArtifactPath}`;
+  return `sentry sourcemap inject ${artifactPath} && sentry sourcemap upload ${artifactPath}`;
+}
+
+/** Characters that make a shell split or expand an unquoted argument. */
+const SHELL_SPECIAL_RE = /[\s"'`$&|;<>()*?[\]{}!#~\\]/;
+
+/**
+ * Double-quote `value` for the npm script shell when it has whitespace or
+ * shell metacharacters, escaping the characters that stay special inside
+ * double quotes. Plain paths such as `dist` stay as they are.
+ */
+function quoteShellArg(value: string): string {
+  if (!SHELL_SPECIAL_RE.test(value)) {
+    return value;
+  }
+  return `"${value.replace(/["\\$`]/g, "\\$&")}"`;
 }
 
 /** An INI section header line, such as `[defaults]`. */
