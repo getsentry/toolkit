@@ -239,6 +239,58 @@ describe("buildServer", () => {
 
       expect(seenTokens).toEqual(["expired-token", "fresh-token"]);
     });
+
+    const callRejectedTool = async (context: ServerContext) => {
+      const server = buildServer({
+        context,
+        tools: {
+          token_tool: createMockTool("token_tool", {
+            handler: async () => {
+              throw new ApiAuthenticationError("Unauthorized");
+            },
+          }),
+        },
+      });
+
+      const [clientTransport, serverTransport] =
+        InMemoryTransport.createLinkedPair();
+      const client = new Client({
+        name: "server-test-client",
+        version: "1.0.0",
+      });
+      await server.connect(serverTransport);
+      await client.connect(clientTransport);
+      try {
+        const result = await client.callTool({
+          name: "token_tool",
+          arguments: {},
+        });
+        const [content] = result.content as Array<{ text: string }>;
+        return content?.text;
+      } finally {
+        await client.close();
+        await server.close();
+      }
+    };
+
+    it("tells a client that sent its own token to replace it", async () => {
+      // Sentry-Bearer sessions have no grant to revoke and no refresh hook.
+      const text = await callRejectedTool(baseContext);
+
+      expect(text).toContain("**Access Token Rejected**");
+      expect(text).toContain("Replace the token");
+      expect(text).not.toContain("re-authorize");
+    });
+
+    it("asks an OAuth session to re-authorize", async () => {
+      const text = await callRejectedTool({
+        ...baseContext,
+        onUpstreamUnauthorized: () => {},
+      });
+
+      expect(text).toContain("**Authorization Expired**");
+      expect(text).toContain("Please re-authorize to continue.");
+    });
   });
 
   describe("credential routing", () => {

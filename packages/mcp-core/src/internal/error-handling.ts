@@ -208,8 +208,14 @@ export async function formatErrorForUser(
   error: unknown,
   options?: {
     transport?: TransportType | undefined;
-    /** Tool surface of the session, used to suggest reporting likely bugs. */
-    session?: Pick<ServerContext, "availableToolNames">;
+    /**
+     * Session the call ran in. Its tool surface decides whether to suggest
+     * reporting likely bugs; its credential hooks decide how to explain a 401.
+     */
+    session?: Pick<
+      ServerContext,
+      "availableToolNames" | "onUpstreamUnauthorized" | "credentialRouter"
+    >;
   },
 ): Promise<string> {
   // Only failures that point at a Sentry MCP bug suggest feedback; input,
@@ -328,6 +334,20 @@ export async function formatErrorForUser(
   // of routing through the generic Input Error template below. Deep check
   // handles tools that rewrap the original with `{ cause: apiError }`.
   if (isApiAuthenticationErrorDeep(error)) {
+    // With no hook to revoke a grant or refresh the token, the client sent
+    // its own token (e.g. Sentry-Bearer), so re-authorizing here can't help.
+    const session = options?.session;
+    if (
+      session &&
+      !session.onUpstreamUnauthorized &&
+      !session.credentialRouter
+    ) {
+      return [
+        "**Access Token Rejected**",
+        "Sentry rejected the access token this client sent (HTTP 401): it is expired, revoked, or invalid. This server cannot refresh a token the client supplies, so retrying will fail the same way.",
+        "Replace the token in the client's configuration (for example the `Sentry-Bearer` header) with a valid one, then reconnect.",
+      ].join("\n\n");
+    }
     return [
       "**Authorization Expired**",
       "Sentry rejected the stored access token for this session. Please re-authorize to continue.",

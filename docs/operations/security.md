@@ -144,7 +144,9 @@ The remote deployment intentionally separates trust boundaries:
 For direct `Sentry-Bearer` sessions, the client intentionally provides the raw
 Sentry token. The worker still enforces MCP tool exposure and passes URL
 constraints into tool context, but token lifetime, refresh, and revocation are
-owned by the caller and upstream Sentry API behavior.
+owned by the caller and upstream Sentry API behavior. When Sentry rejects that
+token, tool calls answer "Access Token Rejected" and tell the caller to replace
+it, not to re-authorize.
 
 ## OAuth Architecture
 
