@@ -65,11 +65,14 @@ function extractFromFunctionBody(
  *
  * @param orgSlug - Sentry organization slug
  * @param projectSlug - Sentry project slug
+ * @param configEnvName - The `defineConfig` callback parameter that holds
+ *   Vite's config env
  * @returns CallExpression node for the Sentry Vite plugin
  */
 function createSentryPluginCall(
   orgSlug: string,
   projectSlug: string,
+  configEnvName: string,
 ): t.CallExpression {
   const b = recast.types.builders;
   return b.callExpression(b.identifier("sentryReactRouter"), [
@@ -84,8 +87,76 @@ function createSentryPluginCall(
         ),
       ),
     ]),
-    b.identifier("config"),
+    b.identifier(configEnvName),
   ]);
+}
+
+/**
+ * A name for Vite's config env parameter that no identifier in the file uses
+ * yet, so it can't shadow or redeclare one of the project's own bindings.
+ */
+function getUnusedConfigEnvName(program: t.Program): string {
+  const used = new Set<string>();
+  recast.visit(program, {
+    visitIdentifier(path) {
+      used.add(path.node.name);
+      this.traverse(path);
+    },
+  });
+  const candidates = ["config", "configEnv", "viteConfigEnv"];
+  for (let i = 2; ; i++) {
+    const name = candidates.shift() ?? `viteConfigEnv${i}`;
+    if (!used.has(name)) {
+      return name;
+    }
+  }
+}
+
+/**
+ * Name of the `defineConfig` callback parameter that holds Vite's config
+ * env, so `sentryReactRouter` can receive it. An identifier parameter (also
+ * with a default) is used as is. A missing parameter is added under
+ * `unusedName`; a destructured one (`({ mode }) => ...`, also with a default)
+ * is renamed to `unusedName` and destructured again at the start of the body.
+ */
+function ensureConfigEnvParam(
+  fn: t.ArrowFunctionExpression | t.FunctionExpression,
+  unusedName: string,
+): string {
+  const b = recast.types.builders;
+  const [firstParam] = fn.params;
+  if (firstParam?.type === "Identifier") {
+    return firstParam.name;
+  }
+  if (
+    firstParam?.type === "AssignmentPattern" &&
+    firstParam.left.type === "Identifier"
+  ) {
+    return firstParam.left.name;
+  }
+  const configEnv = b.identifier(unusedName);
+  if (!firstParam) {
+    fn.params.push(configEnv);
+    return unusedName;
+  }
+
+  // `({ mode } = {}) =>` keeps its default on the renamed parameter.
+  const hasDefault = firstParam.type === "AssignmentPattern";
+  fn.params[0] = hasDefault
+    ? b.assignmentPattern(configEnv, firstParam.right)
+    : configEnv;
+  const destructure = b.variableDeclaration("const", [
+    b.variableDeclarator(
+      hasDefault ? firstParam.left : firstParam,
+      b.identifier(unusedName),
+    ),
+  ]);
+  if (fn.body.type === "BlockStatement") {
+    fn.body.body.unshift(destructure);
+  } else {
+    fn.body = b.blockStatement([destructure, b.returnStatement(fn.body)]);
+  }
+  return unusedName;
 }
 
 /** Adds @sentry/react-router to optimizeDeps.exclude to prevent 504 errors during dev. */
@@ -160,6 +231,7 @@ export function addReactRouterPluginToViteConfig(
   }
 
   let configObj: t.ObjectExpression | undefined;
+  let configEnvName = "config";
   let defineConfigCall: t.CallExpression | undefined;
 
   if (
@@ -179,8 +251,9 @@ export function addReactRouterPluginToViteConfig(
     if (arg.type === "ObjectExpression") {
       configObj = arg;
       // Convert to function form
+      configEnvName = getUnusedConfigEnvName(program);
       const arrowFunction = b.arrowFunctionExpression(
-        [b.identifier("config")],
+        [b.identifier(configEnvName)],
         configObj,
       );
       defineConfigCall.arguments[0] = arrowFunction;
@@ -190,6 +263,12 @@ export function addReactRouterPluginToViteConfig(
       arg.type === "FunctionExpression"
     ) {
       configObj = extractFromFunctionBody(arg.body);
+      if (configObj) {
+        configEnvName = ensureConfigEnvParam(
+          arg,
+          getUnusedConfigEnvName(program),
+        );
+      }
     }
   }
 
@@ -198,7 +277,11 @@ export function addReactRouterPluginToViteConfig(
   }
 
   const pluginsProp = findProperty(configObj, "plugins");
-  const sentryPluginCall = createSentryPluginCall(orgSlug, projectSlug);
+  const sentryPluginCall = createSentryPluginCall(
+    orgSlug,
+    projectSlug,
+    configEnvName,
+  );
 
   if (!pluginsProp) {
     configObj.properties.push(

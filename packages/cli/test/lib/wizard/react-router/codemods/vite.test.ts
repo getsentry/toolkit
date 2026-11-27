@@ -152,6 +152,63 @@ export default defineConfig(config => ({
       expect(writtenConfig).toMatch(/exclude.*@sentry\/react-router/s);
     });
 
+    it.each([
+      [
+        "a differently named parameter",
+        "defineConfig((env) => ({ plugins: [] }))",
+        /sentryReactRouter\(\{[\s\S]*\}, env\)/,
+      ],
+      [
+        "a destructured parameter",
+        "defineConfig(({ mode }) => ({ plugins: [], define: { mode } }))",
+        /\(?config\)? => \{\s*const \{\s*mode\s*\} = config;[\s\S]*\}, config\)/,
+      ],
+      [
+        "no parameter",
+        "defineConfig(function () { return { plugins: [] }; })",
+        /function\s*\(config\)[\s\S]*\}, config\)/,
+      ],
+      [
+        "a destructured parameter with a default",
+        "defineConfig(({ mode } = {}) => ({ plugins: [], define: { mode } }))",
+        /\(config = \{\}\) => \{\s*const \{\s*mode\s*\} = config;[\s\S]*\}, config\)/,
+      ],
+      [
+        "an identifier parameter with a default",
+        "defineConfig((env = {}) => ({ plugins: [] }))",
+        /\}, env\)/,
+      ],
+      [
+        "a file that already binds config",
+        "defineConfig(({ mode }) => { const config = { mode }; return { plugins: [], define: config }; })",
+        /\(?configEnv\)? => \{\s*const \{\s*mode\s*\} = configEnv;[\s\S]*\}, configEnv\)/,
+      ],
+      [
+        "an object config next to a module-level config",
+        "defineConfig({ plugins: [] }); const config = 1",
+        /\(?configEnv\)? => [\s\S]*\}, configEnv\)/,
+      ],
+    ])(
+      "passes the config env to sentryReactRouter for %s",
+      async (_name, defineConfig, expected) => {
+        const writtenFiles: Record<string, string> = {};
+        vi.mocked(existsSync).mockReturnValue(true);
+        vi.mocked(promises.readFile).mockResolvedValue(
+          `import { defineConfig } from 'vite';\n\nexport default ${defineConfig};`,
+        );
+        vi.mocked(promises.writeFile).mockImplementation(
+          (filePath, content) => {
+            writtenFiles[filePath as string] = content as string;
+            return Promise.resolve();
+          },
+        );
+
+        await instrumentViteConfig("my-org", "my-project");
+
+        expect(Object.values(writtenFiles)[0]).toMatch(expected);
+      },
+    );
+
     it("should add @sentry/react-router to existing optimizeDeps.exclude", async () => {
       const configWithExistingExclude = `import { defineConfig } from 'vite';
 

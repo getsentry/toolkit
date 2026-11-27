@@ -344,94 +344,128 @@ export function instrumentHandleError(
       ))
   ) {
     debug("createSentryHandleError is already used, skipping adding it again");
-  } else if (handleErrorFunctionExport) {
-    // Create the Sentry captureException call as an IfStatement
-    const sentryCall = recast.parse(`if (!request.signal.aborted) {
-  Sentry.captureException(error);
-}`).program.body[0];
-
-    // Safely insert the Sentry call at the beginning of the handleError function body
-    // @ts-expect-error - declaration works here because the AST is proxified by magicast
-    const declaration = handleErrorFunctionExport.declaration;
-    if (declaration?.body?.body && Array.isArray(declaration.body.body)) {
-      declaration.body.body.unshift(sentryCall);
-    } else {
+  } else {
+    const handleErrorFunction = getHandleErrorFunction(
+      handleErrorFunctionExport ?? handleErrorFunctionVariableDeclarationExport,
+    );
+    const bindings =
+      handleErrorFunction && bindErrorAndRequest(handleErrorFunction.params);
+    if (!handleErrorFunction || !bindings) {
       debug(
-        "Cannot safely access handleError function body, skipping instrumentation",
-      );
-    }
-  } else if (handleErrorFunctionVariableDeclarationExport) {
-    // Create the Sentry captureException call as an IfStatement
-    const sentryCall = recast.parse(`if (!request.signal.aborted) {
-  Sentry.captureException(error);
-}`).program.body[0];
-
-    // Safe access to existing handle error implementation with proper null checks
-    // We know this is ExportNamedDeclaration with VariableDeclaration from the earlier find
-    const exportDeclaration = handleErrorFunctionVariableDeclarationExport;
-    if (
-      exportDeclaration.type !== "ExportNamedDeclaration" ||
-      exportDeclaration.declaration?.type !== "VariableDeclaration" ||
-      exportDeclaration.declaration.declarations.length === 0
-    ) {
-      debug(
-        "Cannot safely access handleError variable declaration, skipping instrumentation",
+        "Cannot safely access handleError function body or parameters, skipping instrumentation",
       );
       return;
     }
 
-    const firstDeclaration = exportDeclaration.declaration.declarations[0];
-    const existingHandleErrorImplementation =
-      firstDeclaration?.type === "VariableDeclarator"
-        ? firstDeclaration.init
-        : undefined;
-    if (
-      (existingHandleErrorImplementation?.type !== "ArrowFunctionExpression" &&
-        existingHandleErrorImplementation?.type !== "FunctionExpression") ||
-      existingHandleErrorImplementation.body.type !== "BlockStatement"
-    ) {
-      debug(
-        "Cannot safely access handleError variable declarator init, skipping instrumentation",
-      );
-      return;
-    }
+    const sentryCall = recast.parse(`if (!${bindings.request}.signal.aborted) {
+  Sentry.captureException(${bindings.error});
+}`).program.body[0];
 
-    const existingParams = existingHandleErrorImplementation.params;
-    const existingBody = existingHandleErrorImplementation.body;
-
-    const requestParam = {
-      ...recast.types.builders.property(
-        "init",
-        recast.types.builders.identifier("request"), // key
-        recast.types.builders.identifier("request"), // value
-      ),
-      shorthand: true,
-    };
-    // Add error and {request} parameters to handleError function if not present
-    // When none of the parameters exist
-    if (existingParams.length === 0) {
-      existingParams.push(
-        recast.types.builders.identifier("error"),
-        recast.types.builders.objectPattern([requestParam]),
-      );
-      // When only error parameter exists
-    } else if (existingParams.length === 1) {
-      existingParams.push(recast.types.builders.objectPattern([requestParam]));
-      // When both parameters exist, but request is not destructured
-    } else {
-      const secondParam = existingParams[1];
-      if (
-        secondParam?.type === "ObjectPattern" &&
-        !secondParam.properties.some(
-          (prop) =>
-            "key" in prop && safeGetIdentifierName(prop.key) === "request",
-        )
-      ) {
-        secondParam.properties.push(requestParam);
-      }
-    }
-
-    // Add the Sentry call to the function body
-    existingBody.body.push(sentryCall);
+    // Capture first, so an early return or rethrow in the existing handler
+    // can't skip it.
+    handleErrorFunction.body.body.unshift(sentryCall);
   }
+}
+
+type BlockBodiedFunction = (
+  | t.FunctionDeclaration
+  | t.FunctionExpression
+  | t.ArrowFunctionExpression
+) & { body: t.BlockStatement };
+
+/**
+ * The function of an exported `handleError` declaration, when it is a
+ * function declaration or a function/arrow expression with a block body.
+ */
+function getHandleErrorFunction(
+  exportNode: t.Program["body"][number] | undefined,
+): BlockBodiedFunction | undefined {
+  if (exportNode?.type !== "ExportNamedDeclaration") {
+    return undefined;
+  }
+  const declaration = exportNode.declaration;
+  let fn: t.FunctionDeclaration | t.VariableDeclarator["init"] | undefined;
+  if (declaration?.type === "FunctionDeclaration") {
+    fn = declaration;
+  } else if (declaration?.type === "VariableDeclaration") {
+    const declarator = declaration.declarations[0];
+    fn =
+      declarator?.type === "VariableDeclarator" ? declarator.init : undefined;
+  }
+  if (
+    (fn?.type === "FunctionDeclaration" ||
+      fn?.type === "FunctionExpression" ||
+      fn?.type === "ArrowFunctionExpression") &&
+    fn.body.type === "BlockStatement"
+  ) {
+    return fn as BlockBodiedFunction;
+  }
+  return undefined;
+}
+
+/**
+ * Make sure `handleError(error, { request })` binds the error and the
+ * request, adding the missing parameters, and return the expressions that
+ * reach them. `undefined` when an existing parameter has a shape we can't
+ * extend safely.
+ */
+function bindErrorAndRequest(
+  params: t.Function["params"],
+): { error: string; request: string } | undefined {
+  const b = recast.types.builders;
+  const requestProperty = () => ({
+    ...b.property("init", b.identifier("request"), b.identifier("request")),
+    shorthand: true,
+  });
+
+  const [errorParam, contextParam] = params;
+  if (!errorParam) {
+    params.push(b.identifier("error"));
+  } else if (errorParam.type !== "Identifier") {
+    return undefined;
+  }
+  const error = errorParam?.type === "Identifier" ? errorParam.name : "error";
+
+  if (!contextParam) {
+    params.push(b.objectPattern([requestProperty()]));
+    return { error, request: "request" };
+  }
+  // `{ request } = {}` binds like `{ request }`.
+  const context =
+    contextParam.type === "AssignmentPattern"
+      ? contextParam.left
+      : contextParam;
+  if (context.type === "Identifier") {
+    return { error, request: `${context.name}.request` };
+  }
+  if (context.type !== "ObjectPattern") {
+    return undefined;
+  }
+  const existing = context.properties.find(
+    (prop) => "key" in prop && safeGetIdentifierName(prop.key) === "request",
+  );
+  if (!existing) {
+    // A property can't follow `...rest`, and `request` is already in it.
+    const rest = context.properties.find(
+      (prop) => prop.type === "RestElement" || prop.type === "RestProperty",
+    );
+    if (rest) {
+      return "argument" in rest && rest.argument.type === "Identifier"
+        ? { error, request: `${rest.argument.name}.request` }
+        : undefined;
+    }
+    context.properties.push(requestProperty());
+    return { error, request: "request" };
+  }
+  if (existing.type === "Property" || existing.type === "ObjectProperty") {
+    // `{ request = fallback }` binds `request` too.
+    const value =
+      existing.value.type === "AssignmentPattern"
+        ? existing.value.left
+        : existing.value;
+    if (value.type === "Identifier") {
+      return { error, request: value.name };
+    }
+  }
+  return undefined;
 }

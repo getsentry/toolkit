@@ -32,15 +32,49 @@ export async function createExamplePage(options: {
         exampleRoutePath,
       )}). Skipping creation of example route.`,
     );
-    return;
+  } else {
+    await promises.writeFile(
+      exampleRoutePath,
+      getSentryExamplePageContents(options),
+    );
+    clack.log.info(`Created sentry example page at ${exampleRoutePath}.`);
   }
 
-  await promises.writeFile(
-    exampleRoutePath,
-    getSentryExamplePageContents(options),
-  );
+  // The page's button fetches this route to raise a backend error.
+  const exampleApiPath = `${routesPath}/api.sentry-example-api.${
+    options.isTS ? "ts" : "js"
+  }`;
+  if (!existsSync(exampleApiPath)) {
+    await promises.writeFile(
+      exampleApiPath,
+      getSentryExampleApiContents(options),
+    );
+    clack.log.info(`Created sentry example API route at ${exampleApiPath}.`);
+  }
+}
 
-  clack.log.info(`Created sentry example page at ${exampleRoutePath}.`);
+export function getSentryExampleApiContents(options: { isTS?: boolean }) {
+  return `import * as Sentry from "@sentry/remix";
+
+class SentryExampleBackendError extends Error {
+  constructor(message${options.isTS ? ": string | undefined" : ""}) {
+    super(message);
+    this.name = "SentryExampleBackendError";
+  }
+}
+
+export async function loader() {
+  await Sentry.startSpan({
+    name: 'Example Backend Span',
+    op: 'test'
+  }, async () => {
+    // Simulate some backend work
+    await new Promise(resolve => setTimeout(resolve, 100));
+  });
+
+  throw new SentryExampleBackendError("This error is raised on the backend of the example page.");
+}
+`;
 }
 
 export function getSentryExamplePageContents(options: {

@@ -102,36 +102,9 @@ export async function instrumentRoot(rootFileName: string): Promise<void> {
 
   const exportsAst = rootRouteAst.exports.$ast as t.Program;
 
-  const namedExports = exportsAst.body.filter(
-    (node): node is t.ExportNamedDeclaration =>
-      node.type === "ExportNamedDeclaration",
-  );
-
-  let foundErrorBoundary = false as boolean;
+  const errorBoundaryName = findErrorBoundaryLocalName(exportsAst);
+  const foundErrorBoundary = errorBoundaryName !== undefined;
   const withSentryAlreadyUsed = isWithSentryAlreadyUsed(rootRouteAst);
-
-  for (const namedExport of namedExports) {
-    const declaration = namedExport.declaration;
-
-    if (!declaration) {
-      continue;
-    }
-
-    if (declaration.type === "FunctionDeclaration") {
-      if (declaration.id?.name === "ErrorBoundary") {
-        foundErrorBoundary = true;
-      }
-    } else if (declaration.type === "VariableDeclaration") {
-      const declarations = declaration.declarations;
-
-      for (const declaration of declarations) {
-        // @ts-expect-error - id should always have a name in this case
-        if (declaration.id?.name === "ErrorBoundary") {
-          foundErrorBoundary = true;
-        }
-      }
-    }
-  }
 
   if (!foundErrorBoundary) {
     rootRouteAst.imports.$add({
@@ -176,62 +149,27 @@ export async function instrumentRoot(rootFileName: string): Promise<void> {
       wrapAppWithSentry(rootRouteAst, rootFileName);
     }
 
-    recast.visit(rootRouteAst.$ast, {
-      visitExportNamedDeclaration(path) {
-        // Find ErrorBoundary export
-        if (path.value.declaration?.id?.name === "ErrorBoundary") {
-          const errorBoundaryExport = path.value.declaration;
-
-          let errorIdentifier = undefined as string | undefined;
-
-          // check if useRouteError is called
-          recast.visit(errorBoundaryExport, {
-            visitVariableDeclaration(path) {
-              const variableDeclaration = path.value.declarations[0];
-              const initializer = variableDeclaration.init;
-
-              if (
-                initializer.type === "CallExpression" &&
-                initializer.callee.name === "useRouteError"
-              ) {
-                errorIdentifier = variableDeclaration.id.name;
-              }
-
-              this.traverse(path);
-            },
-          });
-
-          // We don't have an errorIdentifier, which means useRouteError is not called / imported
-          // We need to add it and capture the error
-          if (!errorIdentifier) {
-            rootRouteAst.imports.$add({
-              from: "@remix-run/react",
-              imported: "useRouteError",
-              local: "useRouteError",
-            });
-
-            const useRouteErrorCall = recast.parse(
-              `const error = useRouteError();`,
-            ).program.body[0];
-
-            // Insert at the top of ErrorBoundary body
-            errorBoundaryExport.body.body.splice(0, 0, useRouteErrorCall);
-          }
-
-          const captureErrorCall = recast.parse(
-            `captureRemixErrorBoundaryError(error);`,
-          ).program.body[0];
-
-          // Insert just before the the fallback page is returned
-          errorBoundaryExport.body.body.splice(
-            errorBoundaryExport.body.body.length - 1,
-            0,
-            captureErrorCall,
-          );
-        }
-        this.traverse(path);
-      },
-    });
+    const errorBoundaryFunction = errorBoundaryName
+      ? findFunction(exportsAst, errorBoundaryName)
+      : undefined;
+    if (errorBoundaryFunction) {
+      const usesRouteErrorHook = captureErrorInBoundary(errorBoundaryFunction);
+      if (!usesRouteErrorHook) {
+        rootRouteAst.imports.$add({
+          from: "@remix-run/react",
+          imported: "useRouteError",
+          local: "useRouteError",
+        });
+      }
+    } else {
+      clack.log.warn(
+        `Couldn't find the ${chalk.cyan("ErrorBoundary")} function in ${chalk.cyan(
+          rootFileName,
+        )}. Call ${chalk.cyan(
+          "captureRemixErrorBoundaryError(useRouteError())",
+        )} in it to report errors to Sentry.`,
+      );
+    }
   } else if (!withSentryAlreadyUsed) {
     // Even if we have Sentry content but withSentry is not used, we should still wrap the app
     wrapAppWithSentry(rootRouteAst, rootFileName);
@@ -240,5 +178,164 @@ export async function instrumentRoot(rootFileName: string): Promise<void> {
   await writeFile(
     rootRouteAst.$ast,
     path.join(process.cwd(), "app", rootFileName),
+  );
+}
+
+type FunctionNode =
+  | t.FunctionDeclaration
+  | t.FunctionExpression
+  | t.ArrowFunctionExpression;
+
+/**
+ * Local name of the root route's `ErrorBoundary` export, for
+ * `export function ErrorBoundary`, `export const ErrorBoundary = ...` and
+ * `export { Boundary as ErrorBoundary }`.
+ */
+function findErrorBoundaryLocalName(program: t.Program): string | undefined {
+  for (const node of program.body) {
+    if (node.type !== "ExportNamedDeclaration") {
+      continue;
+    }
+    const declaration = node.declaration;
+    if (
+      declaration?.type === "FunctionDeclaration" &&
+      declaration.id?.name === "ErrorBoundary"
+    ) {
+      return "ErrorBoundary";
+    }
+    if (
+      declaration?.type === "VariableDeclaration" &&
+      declaration.declarations.some(
+        (d) =>
+          d.type === "VariableDeclarator" &&
+          d.id.type === "Identifier" &&
+          d.id.name === "ErrorBoundary",
+      )
+    ) {
+      return "ErrorBoundary";
+    }
+    if (!node.source) {
+      for (const specifier of node.specifiers ?? []) {
+        if (
+          specifier.type === "ExportSpecifier" &&
+          specifier.exported.name === "ErrorBoundary"
+        ) {
+          const local = specifier.local?.name;
+          return typeof local === "string" ? local : "ErrorBoundary";
+        }
+      }
+    }
+  }
+  return undefined;
+}
+
+/** The top-level function (declaration or `const` initializer) named `name`. */
+function findFunction(
+  program: t.Program,
+  name: string,
+): FunctionNode | undefined {
+  for (const node of program.body) {
+    const statement =
+      node.type === "ExportNamedDeclaration" ? node.declaration : node;
+    if (
+      statement?.type === "FunctionDeclaration" &&
+      statement.id?.name === name
+    ) {
+      return statement;
+    }
+    if (statement?.type === "VariableDeclaration") {
+      for (const declarator of statement.declarations) {
+        if (
+          declarator.type === "VariableDeclarator" &&
+          declarator.id.type === "Identifier" &&
+          declarator.id.name === name &&
+          (declarator.init?.type === "ArrowFunctionExpression" ||
+            declarator.init?.type === "FunctionExpression")
+        ) {
+          return declarator.init;
+        }
+      }
+    }
+  }
+  return undefined;
+}
+
+/**
+ * Report the boundary's error to Sentry right after it is read with
+ * `useRouteError()`, reading it first when the boundary doesn't. Returns
+ * whether the boundary already called `useRouteError`.
+ */
+function captureErrorInBoundary(fn: FunctionNode): boolean {
+  const b = recast.types.builders;
+  if (fn.body.type !== "BlockStatement") {
+    fn.body = b.blockStatement([b.returnStatement(fn.body)]);
+  }
+  const statements = fn.body.body;
+
+  const isRouteErrorRead = (
+    d: t.VariableDeclaration["declarations"][number],
+  ): d is t.VariableDeclarator =>
+    d.type === "VariableDeclarator" &&
+    d.id.type === "Identifier" &&
+    isUseRouteErrorCall(d.init);
+  const hookIndex = statements.findIndex(
+    (statement) =>
+      statement.type === "VariableDeclaration" &&
+      statement.declarations.some(isRouteErrorRead),
+  );
+  const hookStatement = statements[hookIndex];
+  const hookDeclarator =
+    hookStatement?.type === "VariableDeclaration"
+      ? hookStatement.declarations.find(isRouteErrorRead)
+      : undefined;
+  const errorName =
+    hookDeclarator?.id.type === "Identifier"
+      ? hookDeclarator.id.name
+      : undefined;
+
+  const capture = (name: string) =>
+    b.expressionStatement(
+      b.callExpression(b.identifier("captureRemixErrorBoundaryError"), [
+        b.identifier(name),
+      ]),
+    );
+
+  if (errorName) {
+    statements.splice(hookIndex + 1, 0, capture(errorName));
+    return true;
+  }
+  statements.unshift(
+    b.variableDeclaration("const", [
+      b.variableDeclarator(
+        b.identifier("error"),
+        b.callExpression(b.identifier("useRouteError"), []),
+      ),
+    ]),
+    capture("error"),
+  );
+  return false;
+}
+
+/**
+ * `useRouteError()`, also behind TypeScript wrappers such as
+ * `useRouteError() as Error` or `useRouteError()!`.
+ */
+function isUseRouteErrorCall(node: unknown): boolean {
+  let expression = node as { type?: string; expression?: unknown } | null;
+  while (
+    expression &&
+    (expression.type === "TSAsExpression" ||
+      expression.type === "TSSatisfiesExpression" ||
+      expression.type === "TSNonNullExpression" ||
+      expression.type === "TSTypeAssertion" ||
+      expression.type === "ParenthesizedExpression")
+  ) {
+    expression = expression.expression as typeof expression;
+  }
+  const call = expression as t.CallExpression | null;
+  return (
+    call?.type === "CallExpression" &&
+    call.callee.type === "Identifier" &&
+    call.callee.name === "useRouteError"
   );
 }
