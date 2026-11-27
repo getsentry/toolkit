@@ -32,15 +32,13 @@ export async function createExamplePage(options: {
         exampleRoutePath,
       )}). Skipping creation of example route.`,
     );
-    return;
+  } else {
+    await promises.writeFile(
+      exampleRoutePath,
+      getSentryExamplePageContents(options),
+    );
+    clack.log.info(`Created sentry example page at ${exampleRoutePath}.`);
   }
-
-  await promises.writeFile(
-    exampleRoutePath,
-    getSentryExamplePageContents(options),
-  );
-
-  clack.log.info(`Created sentry example page at ${exampleRoutePath}.`);
 
   // The page's button fetches this route to raise a backend error.
   const exampleApiPath = `${routesPath}/api.sentry-example-api.${

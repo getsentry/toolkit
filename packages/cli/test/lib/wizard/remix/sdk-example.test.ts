@@ -1,4 +1,11 @@
-import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -56,4 +63,23 @@ describe("createExamplePage (Remix)", () => {
       expect(api).toContain("throw new SentryExampleBackendError(");
     },
   );
+
+  it("adds the API route when the example page already exists", async () => {
+    mkdirSync(path.join(tmpDir, "app/routes"), { recursive: true });
+    const pagePath = path.join(tmpDir, "app/routes/sentry-example-page.tsx");
+    writeFileSync(pagePath, "// user's page");
+
+    await createExamplePage({
+      selfHosted: false,
+      orgSlug: "org",
+      projectId: "1",
+      url: "https://sentry.io/",
+      isTS: true,
+    });
+
+    expect(readFileSync(pagePath, "utf-8")).toBe("// user's page");
+    expect(
+      existsSync(path.join(tmpDir, "app/routes/api.sentry-example-api.ts")),
+    ).toBe(true);
+  });
 });
