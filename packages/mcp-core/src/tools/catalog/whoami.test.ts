@@ -156,6 +156,27 @@ describe("whoami", () => {
     `);
   });
 
+  it("explains the bare 400 Sentry returns for a token with no user", async () => {
+    mswServer.use(
+      http.get(
+        "https://sentry.io/api/0/auth/",
+        () => new HttpResponse(null, { status: 400 }),
+      ),
+    );
+
+    await expect(
+      whoami.handler(
+        {},
+        createTestContext({ constraints: {}, accessToken: "sntrys_token" }),
+      ),
+    ).rejects.toThrow(
+      expect.objectContaining({
+        name: "UserInputError",
+        message: expect.stringContaining("not tied to a user"),
+      }),
+    );
+  });
+
   it("lists every signed-in user with several logins", async () => {
     mswServer.use(
       http.get("https://sentry.io/api/0/auth/", ({ request }) => {
