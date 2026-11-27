@@ -1,12 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
+  info: vi.fn(),
   warn: vi.fn(),
   whichSync: vi.fn(),
 }));
 
 vi.mock("@clack/prompts", () => ({
-  log: { warn: mocks.warn },
+  log: { info: mocks.info, warn: mocks.warn },
 }));
 
 vi.mock("../../../../src/lib/which.js", () => ({
@@ -33,7 +34,19 @@ describe("checkInstalledCLI", () => {
     expect(mocks.warn).not.toHaveBeenCalled();
   });
 
-  it("prints v4 install instructions when sentry is out of reach", () => {
+  it("falls back to npx when only npx is in reach", () => {
+    mocks.whichSync.mockImplementation((command: string) =>
+      command === "npx" ? "/opt/homebrew/bin/npx" : null,
+    );
+
+    expect(checkInstalledCLI()).toBe("/opt/homebrew/bin/npx");
+    const message = String(mocks.info.mock.calls[0]?.[0]);
+    expect(message).toContain("`npx sentry`");
+    expect(message).toContain("brew install getsentry/tools/sentry");
+    expect(mocks.warn).not.toHaveBeenCalled();
+  });
+
+  it("prints v4 install instructions when neither sentry nor npx is in reach", () => {
     mocks.whichSync.mockReturnValue(null);
 
     expect(checkInstalledCLI("Custom warning.")).toBeUndefined();

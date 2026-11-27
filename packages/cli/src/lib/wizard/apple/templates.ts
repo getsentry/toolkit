@@ -2,7 +2,8 @@
  * The Xcode build phase that uploads debug symbols with `sentry debug-files
  * upload`. Xcode doesn't use the user's shell `PATH`, so the script adds the
  * standalone installer's and Homebrew's directories before looking for
- * `sentry`.
+ * `sentry`. Without an installed `sentry`, it runs the CLI from npm with
+ * `npx`, which downloads it on the first build.
  *
  * The upload passes no `--org` or `--project`: `sentry` reads them from
  * `SENTRY_ORG` and `SENTRY_PROJECT`, which the script exports because CI has
@@ -23,26 +24,31 @@ export SENTRY_ORG=${orgSlug}
 export SENTRY_PROJECT=${projectSlug}
 # The check skips unrelated sentry binaries, such as the self-hosted Sentry server's.
 if sentry debug-files --help >/dev/null 2>&1; then
-  if ! ERROR=$(sentry debug-files upload ${
-    uploadSource ? "--include-sources " : ""
-  }"$DWARF_DSYM_FOLDER_PATH" 2>&1 >/dev/null); then
-    echo "warning: sentry - $ERROR"
-  fi
+  set -- sentry
+elif command -v npx >/dev/null 2>&1; then
+  # No installed Sentry CLI: run it from npm, downloaded on the first build.
+  set -- npx --yes sentry
 else
   echo "warning: Sentry CLI not installed. Install it with: curl https://cli.sentry.dev/install -fsS | bash (see https://cli.sentry.dev/getting-started/)"
+  exit 0
+fi
+if ! ERROR=$("$@" debug-files upload ${
+    uploadSource ? "--include-sources " : ""
+  }"$DWARF_DSYM_FOLDER_PATH" 2>&1 >/dev/null); then
+  echo "warning: sentry - $ERROR"
 fi
 `;
 }
 
 /**
- * Whether `shellScript` is a Sentry debug-file upload build phase: one the
- * wizard generated with `sentry debug-files upload`, or an older one that
- * runs `sentry-cli`.
+ * Whether `shellScript` is a Sentry debug-file upload build phase: one that
+ * runs `debug-files upload` (the wizard's, which picks `sentry` or `npx
+ * sentry` first), or an older one that runs `sentry-cli`.
  */
 export function isSentryUploadScript(shellScript: string): boolean {
   return (
     shellScript.includes("sentry-cli") ||
-    /\bsentry\s+debug-files\s+upload\b/.test(shellScript)
+    /\bdebug-files\s+upload\b/.test(shellScript)
   );
 }
 

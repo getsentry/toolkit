@@ -28,11 +28,16 @@ export SENTRY_ORG=test-org
 export SENTRY_PROJECT=test-project
 # The check skips unrelated sentry binaries, such as the self-hosted Sentry server's.
 if sentry debug-files --help >/dev/null 2>&1; then
-  if ! ERROR=$(sentry debug-files upload --include-sources "$DWARF_DSYM_FOLDER_PATH" 2>&1 >/dev/null); then
-    echo "warning: sentry - $ERROR"
-  fi
+  set -- sentry
+elif command -v npx >/dev/null 2>&1; then
+  # No installed Sentry CLI: run it from npm, downloaded on the first build.
+  set -- npx --yes sentry
 else
   echo "warning: Sentry CLI not installed. Install it with: curl https://cli.sentry.dev/install -fsS | bash (see https://cli.sentry.dev/getting-started/)"
+  exit 0
+fi
+if ! ERROR=$("$@" debug-files upload --include-sources "$DWARF_DSYM_FOLDER_PATH" 2>&1 >/dev/null); then
+  echo "warning: sentry - $ERROR"
 fi
 `,
       },
@@ -46,11 +51,16 @@ export SENTRY_ORG=test-org
 export SENTRY_PROJECT=test-project
 # The check skips unrelated sentry binaries, such as the self-hosted Sentry server's.
 if sentry debug-files --help >/dev/null 2>&1; then
-  if ! ERROR=$(sentry debug-files upload "$DWARF_DSYM_FOLDER_PATH" 2>&1 >/dev/null); then
-    echo "warning: sentry - $ERROR"
-  fi
+  set -- sentry
+elif command -v npx >/dev/null 2>&1; then
+  # No installed Sentry CLI: run it from npm, downloaded on the first build.
+  set -- npx --yes sentry
 else
   echo "warning: Sentry CLI not installed. Install it with: curl https://cli.sentry.dev/install -fsS | bash (see https://cli.sentry.dev/getting-started/)"
+  exit 0
+fi
+if ! ERROR=$("$@" debug-files upload "$DWARF_DSYM_FOLDER_PATH" 2>&1 >/dev/null); then
+  echo "warning: sentry - $ERROR"
 fi
 `,
       },

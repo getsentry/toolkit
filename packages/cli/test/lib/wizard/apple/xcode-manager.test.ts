@@ -2363,7 +2363,7 @@ describe("XcodeManager", () => {
           expect(updatedPhase).toBeDefined();
           expect(
             (updatedPhase as PBXShellScriptBuildPhase | undefined)?.shellScript,
-          ).toContain("sentry debug-files upload");
+          ).toContain("debug-files upload");
         });
       });
 
@@ -2772,7 +2772,7 @@ describe("XcodeManager", () => {
             return (
               phase &&
               typeof phase !== "string" &&
-              phase.shellScript?.includes("sentry debug-files upload")
+              phase.shellScript?.includes("debug-files upload")
             );
           });
           expect(sentryPhase).toBeDefined();
@@ -2813,7 +2813,7 @@ describe("XcodeManager", () => {
             return (
               phase &&
               typeof phase !== "string" &&
-              phase.shellScript?.includes("sentry debug-files upload")
+              phase.shellScript?.includes("debug-files upload")
             );
           });
           expect(sentryPhase).toBeDefined();

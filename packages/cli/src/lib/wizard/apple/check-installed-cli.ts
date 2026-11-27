@@ -4,8 +4,10 @@
  * The user runs the wizard through `sentry`, so the CLI is installed, but an
  * Xcode build phase doesn't see the user's shell `PATH`: it searches the
  * system directories plus the ones the generated script adds (see
- * {@link xcodeSearchDirs}). When `sentry` is in none of them, the wizard
- * prints how to install it where Xcode finds it.
+ * {@link xcodeSearchDirs}). Without `sentry` there, the build phase runs it
+ * with `npx`, so the wizard only notes that builds would be faster with the
+ * CLI installed. With neither, it warns and prints how to install it where
+ * Xcode finds it.
  */
 
 import { homedir } from "node:os";
@@ -32,36 +34,48 @@ export function xcodeSearchDirs(home: string = homedir()): string[] {
   ];
 }
 
-/** How to install the Sentry CLI where an Xcode build phase finds it. */
-export const SENTRY_CLI_INSTALL_INSTRUCTIONS = [
-  "Install the Sentry CLI with one of:",
+/** Commands that install the Sentry CLI where an Xcode build phase finds it. */
+const SENTRY_CLI_INSTALL_COMMANDS = [
   "  brew install getsentry/tools/sentry",
   "  curl https://cli.sentry.dev/install -fsS | bash",
   "  npm install -g sentry",
-].join("\n");
+];
 
 /** Default warning when `sentry` is out of the build phase's reach. */
 const DEFAULT_WARNING =
   "Xcode build phases can't find the `sentry` CLI, so your builds won't upload debug symbols to Sentry.";
 
 /**
- * Whether an Xcode build phase finds `sentry`, warning with install
- * instructions when it doesn't.
+ * Whether an Xcode build phase finds `sentry`, or `npx` to run it with,
+ * warning with install instructions when it finds neither.
  *
  * @param warning - Explains what doesn't work without `sentry`.
- * @returns The path of the `sentry` the build phase would run, if any.
+ * @returns The path of the `sentry` or `npx` the build phase would run, if any.
  */
 export function checkInstalledCLI(
   warning: string = DEFAULT_WARNING,
 ): string | undefined {
   debug("Checking whether Xcode build phases can find sentry");
   const searchDirs = xcodeSearchDirs();
-  const cliPath =
-    whichSync("sentry", { PATH: searchDirs.join(path.delimiter) }) ?? undefined;
+  const searchPath = { PATH: searchDirs.join(path.delimiter) };
+  const cliPath = whichSync("sentry", searchPath) ?? undefined;
   Sentry.setTag("has-cli", cliPath !== undefined);
   if (cliPath) {
     debug(`Xcode build phases will run ${cliPath}`);
     return cliPath;
+  }
+
+  const npxPath = whichSync("npx", searchPath) ?? undefined;
+  if (npxPath) {
+    debug(`Xcode build phases will run the Sentry CLI with ${npxPath}`);
+    clack.log.info(
+      [
+        "Xcode build phases will run the Sentry CLI with `npx sentry`, which downloads it on the first build.",
+        "For faster builds, install it with one of:",
+        ...SENTRY_CLI_INSTALL_COMMANDS,
+      ].join("\n"),
+    );
+    return npxPath;
   }
 
   clack.log.warn(
@@ -70,7 +84,8 @@ export function checkInstalledCLI(
       "Xcode doesn't use your shell's PATH: it looks in",
       `${searchDirs.join(", ")}.`,
       "",
-      SENTRY_CLI_INSTALL_INSTRUCTIONS,
+      "Install the Sentry CLI with one of:",
+      ...SENTRY_CLI_INSTALL_COMMANDS,
     ].join("\n"),
   );
   return undefined;
