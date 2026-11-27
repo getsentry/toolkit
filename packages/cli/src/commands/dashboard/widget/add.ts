@@ -15,6 +15,7 @@ import {
   type DatasetCompletion,
   fieldParser,
   parseText,
+  seriesParser,
 } from "../../../lib/completion-target.js";
 import { ValidationError } from "../../../lib/errors.js";
 import { formatWidgetAdded } from "../../../lib/formatters/human.js";
@@ -54,6 +55,11 @@ import {
   type WidgetQueryFlags,
 } from "../resolve.js";
 import { DashboardWidgetChangeOutputSchema } from "../../../generated/output-schemas/dashboard.js";
+import {
+  applySeriesTransformations,
+  parseQuerySeries,
+  WIDGET_SERIES_HELP,
+} from "../transformations.js";
 
 /** What `--query`, `--sort`, and `--group-by` complete: a spans widget's by default. */
 const FIELD_COMPLETION: DatasetCompletion = {
@@ -117,12 +123,18 @@ export const addCommand = buildCommand({
       "  count          → count()         (bare name = no-arg aggregate)\n" +
       "  p95:span.duration → p95(span.duration)  (colon = function with arg)\n" +
       "  count()        → count()         (parens passthrough)\n\n" +
+      WIDGET_SERIES_HELP +
+      "\n\n" +
       "Sort shorthand (--sort flag):\n" +
       "  count          → count()         (ascending)\n" +
       "  -count         → -count()        (descending)\n\n" +
       "Layout flags (--col/-x, --row/-y, --width, --height) control widget position\n" +
       "and size in the 6-column dashboard grid. Omitted values use auto-layout.",
     examples: [
+      {
+        description: "Chart raw and smoothed counts side by side",
+        run: "dashboard widget add my-org/12345 \"Transformed counts\" --display line --query count --query 'smooth(fill(count, linear), ema, 7)'",
+      },
       {
         description: "Add a counter widget",
         run: "dashboard widget add 'My Dashboard' \"Error Count\" --display big_number --query count",
@@ -189,8 +201,9 @@ export const addCommand = buildCommand({
       },
       query: {
         kind: "parsed",
-        parse: aggregateShorthandParser(FIELD_COMPLETION),
-        brief: "Aggregate expression (e.g. count, p95:span.duration)",
+        parse: seriesParser(FIELD_COMPLETION),
+        brief:
+          "Series: an aggregate (count, p95:span.duration), optionally transformed (smooth(count, ema, 7))",
         variadic: true,
         optional: true,
       },
@@ -280,16 +293,18 @@ export const addCommand = buildCommand({
 
     const { orgSlug, dashboardId } = await target.resolved;
 
+    const series = parseQuerySeries(flags.query);
     let newWidget = buildWidgetFromFlags({
       title,
       display: flags.display,
       dataset,
-      query: flags.query,
+      query: series?.map((entry) => entry.aggregate),
       where: flags.where,
       groupBy: flags["group-by"],
       sort: flags.sort,
       limit: flags.limit,
     });
+    newWidget = applySeriesTransformations(newWidget, { series });
 
     // Validate layout mode before any network calls
     if (

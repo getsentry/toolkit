@@ -1,11 +1,15 @@
 import { listSavedAggregateTransformations } from "@sentry/toolkit-core/dashboard-transformations";
-import { text } from "@sentry/toolkit-core/markdown";
+import { inlineCode, text } from "@sentry/toolkit-core/markdown";
 import type { DashboardWidgetQuery } from "../../types/dashboard.js";
+import { formatSeriesExpression, seriesTargets } from "../dashboard-series.js";
 
 /**
  * Markdown bullets for every saved aggregate position, including empty
  * transformation lists. Reports unavailable settings when the server omits them.
  * Empty when every query reports no saved transformations.
+ *
+ * Transformed series of the first query, which `widget edit --transform`
+ * changes, also show how that flag writes them.
  */
 export function formatSavedTransformationLines(
   queries: readonly DashboardWidgetQuery[] | undefined,
@@ -20,9 +24,17 @@ export function formatSavedTransformationLines(
         `- Query ${queryIndex + 1} · unavailable (this Sentry server does not report transformations)`,
       ];
     }
-    return (transformations ?? []).map(
-      (entry) => `- Query ${queryIndex + 1} · ${text(entry.description)}`,
-    );
+    const targets = seriesTargets(query.aggregates ?? []);
+    return (transformations ?? []).map((entry) => {
+      const target = targets[entry.aggregateIndex];
+      const series =
+        queryIndex === 0 &&
+        target !== undefined &&
+        entry.transformations.length > 0
+          ? ` · ${inlineCode(formatSeriesExpression(target, entry.transformations))}`
+          : "";
+      return `- Query ${queryIndex + 1} · ${text(entry.description)}${series}`;
+    });
   });
 }
 

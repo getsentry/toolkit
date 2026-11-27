@@ -183,7 +183,7 @@ Add a widget to a dashboard
 **Flags:**
 - `-d, --display <value> - Display type (big_number, line, area, bar, table, stacked_area, top_n, text, categorical_bar, details, wheel, rage_and_dead_clicks, server_tree, agents_traces_table)`
 - `--dataset <value> - Widget dataset (default: spans). Accepts canonical names and API synonyms: spans, error-events/errors, tracemetrics/metrics, logs, issue`
-- `-q, --query <value>... - Aggregate expression (e.g. count, p95:span.duration)`
+- `-q, --query <value>... - Series: an aggregate (count, p95:span.duration), optionally transformed (smooth(count, ema, 7))`
 - `-w, --where <value> - Search conditions filter (e.g. is:unresolved)`
 - `-g, --group-by <value>... - Group-by column (repeatable)`
 - `-s, --sort <value> - Order by (prefix - for desc, e.g. -count)`
@@ -205,6 +205,9 @@ Add a widget to a dashboard
 **Examples:**
 
 ```bash
+# Chart raw and smoothed counts side by side
+sentry dashboard widget add my-org/12345 "Transformed counts" --display line --query count --query 'smooth(fill(count, linear), ema, 7)'
+
 # Add a counter widget
 sentry dashboard widget add 'My Dashboard' "Error Count" --display big_number --query count
 
@@ -246,7 +249,8 @@ Edit a widget in a dashboard
 - `--new-title <value> - New widget title`
 - `-d, --display <value> - Display type (big_number, line, area, bar, table, stacked_area, top_n, text, categorical_bar, details, wheel, rage_and_dead_clicks, server_tree, agents_traces_table)`
 - `--dataset <value> - Widget dataset (default: spans). Accepts canonical names and API synonyms: spans, error-events/errors, tracemetrics/metrics, logs, issue`
-- `-q, --query <value>... - Aggregate expression (e.g. count, p95:span.duration)`
+- `-q, --query <value>... - Series: an aggregate (count, p95:span.duration), optionally transformed (smooth(count, ema, 7)). Replaces the series list`
+- `--transform <value>... - Set one series' transformations, e.g. smooth(count, ema, 7); a bare aggregate clears them (repeatable)`
 - `-w, --where <value> - Search conditions filter (e.g. is:unresolved)`
 - `-g, --group-by <value>... - Group-by column (repeatable)`
 - `-s, --sort <value> - Order by (prefix - for desc, e.g. -count)`
@@ -267,6 +271,9 @@ Edit a widget in a dashboard
 **Examples:**
 
 ```bash
+# Smooth one series and clear another's transformations, keeping the rest
+sentry dashboard widget edit my-org/12345 --index 0 --transform 'smooth(fill(count, linear), ema, 7)' --transform p95:span.duration
+
 # Change a widget's display type
 sentry dashboard widget edit 12345 --title 'Error Rate' --display bar
 

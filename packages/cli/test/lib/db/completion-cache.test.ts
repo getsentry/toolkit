@@ -143,6 +143,46 @@ describe("completion seeding from API responses", () => {
     ]);
   });
 
+  test("dashboard details store each widget's series as --transform names them", async () => {
+    const widget = (
+      title: string,
+      aggregates: string[],
+      transformations = {},
+    ) => ({
+      title,
+      queries: [{ aggregates, transformations }],
+    });
+    await seedCompletions(
+      `${API}/dashboards/12/`,
+      json({
+        id: "12",
+        title: "Latency",
+        widgets: [
+          widget("Counts", ["count()", "count()"], {
+            "1": ["fill(linear)", "smooth(ema,7)"],
+          }),
+          widget("Duration", ["p95(span.duration)"]),
+        ],
+      }),
+    );
+    expect(
+      getCachedCompletionEntities("widget-series", ["acme"]).map(
+        ({ value, label }) => [value, label],
+      ),
+    ).toEqual([
+      ["12/0/count()#1", "Counts"],
+      ["12/0/smooth(fill(count()#2,linear),ema,7)", "Counts"],
+      ["12/1/p95(span.duration)", "Duration"],
+    ]);
+
+    // A later response replaces every series of that dashboard, even with none
+    await seedCompletions(
+      `${API}/dashboards/12/`,
+      json({ id: "12", title: "Latency", widgets: [widget("Duration", [])] }),
+    );
+    expect(getCachedCompletionEntities("widget-series", ["acme"])).toEqual([]);
+  });
+
   test("team lists are stored as slugs and as team:<id> owners", async () => {
     await seedCompletions(
       `${API}/teams/`,

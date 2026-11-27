@@ -51,6 +51,7 @@ import {
   type CompletionEntityKind,
   cacheCompletionEntities,
 } from "../db/completion-cache.js";
+import { formatSeriesExpression, seriesTargets } from "../dashboard-series.js";
 import { reportCliError } from "../error-reporting.js";
 import { logger } from "../logger.js";
 import { isAllDigits } from "../utils.js";
@@ -72,6 +73,12 @@ type CompletionSource = {
   query?: Readonly<Record<string, string>>;
   /** Entities in the parsed JSON body, in display order. */
   extract: (body: unknown) => CompletionEntity[];
+  /**
+   * Value prefix of the cached entities the body replaces, for a detail
+   * response that lists everything under one parent (a dashboard's
+   * widgets), so entries it no longer has are dropped.
+   */
+  replaces?: (body: unknown) => string | undefined;
 };
 
 /** Read a string property of an untyped JSON value. */
@@ -107,6 +114,43 @@ function dashboardEntities(body: unknown): CompletionEntity[] {
     return value && isAllDigits(value)
       ? [{ value, label: stringField(dashboard, "title") }]
       : [];
+  });
+}
+
+/**
+ * The series of each widget's first query, as `--transform` names them
+ * (`12/0/smooth(count()#2,ema,7)`), with the widget title. Sentry stores
+ * transformations by aggregate position.
+ */
+function widgetSeriesEntities(body: unknown): CompletionEntity[] {
+  const id = stringField(body, "id");
+  const widgets = objectField(body, "widgets");
+  if (!(id && Array.isArray(widgets))) {
+    return [];
+  }
+  return widgets.flatMap((widget, index) => {
+    const query = (
+      objectField(widget, "queries") as unknown[] | undefined
+    )?.[0];
+    const aggregates = objectField(query, "aggregates");
+    if (!Array.isArray(aggregates)) {
+      return [];
+    }
+    const names = aggregates.filter(
+      (aggregate): aggregate is string => typeof aggregate === "string",
+    );
+    const saved = objectField(query, "transformations");
+    const label = stringField(widget, "title");
+    return seriesTargets(names).map((target, position) => {
+      const steps = objectField(saved, String(position));
+      const transformations = Array.isArray(steps)
+        ? steps.filter((step): step is string => typeof step === "string")
+        : [];
+      return {
+        value: `${id}/${index}/${formatSeriesExpression(target, transformations)}`,
+        label,
+      };
+    });
   });
 }
 
@@ -335,6 +379,15 @@ const COMPLETION_SOURCES: readonly CompletionSource[] = [
     extract: dashboardEntities,
   },
   {
+    kind: "widget-series",
+    url: "/organizations/{organization_id_or_slug}/dashboards/{dashboard_id}/" satisfies GetOrganizationDashboardData["url"],
+    extract: widgetSeriesEntities,
+    replaces: (body) => {
+      const id = stringField(body, "id");
+      return id ? `${id}/` : undefined;
+    },
+  },
+  {
     kind: "environment",
     url: "/organizations/{organization_id_or_slug}/environments/" satisfies ListOrganizationEnvironmentsData["url"],
     extract: fieldEntities("name"),
@@ -530,7 +583,12 @@ async function seedFromBody(
       continue;
     }
     try {
-      cacheCompletionEntities(source.kind, orgSlug, source.extract(body));
+      cacheCompletionEntities(
+        source.kind,
+        orgSlug,
+        source.extract(body),
+        source.replaces?.(body),
+      );
     } catch (error) {
       log.debug(
         `Failed to cache ${source.kind} completions for '${orgSlug}'`,

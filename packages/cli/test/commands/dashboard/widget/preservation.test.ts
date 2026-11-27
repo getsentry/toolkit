@@ -247,8 +247,8 @@ test("describes saved transformations after an edit", async () => {
     .filter((line) => line.includes("Query"))
     .map((line) => line.trim());
   expect(lines).toEqual([
-    "• Query 1 · count() (aggregate 1): fill( linear ) → smooth( ema , 7 , 0.25 )",
-    "• Query 1 · count() (aggregate 2): smooth(asap,7) → fill(zero)",
+    "• Query 1 · count() (aggregate 1): fill( linear ) → smooth( ema , 7 , 0.25 ) · smooth(fill(count()#1,linear),ema,7,0.25)",
+    "• Query 1 · count() (aggregate 2): smooth(asap,7) → fill(zero) · fill(smooth(count()#2,asap,7),zero)",
     "• Query 1 · p95(span.duration) (aggregate 3): none",
     "• Query 2 · count() (aggregate 1): fill( linear )",
   ]);
