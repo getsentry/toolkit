@@ -21,16 +21,14 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { ApiError, ValidationError } from "../errors.js";
 import { resolveOrgRegion } from "../region.js";
-import { type ZipCompression, ZipWriter } from "../sourcemap/zip.js";
+import { ZipWriter } from "../sourcemap/zip.js";
 import {
   assembleArtifactBundle,
   type ChunkInfo,
   type ChunkServerOptions,
   getChunkUploadOptions,
   hashChunks,
-  pickUploadEncoding,
   pollAssembly,
-  type UploadEncoding,
   uploadMissingChunks,
 } from "./chunk-upload.js";
 
@@ -150,17 +148,17 @@ function urlToBundlePath(url: string): string {
 /**
  * Build an artifact bundle ZIP at the given path.
  *
- * Streams entries to disk via {@link ZipWriter} — only one file's
- * compressed data is held in memory at a time.
+ * Streams DEFLATE entries to disk via {@link ZipWriter.addEntries},
+ * which compresses several files at once and bounds how many are held
+ * in memory.
+ *
+ * Entries are always DEFLATE'd. Sentry stores the assembled ZIP as
+ * uploaded, so compression inside the ZIP is the only compression the
+ * bundle keeps at rest; a wire codec is decoded before storage.
  *
  * @param outputPath - Where to write the ZIP file
  * @param files - Source files and sourcemaps to include
  * @param options.org / project / release - Bundle metadata
- * @param options.compression - ZIP entry compression. Use `"stored"`
- *   when the wire layer will compress the chunks (zstd or gzip);
- *   compressing twice wastes CPU and barely helps wire size.
- *   Defaults to `"deflate"` so callers without a wire codec still
- *   ship reasonably-sized payloads.
  */
 export async function buildArtifactBundle(
   outputPath: string,
@@ -170,7 +168,6 @@ export async function buildArtifactBundle(
     project: string;
     release?: string | undefined;
     dist?: string | undefined;
-    compression?: ZipCompression | undefined;
   },
 ): Promise<void> {
   // Build manifest.json
@@ -209,18 +206,16 @@ export async function buildArtifactBundle(
   });
 
   // Stream ZIP entries to disk
-  const zip = await ZipWriter.create(outputPath, {
-    compression: options.compression,
-  });
+  const zip = await ZipWriter.create(outputPath);
   try {
     await zip.addEntry("manifest.json", Buffer.from(manifest, "utf-8"));
-
-    for (const file of files) {
-      const bundlePath = urlToBundlePath(file.url);
-      // Prefer in-memory content (inline sourcemaps); otherwise read from disk.
-      const content = file.content ?? (await readFile(file.path));
-      await zip.addEntry(bundlePath, content);
-    }
+    await zip.addEntries(
+      files.map((file) => ({
+        name: urlToBundlePath(file.url),
+        // Prefer in-memory content (inline sourcemaps); otherwise read from disk.
+        read: async () => file.content ?? (await readFile(file.path)),
+      })),
+    );
 
     await zip.finalize();
   } catch (error) {
@@ -245,15 +240,6 @@ export async function uploadSourcemaps(options: UploadOptions): Promise<void> {
   // Step 1: Get chunk upload configuration
   const serverOptions = await getChunkUploadOptions(org);
 
-  // Pick the wire codec up-front so the ZIP can skip its own
-  // compression pass when the wire layer will handle it. Re-compressing
-  // an already-DEFLATE'd ZIP with zstd/gzip burns CPU for ~0% wire
-  // savings; STORED + zstd saves both CPU and a few percent wire bytes.
-  // Without a wire codec (kill-switch / unsupported codecs) we keep
-  // DEFLATE so the ZIP itself stays small.
-  const encoding = pickUploadEncoding(serverOptions.compression);
-  const zipCompression: ZipCompression = encoding ? "stored" : "deflate";
-
   // Step 2: Build artifact bundle ZIP to a temp file, then upload
   const tmpZipPath = join(tmpdir(), `sentry-artifact-bundle-${Date.now()}.zip`);
   try {
@@ -262,7 +248,6 @@ export async function uploadSourcemaps(options: UploadOptions): Promise<void> {
       project,
       release,
       dist,
-      compression: zipCompression,
     });
     await uploadArtifactBundle({
       tmpZipPath,
@@ -271,7 +256,6 @@ export async function uploadSourcemaps(options: UploadOptions): Promise<void> {
       release,
       dist,
       serverOptions,
-      encoding,
       wait: wait ?? false,
       maxWaitMs: maxWaitMs ?? DEFAULT_UPLOAD_MAX_WAIT_MS,
     });
@@ -298,7 +282,6 @@ async function uploadArtifactBundle(opts: {
   release: string | undefined;
   dist: string | undefined;
   serverOptions: ChunkServerOptions;
-  encoding: UploadEncoding | undefined;
   wait: boolean;
   maxWaitMs: number;
 }): Promise<void> {
@@ -309,7 +292,6 @@ async function uploadArtifactBundle(opts: {
     release,
     dist,
     serverOptions,
-    encoding,
     wait,
     maxWaitMs,
   } = opts;
@@ -360,7 +342,9 @@ async function uploadArtifactBundle(opts: {
     missingChecksums: new Set(firstAssemble.missingChunks ?? []),
     tmpZipPath,
     serverOptions,
-    encoding,
+    // No wire codec: the ZIP entries are already DEFLATE'd, so zstd or
+    // gzip on top costs CPU for almost no wire savings.
+    encoding: undefined,
     regionUrl,
   });
 
