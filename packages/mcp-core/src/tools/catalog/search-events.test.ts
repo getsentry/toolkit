@@ -3984,6 +3984,71 @@ describe("search_events", () => {
     ]);
   });
 
+  it("says when the agent replaces the caller's explicit fields", async () => {
+    mockGenerateText.mockResolvedValueOnce(
+      mockAIResponse(
+        "metrics",
+        "metric.name:checkout.attempt",
+        ["user.geo.region", "count(value)"],
+        undefined,
+        "-count(value)",
+      ),
+    );
+    mswServer.use(
+      http.get("https://sentry.io/api/0/organizations/test-org/events/", () =>
+        HttpResponse.json({
+          data: [{ "user.geo.region": "Europe", "count(value)": 3 }],
+        }),
+      ),
+    );
+    const params = {
+      organizationSlug: "test-org",
+      regionUrl: null,
+      projectSlug: null,
+      dataset: "metrics" as const,
+      query: "checkout attempts by region",
+      sort: null,
+      period: "24h",
+      limit: 10,
+      includeExplanation: false,
+    };
+    const context = {
+      constraints: {
+        organizationSlug: null,
+        regionUrl: null,
+        projectSlug: null,
+      },
+      accessToken: "test-token",
+      userId: "1",
+    };
+
+    const changed = await searchEvents.handler(
+      { ...params, fields: ["count()"] },
+      context,
+    );
+
+    expect(changed).toContain(
+      "**Note:** The query translator changed the requested fields `count()` to `user.geo.region`, `count(value)`.",
+    );
+
+    mockGenerateText.mockResolvedValueOnce(
+      mockAIResponse(
+        "metrics",
+        "metric.name:checkout.attempt",
+        ["count(value)", "user.geo.region"],
+        undefined,
+        "-count(value)",
+      ),
+    );
+
+    const kept = await searchEvents.handler(
+      { ...params, fields: ["user.geo.region", "count(value)"] },
+      context,
+    );
+
+    expect(kept).not.toContain("changed the requested fields");
+  });
+
   it("merges agent environment into the events search query for non-replay datasets", async () => {
     let eventsRequestUrl: URL | undefined;
     let validationRequestUrl: URL | undefined;
