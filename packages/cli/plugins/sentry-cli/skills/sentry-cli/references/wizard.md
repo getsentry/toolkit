@@ -23,6 +23,8 @@ Set up the Sentry SDK in your project interactively
 
 **Flags:**
 - `-f, --force - Change a project with uncommitted changes without asking, and install the SDK even when the package manager's checks fail`
+- `--app-target <value> - Xcode app target that SnapshotPreviews uses, instead of picking one (appleSnapshots only)`
+- `--hosted-test-target <value> - Hosted XCTest target that renders the snapshots, instead of picking one (appleSnapshots only)`
 
 **Examples:**
 

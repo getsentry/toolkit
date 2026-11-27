@@ -17,6 +17,10 @@ takes an optional `<org>/<project>` first, then an optional integration:
   like an integration, write `my-org/nextjs`.
 - `-f`/`--force` changes a project with uncommitted changes without asking,
   and installs the SDK even when the package manager's checks fail.
+- For `appleSnapshots`, `--app-target` and `--hosted-test-target` name the
+  Xcode app target and hosted XCTest target to use instead of picking them.
+  Without a terminal, the wizard uses the only target or stops with the list,
+  so pass these when the project has several.
 
 It logs in with your `sentry auth login` account, or starts a login when you
 have none, on the Sentry instance the rest of the CLI uses: `SENTRY_URL`, or
@@ -35,7 +39,7 @@ changes nothing.
 ## Coming from `@sentry/wizard`
 
 `sentry wizard` takes the same integration ids as `npx @sentry/wizard -i`,
-but not its flags or `SENTRY_WIZARD_*` environment variables:
+but not most of its flags or its `SENTRY_WIZARD_*` environment variables:
 
 | `@sentry/wizard`                       | `sentry wizard`                                  |
 | -------------------------------------- | ------------------------------------------------ |
@@ -46,6 +50,9 @@ but not its flags or `SENTRY_WIZARD_*` environment variables:
 | `--force-install`, `--ignore-git-changes` | `-f`/`--force`                                |
 | `--disable-telemetry`                  | `SENTRY_CLI_NO_TELEMETRY=1` or `DO_NOT_TRACK=1`  |
 | `--debug`                              | `--verbose` or `--log-level debug`               |
+| `--app-target`, `--hosted-test-target` | The same flags                                   |
+| `--non-interactive`                    | Automatic when stdin is not a terminal           |
+| `--xcode-project-dir`                  | Run the wizard in that directory                 |
 | `--signup`, `--promo-code`, `--coming-from` | Sign up at https://sentry.io/signup/ first  |
 
 The Cordova and Electron wizards were retired. Follow their setup guides in
