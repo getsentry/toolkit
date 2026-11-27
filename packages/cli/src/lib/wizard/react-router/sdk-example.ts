@@ -84,7 +84,13 @@ export async function createExamplePage(options: {
         }`,
       );
       clack.log.info(
-        'Please manually add these routes to your routes.ts file: route("/sentry-example-page", "routes/sentry-example-page.tsx") and route("/api/sentry-example-api", "routes/api.sentry-example-api.ts")',
+        `Please manually add these routes to your ${path.basename(
+          routesConfigPath,
+        )} file: route("/sentry-example-page", "routes/sentry-example-page.${
+          options.isTS ? "tsx" : "jsx"
+        }") and route("/api/sentry-example-api", "routes/api.sentry-example-api.${
+          options.isTS ? "ts" : "js"
+        }")`,
       );
     }
   }

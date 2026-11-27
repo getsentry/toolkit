@@ -35,6 +35,7 @@ import {
   getSentryReactRouterVitePluginImportPath,
 } from "./sdk-version.js";
 import { debug } from "../utils/debug.js";
+import { getReactRouterConfigFilename } from "./codemods/react-router-config.js";
 import { createExamplePage } from "./sdk-example.js";
 import {
   isReactRouterV7,
@@ -444,10 +445,11 @@ Please create your entry files manually using React Router v7 commands.`);
         `Could not configure React Router build hook automatically.`,
       );
 
+      const configFilename = getReactRouterConfigFilename(typeScriptDetected);
       await showCopyPasteInstructions({
-        filename: `react-router.config.${typeScriptDetected ? "ts" : "js"}`,
+        filename: configFilename,
         codeSnippet: getManualReactRouterConfigContent(
-          typeScriptDetected,
+          configFilename.endsWith(".ts"),
           vitePluginImportPath,
         ),
         hint: "This enables automatic sourcemap uploads at the end of the build process",

@@ -20,7 +20,10 @@ import { instrumentServerEntry } from "./codemods/server-entry.js";
 import { abortIfCancelled, getPackageDotJson } from "../utils/clack/index.js";
 import { instrumentClientEntry } from "./codemods/client.entry.js";
 import { instrumentViteConfig } from "./codemods/vite.js";
-import { instrumentReactRouterConfig } from "./codemods/react-router-config.js";
+import {
+  getReactRouterConfigFilename,
+  instrumentReactRouterConfig,
+} from "./codemods/react-router-config.js";
 
 const REACT_ROUTER_REVEAL_COMMAND = "npx react-router reveal";
 const INSTRUMENTATION_FILE = "instrument.server.mjs";
@@ -387,7 +390,7 @@ export async function configureReactRouterConfig(
   isTS: boolean,
   vitePluginImportPath: string,
 ): Promise<void> {
-  const configFilename = `react-router.config.${isTS ? "ts" : "js"}`;
+  const configFilename = getReactRouterConfigFilename(isTS);
   const configPath = path.join(process.cwd(), configFilename);
   const filename = chalk.cyan(configFilename);
 
