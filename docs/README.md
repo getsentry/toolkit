@@ -37,7 +37,9 @@ shared primitives used by both products. `packages/logger/` is the structured
 logger the CLI uses, published to npm as `@sentry/logger`; see its
 [README](../packages/logger/README.md). `packages/http/` is the HTTP response
 cache, body codec, and retry logic, published to npm as `@sentry/http`; see
-its [README](../packages/http/README.md).
+its [README](../packages/http/README.md). `packages/wizard/` is the
+deprecated `@sentry/wizard` package, which only forwards to `sentry wizard`;
+see its [README](../packages/wizard/README.md).
 
 ## Ownership
 
