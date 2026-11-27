@@ -179,7 +179,7 @@ export async function injectDirectory(
       // Match the real run's ID precedence and runtime registration check.
       const jsBytes = await readFile(jsPath);
       const js = jsBytes.toString("utf-8");
-      const existing = readJsDebugId(js) ?? (await readMapDebugId(map));
+      const existing = await readPairDebugId(js, map);
       results.push({
         jsPath,
         map,
@@ -214,6 +214,45 @@ export async function injectDirectory(
     }
   }
   return results;
+}
+
+/**
+ * Read the debug IDs that discovered pairs already carry, without changing
+ * any file. Used by `sourcemap upload --no-rewrite`, which uploads the files
+ * as-is but must still send the IDs a bundler or an earlier `inject` wrote.
+ *
+ * @param pairs - Pairs from {@link discoverFilePairs}
+ * @returns One result per pair, with `injected: false` and `debugId` set to
+ *   the existing ID, or `""` when the pair carries none
+ */
+export async function readExistingDebugIds(
+  pairs: FilePair[],
+): Promise<InjectResult[]> {
+  const results: InjectResult[] = [];
+  for (const { jsPath, map } of pairs) {
+    const js = await readFile(jsPath, "utf-8");
+    results.push({
+      jsPath,
+      map,
+      mapPath: map.kind === "external" ? map.mapPath : undefined,
+      injected: false,
+      debugId: (await readPairDebugId(js, map)) ?? "",
+    });
+  }
+  return results;
+}
+
+/**
+ * Read the debug ID a pair already carries: the JS `//# debugId=` comment,
+ * else the sourcemap's `debug_id` / `debugId`. The same precedence
+ * {@link injectDebugId} uses, so a dry run and `--no-rewrite` report the ID
+ * a real injection would keep.
+ */
+async function readPairDebugId(
+  js: string,
+  map: MapSource,
+): Promise<string | undefined> {
+  return readJsDebugId(js) ?? (await readMapDebugId(map));
 }
 
 /**

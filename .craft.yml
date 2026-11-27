@@ -133,11 +133,15 @@ workspaces:
               assert_match version.to_s, shell_output("#{bin}/sentry --version").chomp
             end
           end
-  # No preReleaseCommand: Craft bumps package.json through the npm target.
-  # A package released on its own. Its tarball comes from the commit-SHA
-  # artifact that merge-jobs.yml uploads, which holds every such package; the
-  # name filters pick this workspace's own.
-  packages/logger: &standalone-package
+  # Standalone npm libraries. Each is released on its own, with
+  # `<name>@<version>` tags and `release/<name>/<version>` branches, and
+  # `merge-jobs.yml` packs every one of them. To publish another package
+  # from `packages/`, add its directory name here and to release.yml's
+  # `product` options. No preReleaseCommand:
+  # Craft bumps package.json through the npm target. `wizard` is the
+  # deprecated @sentry/wizard forwarder; it starts at 10.0.0 so npm's `latest`
+  # moves forward from 9.x, and CLI releases don't bump or publish it.
+  packages/{http,logger,wizard}:
     changelog:
       policy: auto
     releaseBranchPrefix: "release/{{workspaceName}}"
@@ -147,7 +151,3 @@ workspaces:
         includeNames: '/^{{packageSimpleName}}-\d.*\.tgz$/'
       - name: npm
         includeNames: '/^{{packageSimpleName}}-\d.*\.tgz$/'
-  # @sentry/wizard, the deprecated forwarder to `sentry wizard`. It has its own
-  # versions, from 10.0.0: npm's `latest` is the 9.x wizard, and the CLI's
-  # version would move it backwards. CLI releases don't bump or publish it.
-  packages/wizard: *standalone-package

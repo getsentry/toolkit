@@ -24,34 +24,32 @@ function processMessages(
   // Only the very last text part of the very last message should be streaming
   const lastMessageIndex = messages.length - 1;
 
-  messages.forEach((message, messageIndex) => {
+  for (const [messageIndex, message] of messages.entries()) {
     const isLastMessage = messageIndex === lastMessageIndex;
 
     // Handle messages with parts array
     if (message.parts.length > 0) {
       const lastPartIndex = message.parts.length - 1;
 
-      message.parts.forEach(
-        (part: UIMessage["parts"][number], partIndex: number) => {
-          const isLastPartOfLastMessage =
-            isLastMessage && partIndex === lastPartIndex;
+      for (const [partIndex, part] of message.parts.entries()) {
+        const isLastPartOfLastMessage =
+          isLastMessage && partIndex === lastPartIndex;
 
-          allParts.push({
-            part,
-            messageId: message.id,
-            messageRole: message.role,
-            partIndex,
-            // Stream if it's AI response OR local streaming simulation
-            isStreaming:
-              (isLastPartOfLastMessage &&
-                isChatLoading &&
-                part.type === "text") ||
-              (part.type === "text" && !!isMessageStreaming?.(message.id)),
-          });
-        },
-      );
+        allParts.push({
+          part,
+          messageId: message.id,
+          messageRole: message.role,
+          partIndex,
+          // Stream if it's AI response OR local streaming simulation
+          isStreaming:
+            (isLastPartOfLastMessage &&
+              isChatLoading &&
+              part.type === "text") ||
+            (part.type === "text" && !!isMessageStreaming?.(message.id)),
+        });
+      }
     }
-  });
+  }
 
   return allParts;
 }

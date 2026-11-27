@@ -135,10 +135,14 @@ function resolveCatalogVersion(
     return undefined;
   }
 
-  const catalog =
-    catalogName === "" ? workspace.catalog : workspace.catalogs?.[catalogName];
-
-  return catalog?.[packageName];
+  // pnpm treats `catalog:` and `catalogs.default` as the same catalog.
+  if (catalogName === "" || catalogName === "default") {
+    return (
+      workspace.catalog?.[packageName] ??
+      workspace.catalogs?.["default"]?.[packageName]
+    );
+  }
+  return workspace.catalogs?.[catalogName]?.[packageName];
 }
 
 /**

@@ -179,7 +179,9 @@ describe("games leaderboard route", () => {
       "kk",
       "ll",
     ];
-    names.forEach((n, i) => rows.push([`${n}-${n}-100${i % 10}`, 300 - i]));
+    for (const [i, n] of names.entries()) {
+      rows.push([`${n}-${n}-100${i % 10}`, 300 - i]);
+    }
     fetchMock.mockResolvedValue(jsonResponse(upstreamBody(rows)));
 
     const res = await app.request(PATH, REQ, makeEnv());

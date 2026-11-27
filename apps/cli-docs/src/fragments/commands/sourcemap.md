@@ -8,7 +8,8 @@ Existing debug IDs from JavaScript comments or sourcemaps are preserved. If a
 bundler emits an ID without Sentry's runtime registration snippet, `inject`
 adds the snippet and adjusts the sourcemap mappings. Bundles that already
 register their ID are left unchanged. `sourcemap upload` applies the same
-injection by default, unless `--no-rewrite` is passed.
+injection by default, unless `--no-rewrite` is passed. With `--no-rewrite`,
+files upload unchanged, along with any debug IDs they already carry.
 Binary bundles with an existing debug ID in their sourcemap are left unchanged.
 
 ## Resolving sourcemap linkage
@@ -38,3 +39,11 @@ common cause is a bundler that isn't emitting `.map` files:
 For CI steps that may run against legitimately-empty directories (e.g.,
 library-only repos, conditional release skips), pass `--allow-empty` to
 suppress the error.
+
+Sentry processes an upload after it accepts it, and processing can still
+fail. In CI, `sentry sourcemap upload` waits up to five minutes for
+processing to finish and exits with an error if it fails or times out.
+Outside CI it exits once Sentry accepts the upload. Pass `--wait` or
+`--no-wait` to choose, and `--wait=<seconds>` to change the limit
+(`--wait=0` waits with no limit). Attach the value with `=`: `--wait 600`
+reads `600` as the directory.

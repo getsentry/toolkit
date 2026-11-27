@@ -178,15 +178,15 @@ export function buildFlamegraphAnalysis(
   // both overlap across nested frames, so they cannot be summed.
   const totalNs = sumOf(mainProfile?.sample_durations_ns);
   let userCodeNs = 0;
-  mainProfile?.samples.forEach((stack, index) => {
+  for (const [index, stack] of (mainProfile?.samples ?? []).entries()) {
     const leafIndex = stack.at(-1);
     if (
       leafIndex !== undefined &&
       flamegraph.shared.frames[leafIndex]?.is_application
     ) {
-      userCodeNs += mainProfile.sample_durations_ns[index] ?? 0;
+      userCodeNs += mainProfile?.sample_durations_ns[index] ?? 0;
     }
-  });
+  }
 
   const outputFrames: FlamegraphAnalysis["frames"] = [];
   const outputIndexBySource = new Map<number, number>();

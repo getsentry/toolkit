@@ -3,15 +3,16 @@ name: Release
 on:
   workflow_dispatch:
     inputs:
-      # Each product is the `.craft.yml` workspace `packages/<product>`. The
-      # `cli` release also publishes @sentry/mcp-server at the same version.
       product:
-        description: Product to release
+        description: Package to release, by its directory under packages/
         required: true
         type: choice
         default: cli
+        # One per .craft.yml workspace; scripts/workflow-policy.test.mjs
+        # checks that they match.
         options:
           - cli
+          - http
           - logger
           - wizard
       bump:
@@ -69,6 +70,8 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ steps.token.outputs.token }}
         with:
+          # The `cli` release also publishes @sentry/mcp-server at the same
+          # version.
           workspace: packages/${{ inputs.product }}
           # An exact version wins over the bump. Craft bumps from the
           # workspace's latest release tag, or from its package.json version
