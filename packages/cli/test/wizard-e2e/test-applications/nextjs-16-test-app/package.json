@@ -10,7 +10,7 @@
     "format": "prettier --write . && biome format --write ."
   },
   "dependencies": {
-    "next": "16.4.1",
+    "next": "16.4.5",
     "react": "19.2.0",
     "react-dom": "19.2.0"
   },
