@@ -194,7 +194,7 @@ export async function getChunkUploadOptions(
   // (`organizations/<org>/chunk-upload/`) or path-only (`/api/0/...`).
   // Resolve it against the org's API root so chunk POSTs get an absolute URL.
   const regionUrl = (await resolveOrgRegion(orgSlug)).replace(/\/+$/, "");
-  const parsedUrl = new URL(data.url, `${regionUrl}/api/0/`);
+  const parsedUrl = resolveChunkUploadUrl(data.url, regionUrl);
 
   // Self-hosted Sentry instances may also return a chunk-upload URL that
   // embeds DSN credentials (e.g. https://<token>@host/...). Node.js 25+
@@ -206,6 +206,29 @@ export async function getChunkUploadOptions(
     return data;
   }
   return { ...data, url: parsedUrl.href };
+}
+
+/**
+ * Resolve a server-returned chunk-upload URL against the org's region URL.
+ *
+ * A path-absolute value (`/api/0/...`) would otherwise replace the region
+ * URL's whole path, dropping the install prefix of a self-hosted Sentry
+ * served under a subpath (e.g. `https://host/sentry`). Keep that prefix
+ * unless the server already included it.
+ *
+ * Exported for testing.
+ */
+export function resolveChunkUploadUrl(url: string, regionUrl: string): URL {
+  const base = regionUrl.replace(/\/+$/, "");
+  if (url.startsWith("/") && !url.startsWith("//")) {
+    const prefix = new URL(`${base}/`).pathname.replace(/\/+$/, "");
+    const path =
+      prefix && url !== prefix && !url.startsWith(`${prefix}/`)
+        ? `${prefix}${url}`
+        : url;
+    return new URL(path, `${base}/`);
+  }
+  return new URL(url, `${base}/api/0/`);
 }
 
 /**
