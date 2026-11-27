@@ -56,6 +56,14 @@ const WIZARD_RUNNERS: Partial<Record<WizardIntegration, WizardRunner>> = {
     const { runNextjsWizard } = await import("./nextjs/nextjs-wizard.js");
     await runNextjsWizard(options);
   },
+  android: async (options) => {
+    const { runAndroidWizard } = await import("./android/android-wizard.js");
+    await runAndroidWizard(options);
+  },
+  flutter: async (options) => {
+    const { runFlutterWizard } = await import("./flutter/flutter-wizard.js");
+    await runFlutterWizard(options);
+  },
   ios: async (options) => {
     const { runAppleWizard } = await import("./apple/apple-wizard.js");
     await runAppleWizard(options);
@@ -73,6 +81,11 @@ const WIZARD_RUNNERS: Partial<Record<WizardIntegration, WizardRunner>> = {
     await runReactNativeWizard(options);
   },
 };
+
+/** Whether `integration` has a flow in this version. */
+export function hasWizardRunner(integration: WizardIntegration): boolean {
+  return integration in WIZARD_RUNNERS;
+}
 
 /** What `sentry wizard` passes to {@link runWizard}. */
 export type RunWizardArgs = {
@@ -108,7 +121,7 @@ async function askForIntegration(): Promise<WizardIntegration> {
   const integration = await abortIfCancelled(
     clack.select<WizardIntegration>({
       message: "What do you want to set up?",
-      options: WIZARD_INTEGRATIONS.filter(({ id }) => id in WIZARD_RUNNERS).map(
+      options: WIZARD_INTEGRATIONS.filter(({ id }) => hasWizardRunner(id)).map(
         ({ id, label }) => ({ value: id, label }),
       ),
     }),
