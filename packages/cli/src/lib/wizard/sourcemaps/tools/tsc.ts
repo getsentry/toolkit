@@ -10,12 +10,12 @@ import recast from "recast";
 
 import { Sentry } from "../../telemetry.js";
 import {
-  findFile,
   getOrSetObjectProperty,
   parseJsonC,
   printJsonC,
   setOrUpdateObjectProperty,
 } from "../../utils/ast-utils.js";
+import { findFile } from "../../../dsn/fs-utils.js";
 import {
   askForToolConfigPath,
   createNewConfigFile,
@@ -45,7 +45,7 @@ const getCodeSnippet = (colors: boolean) =>
 
 export async function configureTscSourcemapGenerationFlow(): Promise<void> {
   const tsConfigPath =
-    findFile(path.join(process.cwd(), "tsconfig"), [".json"]) ??
+    (await findFile(path.join(process.cwd(), "tsconfig"), [".json"])) ??
     (await askForToolConfigPath("TypeScript", "tsconfig.json"));
 
   let successfullyAdded = false;

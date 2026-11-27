@@ -24,6 +24,7 @@ import { sentry } from "../../../app-identity.js";
 import { CLI_VERSION } from "../../../constants.js";
 import { reportCliError } from "../../../error-reporting.js";
 import { WizardExitError } from "../../../errors.js";
+import { isSea } from "../../../react-native/wrap-call.js";
 import { Sentry, traceStep } from "../../telemetry.js";
 import { debug } from "../debug.js";
 import { getUncommittedOrUntrackedFilePaths, isInGitRepo } from "../git.js";
@@ -168,8 +169,8 @@ export function printWelcome(options: {
 
 This wizard sends telemetry data and crash reports to Sentry. This helps us improve the Wizard.
 You can turn this off at any time by running ${chalk.cyanBright(
-      sentry`wizard --disable-telemetry`,
-    )}.`;
+      sentry`cli defaults telemetry off`,
+    )}, or by setting SENTRY_CLI_NO_TELEMETRY=1.`;
   }
 
   clack.note(welcomeText);
@@ -199,7 +200,7 @@ export async function confirmContinueIfNoOrDirtyGitRepo({
     ) {
       if (nonInteractive) {
         clack.log.error(
-          "Project is not inside a git repository in non-interactive mode. Run from a git repository or pass --ignore-git-changes to skip this safety check.",
+          "Project is not inside a git repository in non-interactive mode. Run from a git repository or pass --force to skip this safety check.",
         );
         Sentry.setTag("continue-without-git", false);
         await abort();
@@ -236,7 +237,7 @@ The wizard will create and update files.`,
 
       if (nonInteractive) {
         clack.log.error(
-          "Project has uncommitted or untracked files in non-interactive mode. Commit or stash your changes, or pass --ignore-git-changes to skip this safety check.",
+          "Project has uncommitted or untracked files in non-interactive mode. Commit or stash your changes, or pass --force to skip this safety check.",
         );
         Sentry.setTag("continue-with-dirty-repo", false);
         await abort();
@@ -717,9 +718,7 @@ SENTRY_AUTH_TOKEN=${authToken}
   if (dotEnvFileExists) {
     const dotEnvFileContent = readFileSync(dotEnvFilePath, "utf8");
 
-    const hasAuthToken = !!dotEnvFileContent.match(
-      /^\s*SENTRY_AUTH_TOKEN\s*=/g,
-    );
+    const hasAuthToken = /^\s*SENTRY_AUTH_TOKEN\s*=/m.test(dotEnvFileContent);
 
     if (hasAuthToken) {
       clack.log.warn(
@@ -887,7 +886,9 @@ function runFormatterCommand(
             new Error(`Could not resolve the ${packageName} binary.`),
           );
     }
-    command = process.execPath;
+    // In the standalone binary, `process.execPath` is `sentry` itself, not
+    // Node, so run the formatter with the project's Node.
+    command = isSea() ? "node" : process.execPath;
     args = [binPath, ...subArgs, "--", ...files];
   } else {
     command = "npx";
@@ -1265,16 +1266,15 @@ export async function getPackageManager(
     return fallback;
   }
 
-  const selectedPackageManager: PackageManager | symbol =
-    await abortIfCancelled(
-      clack.select({
-        message: "Please select your package manager.",
-        options: packageManagers.map((packageManager) => ({
-          value: packageManager,
-          label: packageManager.label,
-        })),
-      }),
-    );
+  const selectedPackageManager = await abortIfCancelled(
+    clack.select({
+      message: "Please select your package manager.",
+      options: packageManagers.map((packageManager) => ({
+        value: packageManager,
+        label: packageManager.label,
+      })),
+    }),
+  );
 
   globalWithSentryWizard.__sentry_wizard_cached_package_manager =
     selectedPackageManager;

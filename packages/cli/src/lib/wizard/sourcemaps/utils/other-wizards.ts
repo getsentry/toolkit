@@ -37,7 +37,7 @@ function runOtherWizard(
 ): WizardFunction {
   return async (options) => {
     const { runWizard } = await import("../../run.js");
-    await runWizard({ integration, debug: false, wizardOptions: options });
+    await runWizard({ integration, wizardOptions: options });
   };
 }
 

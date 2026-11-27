@@ -70,6 +70,7 @@
     "typescript/no-useless-default-assignment": "error",
     "jsx-a11y/interactive-supports-focus": "off",
     "unicorn/prefer-spread": "error",
+    "unicorn/no-array-for-each": "error",
     "typescript/no-misused-promises": "error",
     "typescript/switch-exhaustiveness-check": [
       "error",

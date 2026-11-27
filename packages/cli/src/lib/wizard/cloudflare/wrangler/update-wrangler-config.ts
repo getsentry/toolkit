@@ -150,7 +150,7 @@ function mergeArrayProperty(
 
   // Extract existing values from the AST if they exist
   if (existingProperty?.value.type === "ArrayExpression") {
-    existingProperty.value.elements.forEach((element) => {
+    for (const element of existingProperty.value.elements) {
       if (
         element &&
         (element.type === "StringLiteral" || element.type === "Literal") &&
@@ -158,7 +158,7 @@ function mergeArrayProperty(
       ) {
         existingValues.push(element.value);
       }
-    });
+    }
   }
 
   // Merge existing and new values, deduplicate

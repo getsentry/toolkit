@@ -10,7 +10,8 @@ import path from "node:path";
 import recast from "recast";
 
 import { Sentry } from "../../telemetry.js";
-import { findFile, hasSentryContent } from "../../utils/ast-utils.js";
+import { findFile } from "../../../dsn/fs-utils.js";
+import { hasSentryContent } from "../../utils/ast-utils.js";
 import {
   abortIfCancelled,
   addDotEnvSentryBuildPluginFile,
@@ -58,7 +59,7 @@ export const configureWebPackPlugin: SourceMapUploadToolConfigurationFunction =
     const importPath = await ensureBundlerPlugin("webpack");
 
     const webpackConfigPath =
-      findFile(path.resolve(process.cwd(), "webpack.config")) ??
+      (await findFile(path.resolve(process.cwd(), "webpack.config"))) ??
       (await askForToolConfigPath("Webpack", "webpack.config.js"));
 
     let successfullyAdded = false;

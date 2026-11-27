@@ -5,6 +5,10 @@
  * errors (ignored, debug-logged) from unexpected ones (reported to Sentry).
  */
 
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 const { reportCliError } = vi.hoisted(() => ({
@@ -16,7 +20,8 @@ vi.mock("@sentry/node", () => ({
   startSpan: (_opts: unknown, fn: () => unknown) => fn(),
 }));
 
-const { handleFileError } = await import("../../../src/lib/dsn/fs-utils.js");
+const { findFile, handleFileError } =
+  await import("../../../src/lib/dsn/fs-utils.js");
 
 /** Create an Error with a `code` property, mimicking Node/Bun errno errors. */
 function errnoError(code: string, message?: string): Error {
@@ -182,5 +187,41 @@ describe("handleFileError", () => {
       tags: { operation: "checkEnvForDsn" },
       extra: { path: "/project/.env" },
     });
+  });
+});
+
+describe("findFile", () => {
+  let dir: string;
+
+  beforeEach(async () => {
+    dir = await mkdtemp(join(tmpdir(), "find-file-"));
+  });
+
+  afterEach(async () => {
+    await rm(dir, { recursive: true, force: true });
+  });
+
+  test("returns the first extension that exists, in order", async () => {
+    await writeFile(join(dir, "next.config.mjs"), "");
+    await writeFile(join(dir, "next.config.cjs"), "");
+
+    expect(await findFile(join(dir, "next.config"))).toBe(
+      join(dir, "next.config.mjs"),
+    );
+  });
+
+  test("skips a directory with a matching name", async () => {
+    await mkdir(join(dir, "next.config.js"));
+    await writeFile(join(dir, "next.config.ts"), "");
+
+    expect(await findFile(join(dir, "next.config"))).toBe(
+      join(dir, "next.config.ts"),
+    );
+  });
+
+  test("returns undefined when no extension matches", async () => {
+    expect(
+      await findFile(join(dir, "vite.config"), [".js", ".ts"]),
+    ).toBeUndefined();
   });
 });

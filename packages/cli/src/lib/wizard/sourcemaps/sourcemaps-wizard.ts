@@ -7,6 +7,7 @@
 import chalk from "chalk";
 import { sep } from "node:path";
 
+import { buildProjectIssuesUrl } from "../../sentry-web-urls.js";
 import { Sentry, traceStep, withTelemetry } from "../telemetry.js";
 import {
   abort,
@@ -20,7 +21,6 @@ import {
 import { clack } from "../utils/clack/prompts.js";
 import { NPM } from "../utils/package-manager.js";
 import type { WizardOptions } from "../utils/types.js";
-import { getIssueStreamUrl } from "../utils/url.js";
 import { isUnicodeSupported } from "../utils/vendor/is-unicorn-supported.js";
 import { setupCI } from "./ci.js";
 import { configureAngularSourcemapGenerationFlow } from "./tools/angular.js";
@@ -141,11 +141,7 @@ Thank you for using Sentry :)`,
 
   if (!preSelectedTool) {
     await traceStep("outro", () =>
-      printOutro(
-        sentryUrl,
-        selectedProject.organization.slug,
-        selectedProject.id,
-      ),
+      printOutro(selectedProject.organization.slug, selectedProject.id),
     );
   }
 }
@@ -255,14 +251,10 @@ async function startToolSetupFlow(
       break;
   }
 }
-async function printOutro(
-  url: string,
-  orgSlug: string,
-  projectId: string,
-): Promise<void> {
+async function printOutro(orgSlug: string, projectId: string): Promise<void> {
   const packageManager = await getPackageManager(NPM);
 
-  const issueStreamUrl = getIssueStreamUrl({ url, orgSlug, projectId });
+  const issueStreamUrl = buildProjectIssuesUrl(orgSlug, projectId);
 
   const arrow = isUnicodeSupported() ? "→" : "->";
 

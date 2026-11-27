@@ -123,6 +123,24 @@ catalog:
         expect(getPackageVersion("@sentry/node", packageJson)).toBe("^7.100.0");
       });
 
+      it.each([
+        ["catalog:default", "catalog:\n  '@sentry/node': ^7.100.0\n"],
+        ["catalog:", "catalogs:\n  default:\n    '@sentry/node': ^7.100.0\n"],
+      ])("resolves %s against either default catalog form", (ref, yaml) => {
+        mockedFs.existsSync.mockImplementation((filepath: string) => {
+          return (
+            filepath === path.join("/test/workspace", "pnpm-workspace.yaml")
+          );
+        });
+        mockedFs.readFileSync.mockReturnValue(yaml);
+
+        const packageJson: PackageDotJson = {
+          dependencies: { "@sentry/node": ref },
+        };
+
+        expect(getPackageVersion("@sentry/node", packageJson)).toBe("^7.100.0");
+      });
+
       it("resolves named catalog reference", () => {
         mockedFs.existsSync.mockImplementation((filepath: string) => {
           return (

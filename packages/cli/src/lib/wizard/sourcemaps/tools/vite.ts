@@ -13,10 +13,10 @@ import recast from "recast";
 
 import { Sentry } from "../../telemetry.js";
 import {
-  findFile,
   hasSentryContent,
   preserveTrailingNewline,
 } from "../../utils/ast-utils.js";
+import { findFile } from "../../../dsn/fs-utils.js";
 import {
   abortIfCancelled,
   addDotEnvSentryBuildPluginFile,
@@ -64,7 +64,7 @@ export const configureVitePlugin: SourceMapUploadToolConfigurationFunction =
     const importPath = await ensureBundlerPlugin("vite");
 
     const viteConfigPath =
-      findFile(path.resolve(process.cwd(), "vite.config")) ??
+      (await findFile(path.resolve(process.cwd(), "vite.config"))) ??
       (await askForToolConfigPath("Vite", "vite.config.js"));
 
     let successfullyAdded = false;
