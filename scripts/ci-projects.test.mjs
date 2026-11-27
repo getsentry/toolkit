@@ -154,7 +154,6 @@ describe("workspace CI selection", () => {
       ...rootFiles.map((file) => [[file], "pull_request"]),
       [["packages/deleted/package.json"], "pull_request"],
       [[], "push"],
-      [[], "merge_group"],
     ]) {
       assert.deepEqual(
         buildMatrix(selectAffectedProjects(projects, files, event)).include.map(
@@ -163,6 +162,10 @@ describe("workspace CI selection", () => {
         ["one", "two"],
       );
     }
+    assert.deepEqual(
+      buildMatrix(selectAffectedProjects(projects, [], "merge_group")),
+      { include: [] },
+    );
   });
 
   it("keeps a stable CI status and one dynamic job per package", () => {
