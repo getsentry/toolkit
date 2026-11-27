@@ -1,7 +1,10 @@
-import { promises } from "node:fs";
+import { mkdtempSync, promises, realpathSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
 
 import {
   addSentryCommandToBuildCommand,
+  configureSentryCLI,
   getSentryCliNpmScript,
   setSentryCliRcDefaults,
 } from "../../../../../src/lib/wizard/sourcemaps/tools/sentry-cli.js";
@@ -12,8 +15,9 @@ import { getPackageDotJson } from "../../../../../src/lib/wizard/utils/clack/ind
 
 import { vi, it, describe, expect, afterEach } from "vitest";
 
-const { selectMock } = vi.hoisted(() => ({
+const { selectMock, textMock } = vi.hoisted(() => ({
   selectMock: vi.fn().mockResolvedValue(true),
+  textMock: vi.fn(),
 }));
 
 const writeFileSpy = vi
@@ -28,6 +32,7 @@ vi.mock("@clack/prompts", () => {
     },
     confirm: vi.fn().mockResolvedValue(true),
     select: selectMock,
+    text: textMock,
     isCancel: vi.fn().mockReturnValue(false),
   };
 });
@@ -35,6 +40,8 @@ vi.mock("../../../../../src/lib/wizard/utils/clack/index.js", async () => ({
   ...(await vi.importActual(
     "../../../../../src/lib/wizard/utils/clack/index.js",
   )),
+  installPackage: vi.fn().mockResolvedValue(undefined),
+  addSentryCliConfig: vi.fn().mockResolvedValue(undefined),
   getPackageDotJson: vi.fn().mockResolvedValue({
     scripts: {
       build: "tsc",
@@ -108,6 +115,65 @@ describe("getSentryCliNpmScript", () => {
     expect(getSentryCliNpmScript("./dist")).toBe(
       "sentry sourcemap inject ./dist && sentry sourcemap upload ./dist",
     );
+  });
+
+  it.each(["dist", ".", "./build/client"])(
+    "leaves the plain path %s unquoted",
+    (artifactPath) => {
+      expect(getSentryCliNpmScript(artifactPath)).toBe(
+        `sentry sourcemap inject ${artifactPath} && sentry sourcemap upload ${artifactPath}`,
+      );
+    },
+  );
+
+  it.each([
+    ["dist/my app", '"dist/my app"'],
+    ["out/(client)", '"out/(client)"'],
+    ['dist/a"b', '"dist/a\\"b"'],
+    ["dist/$HOME", '"dist/\\$HOME"'],
+  ])("double-quotes %s as %s", (artifactPath, quoted) => {
+    expect(getSentryCliNpmScript(artifactPath)).toBe(
+      `sentry sourcemap inject ${quoted} && sentry sourcemap upload ${quoted}`,
+    );
+  });
+});
+
+describe("configureSentryCLI", () => {
+  it("uses . for an absolute artifact path that is the project root", async () => {
+    const dir = realpathSync(mkdtempSync(path.join(tmpdir(), "sentry-cli-")));
+    const originalCwd = process.cwd();
+    try {
+      process.chdir(dir);
+      textMock.mockResolvedValueOnce(dir);
+      // Don't append the script to the build command.
+      selectMock.mockResolvedValueOnce(false);
+      vi.mocked(getPackageDotJson).mockResolvedValue({
+        scripts: { build: "tsc" },
+        version: "1.0.0",
+      });
+
+      await configureSentryCLI(
+        {
+          orgSlug: "my-org",
+          projectSlug: "my-project",
+          selfHosted: false,
+          url: "https://sentry.io/",
+          authToken: "token",
+        },
+        () => Promise.resolve(),
+        true,
+      );
+
+      expect(writeFileSpy).toHaveBeenCalledWith(
+        expect.stringContaining("package.json"),
+        expect.stringContaining(
+          '"sentry:sourcemaps": "sentry sourcemap inject . && sentry sourcemap upload ."',
+        ),
+      );
+    } finally {
+      process.chdir(originalCwd);
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });
 

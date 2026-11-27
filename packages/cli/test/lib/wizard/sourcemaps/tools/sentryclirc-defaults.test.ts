@@ -1,5 +1,5 @@
 /**
- * `addOrgAndProjectToSentryCliRc`, which the generic and Wrangler source
+ * `addUploadTargetToSentryCliRc`, which the generic and Wrangler source
  * maps flows call: the `[defaults]` it writes, read back the way v4 reads
  * `.sentryclirc`, next to the `[auth]` token and the user's other keys.
  */
@@ -14,7 +14,7 @@ import {
   clearSentryCliRcCache,
   loadSentryCliRc,
 } from "../../../../../src/lib/sentryclirc.js";
-import { addOrgAndProjectToSentryCliRc } from "../../../../../src/lib/wizard/sourcemaps/tools/sentry-cli.js";
+import { addUploadTargetToSentryCliRc } from "../../../../../src/lib/wizard/sourcemaps/tools/sentry-cli.js";
 import { addSentryCliConfig } from "../../../../../src/lib/wizard/utils/clack/index.js";
 
 vi.mock("@clack/prompts", () => ({
@@ -65,9 +65,9 @@ const saasOptions = {
   authToken: "sntrys_tok",
 };
 
-describe("addOrgAndProjectToSentryCliRc", () => {
+describe("addUploadTargetToSentryCliRc", () => {
   it("writes the org and project, but no url, for sentry.io", async () => {
-    await addOrgAndProjectToSentryCliRc(saasOptions);
+    await addUploadTargetToSentryCliRc(saasOptions);
 
     expect(readFileSync(rcPath(), "utf8")).toBe(
       "[defaults]\norg=my-org\nproject=my-project\n",
@@ -75,7 +75,7 @@ describe("addOrgAndProjectToSentryCliRc", () => {
   });
 
   it("writes the url for self-hosted Sentry", async () => {
-    await addOrgAndProjectToSentryCliRc({
+    await addUploadTargetToSentryCliRc({
       ...saasOptions,
       selfHosted: true,
       url: "https://sentry.example.com/",
@@ -92,7 +92,7 @@ describe("addOrgAndProjectToSentryCliRc", () => {
       "# my settings\n[defaults]\norg=old-org\n\n[http]\nverify_ssl=false\n",
     );
     await addSentryCliConfig({ authToken: "sntrys_tok" });
-    await addOrgAndProjectToSentryCliRc(saasOptions);
+    await addUploadTargetToSentryCliRc(saasOptions);
 
     const contents = readFileSync(rcPath(), "utf8");
     expect(contents).toContain("# my settings");

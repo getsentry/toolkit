@@ -25,7 +25,7 @@ import {
 import { clack } from "../../utils/clack/prompts.js";
 import { hasPackageInstalled } from "../../utils/package-json.js";
 import { NPM } from "../../utils/package-manager.js";
-import { addOrgAndProjectToSentryCliRc } from "./sentry-cli.js";
+import { addUploadTargetToSentryCliRc } from "./sentry-cli.js";
 import type { SourceMapUploadToolConfigurationOptions } from "./types.js";
 
 const SENTRY_NPM_SCRIPT_NAME = "sentry:sourcemaps";
@@ -97,7 +97,7 @@ Otherwise, let's proceed with the Wrangler setup.`,
 
   await modifyDeployCommand(deployCommand, outDir);
 
-  await addOrgAndProjectToSentryCliRc(options);
+  await addUploadTargetToSentryCliRc(options);
   await addSentryCliConfig({ authToken: options.authToken });
 
   if (options.selfHosted) {

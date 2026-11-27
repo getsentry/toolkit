@@ -5,9 +5,9 @@
  * Installs the `sentry` CLI package, adds a `sentry:sourcemaps` npm script
  * that runs `sentry sourcemap inject` and `sentry sourcemap upload` on the
  * build output, optionally appends it to the production build script, and
- * writes the org, project, and auth token to `.sentryclirc`. v4 reads that
- * file: `[defaults]` feeds org/project resolution and `[auth] token` becomes
- * `SENTRY_AUTH_TOKEN`.
+ * writes the org, project, self-hosted URL, and auth token to `.sentryclirc`.
+ * v4 reads that file: `[defaults]` feeds org/project/url resolution and
+ * `[auth] token` becomes `SENTRY_AUTH_TOKEN`.
  *
  * Ported from sentry-wizard's `src/sourcemaps/tools/sentry-cli.ts`, which
  * installed `@sentry/cli`, ran `sentry-cli sourcemaps …`, and also wrote the
@@ -89,7 +89,9 @@ export async function configureSentryCLI(
     );
 
     if (path.isAbsolute(rawArtifactPath)) {
-      relativeArtifactPath = path.relative(process.cwd(), rawArtifactPath);
+      // The project root itself is "" relative to cwd; the CLI needs ".".
+      relativeArtifactPath =
+        path.relative(process.cwd(), rawArtifactPath) || ".";
     } else {
       relativeArtifactPath = rawArtifactPath;
     }
@@ -131,7 +133,7 @@ export async function configureSentryCLI(
     );
   }
 
-  await addOrgAndProjectToSentryCliRc(options);
+  await addUploadTargetToSentryCliRc(options);
   await addSentryCliConfig({ authToken: options.authToken });
 
   if (options.selfHosted) {
@@ -185,16 +187,32 @@ export async function setupNpmScriptInCI(): Promise<void> {
 /**
  * The `sentry:sourcemaps` script: inject debug IDs into the build output,
  * then upload it. `sentry sourcemap upload` reads the org and project from
- * `.sentryclirc` locally and from `SENTRY_ORG` / `SENTRY_PROJECT` in CI, and
- * the self-hosted URL from `SENTRY_URL`.
+ * `.sentryclirc` locally. In CI it resolves them from the DSN on sentry.io,
+ * and from `SENTRY_ORG`, `SENTRY_PROJECT` and `SENTRY_URL` for self-hosted.
  */
 export function getSentryCliNpmScript(
   relativePosixArtifactPath: string,
 ): string {
+  const artifactPath = quoteShellArg(relativePosixArtifactPath);
   // The script runs the `sentry` binary of the package installed above, so
   // it names `sentry` itself, not the program running the wizard.
   // oxlint-disable-next-line sentry-cli/no-hardcoded-sentry-command -- a package.json script, not a hint.
-  return `sentry sourcemap inject ${relativePosixArtifactPath} && sentry sourcemap upload ${relativePosixArtifactPath}`;
+  return `sentry sourcemap inject ${artifactPath} && sentry sourcemap upload ${artifactPath}`;
+}
+
+/** Characters that make a shell split or expand an unquoted argument. */
+const SHELL_SPECIAL_RE = /[\s"'`$&|;<>()*?[\]{}!#~\\]/;
+
+/**
+ * Double-quote `value` for the npm script shell when it has whitespace or
+ * shell metacharacters, escaping the characters that stay special inside
+ * double quotes. Plain paths such as `dist` stay as they are.
+ */
+function quoteShellArg(value: string): string {
+  if (!SHELL_SPECIAL_RE.test(value)) {
+    return value;
+  }
+  return `"${value.replace(/["\\$`]/g, "\\$&")}"`;
 }
 
 /** An INI section header line, such as `[defaults]`. */
@@ -265,8 +283,12 @@ export function setSentryCliRcDefaults(
  * Write the org, project and, for self-hosted Sentry, the URL to the
  * project's `.sentryclirc`, so that `sentry sourcemap upload` finds them
  * when the script runs locally.
+ *
+ * v4 reads a self-hosted `[defaults] url` only once the CLI trusts an
+ * `[auth] token` from the same file for it. Until that same-file trust fix
+ * lands, `assertRcUrlTrusted` refuses it and users set `SENTRY_URL`.
  */
-export async function addOrgAndProjectToSentryCliRc(
+export async function addUploadTargetToSentryCliRc(
   options: SourceMapUploadToolConfigurationOptions,
 ): Promise<void> {
   const configPath = path.join(process.cwd(), SENTRY_CLI_RC_FILE);
@@ -284,8 +306,8 @@ export async function addOrgAndProjectToSentryCliRc(
       }),
     );
   } catch (error) {
-    // Not fatal, like the auth token write: the warning says how to set
-    // them instead.
+    // Not fatal, like the auth token write: CI sets SENTRY_ORG and
+    // SENTRY_PROJECT anyway, and the warning says what to do locally.
     debug(error);
     clack.log.warning(
       `Failed to add the org and project to ${chalk.cyan(
@@ -433,6 +455,7 @@ Current command: ${chalk.dim(oldCommand)}
 Would have injected: ${chalk.dim(newCommand)}`,
     );
 
+    // The build already runs the script, so CI needs no separate step.
     addedToBuildCommand = true;
     return;
   }
