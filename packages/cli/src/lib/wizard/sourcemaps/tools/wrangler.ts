@@ -575,7 +575,8 @@ const RUNNER_FLAGS_WITH_VALUE: Record<string, ReadonlySet<string>> = {
  * {@link isWranglerRunnerArg}), or -1 when it doesn't.
  */
 function findWranglerIndex(argv: string[]): number {
-  const flagsWithValue = RUNNER_FLAGS_WITH_VALUE[argv[0] ?? ""];
+  // The runner whose flags apply, which can follow `cross-env` or `FOO=1`.
+  let flagsWithValue: ReadonlySet<string> | undefined;
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i] ?? "";
     if (arg === "wrangler" || arg.startsWith("wrangler@")) {
@@ -584,6 +585,7 @@ function findWranglerIndex(argv: string[]): number {
     if (!isWranglerRunnerArg(arg)) {
       return -1;
     }
+    flagsWithValue = RUNNER_FLAGS_WITH_VALUE[arg] ?? flagsWithValue;
     if (flagsWithValue?.has(arg)) {
       i += 1;
     }

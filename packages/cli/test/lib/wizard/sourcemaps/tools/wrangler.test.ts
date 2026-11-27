@@ -263,6 +263,8 @@ describe("getWranglerDeployCommand", () => {
     "pnpm -C wrangler deploy",
     "pnpm --filter wrangler deploy",
     "yarn --cwd wrangler deploy",
+    "cross-env NODE_ENV=production yarn --cwd wrangler deploy",
+    "FOO=1 pnpm -C wrangler deploy",
   ])("ignores a flag value named wrangler: %s", (command) => {
     expect(getWranglerDeployCommand(command)).toBeUndefined();
   });
@@ -273,6 +275,11 @@ describe("getWranglerDeployCommand", () => {
       expect(getWranglerDeployCommand(command)).toBe(command);
     },
   );
+
+  it("finds wrangler after a flag value behind cross-env", () => {
+    const command = "cross-env FOO=1 npx -p wrangler wrangler deploy";
+    expect(getWranglerDeployCommand(command)).toBe(command);
+  });
 
   it("finds wrangler after a flag value: npx -p wrangler wrangler deploy", () => {
     expect(getWranglerDeployCommand("npx -p wrangler wrangler deploy")).toBe(
