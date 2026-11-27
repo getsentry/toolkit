@@ -1,10 +1,17 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   findActivitySourceFile,
   getLastImportLineLocation,
+  patchMainActivity,
 } from "../../../../src/lib/wizard/android/code-tools.js";
 
 describe("code-tools", () => {
@@ -78,6 +85,26 @@ describe("code-tools", () => {
         ).resolves.toBe(path.join(dir, "MainActivity.kt"));
       } finally {
         rmSync(appDir, { recursive: true });
+      }
+    });
+  });
+
+  describe("patchMainActivity", () => {
+    it("adds the Sentry import when only other io.sentry classes are imported", () => {
+      const dir = mkdtempSync(path.join(tmpdir(), "android-patch-test-"));
+      try {
+        const file = path.join(dir, "MainActivity.kt");
+        writeFileSync(
+          file,
+          "package com.example\n\nimport io.sentry.SentryOptions\n\nclass MainActivity : Activity() {\n  override fun onCreate(savedInstanceState: Bundle?) {\n    super.onCreate(savedInstanceState)\n  }\n}\n",
+        );
+
+        expect(patchMainActivity(file)).toBe(true);
+        expect(readFileSync(file, "utf8")).toMatch(
+          /^import io\.sentry\.Sentry$/m,
+        );
+      } finally {
+        rmSync(dir, { recursive: true });
       }
     });
   });

@@ -285,8 +285,12 @@ export function patchMainContent(
  * block, so the init snippet's statements fit in it.
  */
 function arrowMainToBlock(source: string): string {
-  const arrowMain =
-    /(?:Future<void>|void)\s+main\s*\(([^)]*)\)\s*(?:async\s*)?=>/.exec(source);
+  const arrowMains =
+    /(?:Future<void>|void)\s+main\s*\(([^)]*)\)\s*(?:async\s*)?=>/g;
+  let arrowMain = arrowMains.exec(source);
+  while (arrowMain && !isCode(source, arrowMain.index)) {
+    arrowMain = arrowMains.exec(source);
+  }
   if (!arrowMain) {
     return source;
   }

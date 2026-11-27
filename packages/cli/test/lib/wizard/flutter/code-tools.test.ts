@@ -152,6 +152,13 @@ ${main} {
       );
     });
 
+    it("leaves a commented-out arrow main alone", () => {
+      const source = `import 'package:flutter/widgets.dart';\n\n// void main() => runApp(const OldApp());\nvoid main() {\n  runApp(const MyApp());\n}\n`;
+      expect(patchMainContent("dsn", source, selectedFeaturesMap)).toBe(
+        `import 'package:flutter/widgets.dart';\nimport 'package:sentry_flutter/sentry_flutter.dart';\n\n// void main() => runApp(const OldApp());\nFuture<void> main() async {\n  ${initSnippet("dsn", selectedFeaturesMap, "const MyApp()")}\n}\n`,
+      );
+    });
+
     it("turns an expression-bodied main into an async block", () => {
       expect(
         patchMainContent(
