@@ -7,7 +7,7 @@ import { defineTool } from "../../internal/tool-helpers/define";
 import { getUserAgent } from "../../version";
 
 const DOC_NOT_FOUND_MESSAGE =
-  "Documentation not found at this path. The page may have been moved or removed. Use `search_docs()` to find the current path, and pass the `path` from its results exactly.";
+  "Documentation not found at this path. The page may have been moved or removed. Use `search_docs()` to find the current path, and pass the `path` from its results exactly. If `search_docs()` returned this path, that result is out of date: try a different result instead of this path again.";
 
 // docs.sentry.io answers unknown paths with 200 and a "Page Not Found" page,
 // marked with this header.
@@ -107,7 +107,12 @@ export default defineTool({
         break;
       }
       const nextUrl = resolveDocUrl(location, docUrl);
-      if (!nextUrl || redirects >= MAX_REDIRECTS) {
+      if (!nextUrl) {
+        throw new UserInputError(
+          `This documentation page redirects to ${location}, outside the docs sites that get_doc can read. Do not retry this path.`,
+        );
+      }
+      if (redirects >= MAX_REDIRECTS) {
         throw new UserInputError(DOC_NOT_FOUND_MESSAGE);
       }
       docUrl = nextUrl;
