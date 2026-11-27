@@ -43,8 +43,14 @@ overrides:
   sharp: ^0.35.5
   source-map-js: ^1.2.2
   undici: ^7.30.1
+  # GHSA-w5hq-g745-h8pq: xcode@3 pins uuid@7; it only calls uuid.v4().
+  "xcode@3>uuid": ^11.1.1
   # GHSA-mrhx-c7xc-m3w5: keep every zod copy at or above the patched release.
   zod: ^4.6.6
+  # @sentry/wizard publishes `sentry: >=0.52.0`, which the CLI's -dev version
+  # never satisfies, so link the workspace CLI here instead. `pnpm pack`
+  # ignores overrides, so the tarball keeps the range.
+  "@sentry/wizard>sentry": "workspace:*"
 
 catalog:
   "@ast-grep/cli": ^0.51.2
@@ -63,7 +69,7 @@ catalog:
   "@modelcontextprotocol/server": 2.4.0
   "@radix-ui/react-accordion": ^1.2.20
   "@radix-ui/react-slot": ^1.2.3
-  "@sentry/api": 3.2.0
+  "@sentry/api": 3.4.1
   "@sentry/cloudflare": 11.12.0
   "@sentry/core": 11.12.0
   "@sentry/node": 11.12.0
@@ -154,7 +160,7 @@ minimumReleaseAgeExclude:
   - "@sentry/search-syntax@1.0.0"
   - "@sentry/server-runtime-injection@11.12.0"
   - "@sentry/server-utils@11.12.0"
-  - "@sentry/api@3.2.0"
+  - "@sentry/api@3.4.1"
   - miniflare@5.20261101.0-beta
   - wrangler@4.156.1
   - "@sentry/symbolic@14.0.0-alpha.5"

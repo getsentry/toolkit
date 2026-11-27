@@ -96,6 +96,25 @@ function findArraysWithoutItemSchema(
   ];
 }
 
+/** Paths of nodes that list `additionalProperties: false`. */
+function findClosedObjects(schema: unknown, path: string[] = []): string[] {
+  if (!schema || typeof schema !== "object") {
+    return [];
+  }
+  const entries = Object.entries(schema);
+  const closed =
+    !Array.isArray(schema) &&
+    (schema as Record<string, unknown>)["additionalProperties"] === false
+      ? [path.join(".") || "(root)"]
+      : [];
+  return [
+    ...closed,
+    ...entries.flatMap(([key, value]) =>
+      findClosedObjects(value, [...path, key]),
+    ),
+  ];
+}
+
 // server.test.ts covers the gateway surface used when the flag is off.
 describe.skipIf(!EXPOSE_ALL_TOOLS)("buildServer with EXPOSE_ALL_TOOLS", () => {
   it("lists every skill-granted tool and drops the catalog gateway", async () => {
@@ -149,6 +168,27 @@ describe.skipIf(!EXPOSE_ALL_TOOLS)("buildServer with EXPOSE_ALL_TOOLS", () => {
       expect(listed.length).toBeGreaterThan(0);
       const violations = listed.flatMap((tool) =>
         findArraysWithoutItemSchema(tool.inputSchema).map(
+          (path) => `${tool.name}: ${path}`,
+        ),
+      );
+      expect(violations).toEqual([]);
+    },
+  );
+
+  // A client validates results against the tools/list it cached, so a closed
+  // object breaks it as soon as a later deploy adds a field (#2293).
+  it.each([false, true])(
+    "lists output schemas with open objects (experimentalMode=%s)",
+    async (experimentalMode) => {
+      const listed = await withClient(
+        getContext(),
+        async (client) => (await client.listTools()).tools,
+        experimentalMode,
+      );
+
+      expect(listed.some((tool) => tool.outputSchema)).toBe(true);
+      const violations = listed.flatMap((tool) =>
+        findClosedObjects(tool.outputSchema).map(
           (path) => `${tool.name}: ${path}`,
         ),
       );
