@@ -59,8 +59,15 @@ function install(dir: string, withSentry = true): string {
     mkdirSync(join(sentryDir, "dist"), { recursive: true });
     writeFileSync(
       join(sentryDir, "package.json"),
-      JSON.stringify({ name: "sentry", bin: { sentry: "./dist/bin.cjs" } }),
+      // Like the real package, its `exports` don't include package.json.
+      JSON.stringify({
+        name: "sentry",
+        main: "./dist/index.cjs",
+        exports: { ".": { require: "./dist/index.cjs" } },
+        bin: { sentry: "./dist/bin.cjs" },
+      }),
     );
+    writeFileSync(join(sentryDir, "dist", "index.cjs"), "");
     writeFileSync(join(sentryDir, "dist", "bin.cjs"), FAKE_SENTRY_BIN);
   }
   return bin;

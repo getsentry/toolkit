@@ -21,26 +21,37 @@ const INTERRUPT_GRACE_MS = 3000;
 
 /**
  * Find the `sentry` package's bin script. Its `exports` don't include
- * `package.json`, so look for the file where `require("sentry")` would.
+ * `package.json`, so resolve its entry point and walk up to its manifest.
+ * Resolving works in `node_modules` installs and under Yarn Plug'n'Play.
  *
  * @returns {string | undefined}
  */
 function findSentryBin() {
-  const require = createRequire(import.meta.url);
-  for (const nodeModules of require.resolve.paths("sentry") ?? []) {
-    const manifestPath = join(nodeModules, "sentry", "package.json");
-    if (!existsSync(manifestPath)) {
-      continue;
-    }
-    /** @type {{ bin?: string | Record<string, string> }} */
-    const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
-    const bin =
-      typeof manifest.bin === "string"
-        ? manifest.bin
-        : manifest.bin?.["sentry"];
-    return bin === undefined ? undefined : resolve(dirname(manifestPath), bin);
+  let dir;
+  try {
+    dir = dirname(createRequire(import.meta.url).resolve("sentry"));
+  } catch {
+    return undefined;
   }
-  return undefined;
+  for (;;) {
+    const manifestPath = join(dir, "package.json");
+    if (existsSync(manifestPath)) {
+      /** @type {{ name?: string, bin?: string | Record<string, string> }} */
+      const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
+      if (manifest.name === "sentry") {
+        const bin =
+          typeof manifest.bin === "string"
+            ? manifest.bin
+            : manifest.bin?.["sentry"];
+        return bin === undefined ? undefined : resolve(dir, bin);
+      }
+    }
+    const parent = dirname(dir);
+    if (parent === dir) {
+      return undefined;
+    }
+    dir = parent;
+  }
 }
 
 /** Old flags with a `sentry wizard` equivalent, by name. */
