@@ -183,13 +183,15 @@ export async function addGradlePlugin(
   maybeAddSourceContextConfig(appFile, newGradleScript, orgSlug, projectSlug);
 
   const buildSpinner = clack.spinner();
+  // cmd.exe can't run `./gradlew`; the Windows wrapper is gradlew.bat.
+  const gradlew = process.platform === "win32" ? "gradlew.bat" : "./gradlew";
 
   buildSpinner.start(
-    "Running ./gradlew to verify changes (this may take a few minutes)...",
+    `Running ${gradlew} to verify changes (this may take a few minutes)...`,
   );
 
   try {
-    await execute("./gradlew");
+    await execute(gradlew);
     buildSpinner.stop(
       chalk.greenBright(
         `${chalk.bold("Sentry Gradle plugin")} added to the project.`,
@@ -199,7 +201,7 @@ export async function addGradlePlugin(
     // A failed sync is a problem with the user's build: the caller stops
     // the wizard with a message instead of reporting it.
     debug(error);
-    buildSpinner.stop("./gradlew failed.");
+    buildSpinner.stop(`${gradlew} failed.`);
     return false;
   }
 

@@ -105,6 +105,71 @@ Future<void> main() async {
 `;
 
   describe("patchMainContent", () => {
+    function patched(main: string, runAppArgs: string): string {
+      return `import 'package:flutter/widgets.dart';
+import 'package:sentry_flutter/sentry_flutter.dart';
+
+${main} {
+  ${initSnippet("dsn", selectedFeaturesMap, runAppArgs)}
+}
+`;
+    }
+
+    it("wraps the whole runApp call when its arguments contain a statement", () => {
+      const args =
+        "MaterialApp(home: Builder(builder: (c) { return Text('x'); }))";
+      expect(
+        patchMainContent(
+          "dsn",
+          `import 'package:flutter/widgets.dart';\n\nvoid main() {\n  runApp(${args});\n}\n`,
+          selectedFeaturesMap,
+        ),
+      ).toBe(patched("Future<void> main() async", args));
+    });
+
+    it("skips parentheses in strings and comments inside runApp", () => {
+      const args = "MyApp(title: 'a);b') /* ) */";
+      expect(
+        patchMainContent(
+          "dsn",
+          `import 'package:flutter/widgets.dart';\n\nvoid main() {\n  runApp(${args});\n}\n`,
+          selectedFeaturesMap,
+        ),
+      ).toBe(patched("Future<void> main() async", args));
+    });
+
+    it("turns an expression-bodied main into an async block", () => {
+      expect(
+        patchMainContent(
+          "dsn",
+          `import 'package:flutter/widgets.dart';\n\nvoid main() => runApp(const MyApp());\n`,
+          selectedFeaturesMap,
+        ),
+      ).toBe(patched("Future<void> main() async", "const MyApp()"));
+    });
+
+    it("makes a main with parameters async", () => {
+      expect(
+        patchMainContent(
+          "dsn",
+          `import 'package:flutter/widgets.dart';\n\nvoid main(List<String> args) {\n  runApp(const MyApp());\n}\n`,
+          selectedFeaturesMap,
+        ),
+      ).toBe(
+        patched("Future<void> main(List<String> args) async", "const MyApp()"),
+      );
+    });
+
+    it("adds no init without a runApp statement", () => {
+      expect(
+        patchMainContent(
+          "dsn",
+          `void main() {\n  bootstrap();\n}\n`,
+          selectedFeaturesMap,
+        ),
+      ).not.toContain("SentryFlutter.init(");
+    });
+
     it("wraps simple runApp", () => {
       expect(patchMainContent("dsn", simpleRunApp, selectedFeaturesMap)).toBe(
         simpleRunAppPatched,
@@ -140,6 +205,19 @@ Future<void> main() async {
     it("returns proper line index for dev-dependencies", () => {
       expect(getDevDependenciesLocation(pubspec)).toBe(
         pubspec.indexOf("  flutter_lints: ^2.0.0\n"),
+      );
+    });
+
+    it("finds a header with a trailing comment", () => {
+      const withComment = "dev_dependencies: # tools\n  lints: ^2.0.0\n";
+      expect(getDevDependenciesLocation(withComment)).toBe(
+        withComment.indexOf("  lints"),
+      );
+    });
+
+    it("returns -1 without the header", () => {
+      expect(getDevDependenciesLocation("dependencies:\n  http: any\n")).toBe(
+        -1,
       );
     });
   });

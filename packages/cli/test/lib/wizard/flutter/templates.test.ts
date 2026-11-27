@@ -3,6 +3,7 @@ import {
   pubspecOptions,
   sentryProperties,
   initSnippet,
+  initSnippetColored,
 } from "../../../../src/lib/wizard/flutter/templates.js";
 
 vi.mock("../../../../src/lib/wizard/utils/clack/mcp-config.js", () => ({
@@ -110,5 +111,11 @@ describe("Flutter code templates", () => {
           await Sentry.captureException(StateError('This is a sample exception.'));"
       `);
     });
+  });
+
+  it("ends the copy-paste init statement with a semicolon", () => {
+    expect(initSnippetColored("dsn")).toContain(
+      "appRunner: () => runApp(SentryWidget(child: YourApp())),\n  );\n}",
+    );
   });
 });

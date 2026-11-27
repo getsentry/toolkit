@@ -12,6 +12,7 @@ import {
   addProperties,
   patchPubspec,
 } from "../../../../src/lib/wizard/flutter/code-tools.js";
+import { pubspecOptions } from "../../../../src/lib/wizard/flutter/templates.js";
 import { reportCliError } from "../../../../src/lib/error-reporting.js";
 
 vi.mock("../../../../src/lib/error-reporting.js", () => ({
@@ -100,6 +101,22 @@ sentry:
         true,
       );
       expect(readFileSync(pubspecFile, "utf8")).toBe(original);
+    });
+
+    it("adds a dev_dependencies section when there is none", () => {
+      writeFileSync(
+        pubspecFile,
+        "name: flutter_example\n\ndependencies:\n  flutter:\n    sdk: flutter\n",
+      );
+
+      expect(
+        patchPubspec(pubspecFile, "^9.0.0", "^3.0.0", "my-app", "my-org"),
+      ).toBe(true);
+
+      expect(readFileSync(pubspecFile, "utf8")).toBe(
+        "name: flutter_example\n\ndependencies:\n  sentry_flutter: ^9.0.0\n  flutter:\n    sdk: flutter\n\ndev_dependencies:\n  sentry_dart_plugin: ^3.0.0\n\n" +
+          pubspecOptions("my-app", "my-org"),
+      );
     });
 
     it("fails without a pubspec.yaml", () => {

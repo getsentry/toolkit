@@ -11,6 +11,7 @@ import chalk from "chalk";
 import { Sentry, traceStep, withTelemetry } from "../telemetry.js";
 import { abortIfSpotlightNotSupported } from "../utils/abort-if-sportlight-not-supported.js";
 import {
+  abort,
   confirmContinueIfNoOrDirtyGitRepo,
   getOrAskForProjectData,
   printWelcome,
@@ -73,7 +74,7 @@ async function runFlutterWizardWithTelemetry(
         "pubspec.yaml",
       )}. Make sure you run the wizard in the projects root folder.`,
     );
-    return;
+    return await abort();
   }
 
   // ======== STEP 1. Add sentry_flutter and sentry_dart_plugin to pubspec.yaml ============

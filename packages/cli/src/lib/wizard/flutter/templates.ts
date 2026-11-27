@@ -90,7 +90,7 @@ ${pubspecOptions(project, org)}`;
 export function initSnippetColored(dsn: string): string {
   const snippet = `import 'package:sentry_flutter/sentry_flutter.dart';
 
-Future<void>main() async {
+Future<void> main() async {
   await SentryFlutter.init(
     (options) {
       options.dsn = '${dsn}';
@@ -103,7 +103,7 @@ Future<void>main() async {
       options.tracesSampleRate = 1.0;
     },
     appRunner: () => runApp(SentryWidget(child: YourApp())),
-  )
+  );
 }`;
   return makeCodeSnippet(true, (_unchanged, plus, _minus) => {
     return plus(snippet);

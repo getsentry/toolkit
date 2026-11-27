@@ -34,6 +34,9 @@ import { featureSelectionPrompt } from "../utils/clack/index.js";
  * @returns The path to the main.dart file or null if not found.
  */
 export function findFile(dir: string, name: string): string | null {
+  if (!existsSync(dir)) {
+    return null;
+  }
   const files: string[] = readdirSync(dir);
 
   for (const file of files) {
@@ -68,12 +71,12 @@ export function patchPubspec(
     let pubspecContent = readFileSync(pubspecFile, "utf8");
 
     if (!pubspecContent.includes("sentry_flutter:")) {
-      const dependenciesIndex = getDependenciesLocation(pubspecContent);
-
-      pubspecContent =
-        pubspecContent.slice(0, dependenciesIndex) +
-        `  sentry_flutter: ${sentryDartFlutterVersion}\n` +
-        pubspecContent.slice(dependenciesIndex);
+      pubspecContent = addToSection(
+        pubspecContent,
+        "dependencies",
+        getDependenciesLocation(pubspecContent),
+        `  sentry_flutter: ${sentryDartFlutterVersion}\n`,
+      );
 
       clack.log.success(
         chalk.greenBright(
@@ -89,11 +92,12 @@ export function patchPubspec(
     }
 
     if (!pubspecContent.includes("sentry_dart_plugin:")) {
-      const devDependenciesIndex = getDevDependenciesLocation(pubspecContent);
-      pubspecContent =
-        pubspecContent.slice(0, devDependenciesIndex) +
-        `  sentry_dart_plugin: ${sentryDartPluginVersion}\n` +
-        pubspecContent.slice(devDependenciesIndex);
+      pubspecContent = addToSection(
+        pubspecContent,
+        "dev_dependencies",
+        getDevDependenciesLocation(pubspecContent),
+        `  sentry_dart_plugin: ${sentryDartPluginVersion}\n`,
+      );
 
       clack.log.success(
         chalk.greenBright(
@@ -173,11 +177,12 @@ export async function patchMain(
   mainFile: string | null,
   dsn: string,
 ): Promise<boolean> {
+  // No main.dart is an expected project state: the caller shows the
+  // snippet to add by hand.
+  if (!mainFile) {
+    return false;
+  }
   try {
-    if (!mainFile) {
-      throw new Error("pubspec.yaml is not provided or invalid.");
-    }
-
     let mainContent = readFileSync(mainFile, "utf8");
     if (
       /import\s+['"]package[:]sentry_flutter\/sentry_flutter\.dart['"];?/i.test(
@@ -210,6 +215,10 @@ export async function patchMain(
       },
     ] as const);
     mainContent = patchMainContent(dsn, mainContent, selectedFeatures);
+    if (!mainContent.includes("SentryFlutter.init(")) {
+      // No `runApp(...);` to wrap: the caller shows the snippet to add by hand.
+      return false;
+    }
 
     if (selectedFeatures.replay) {
       clack.log.info(
@@ -252,41 +261,188 @@ export function patchMainContent(
     sentryImport +
     mainContent.slice(importIndex);
 
-  // Find and replace `runApp(...)`
-  mainContent = mainContent.replace(
-    /runApp\(([\s\S]*?)\);/g, // Match the `runApp(...)` invocation
-    (_, runAppArgs) => initSnippet(dsn, selectedFeatures, runAppArgs as string),
+  mainContent = arrowMainToBlock(mainContent);
+
+  mainContent = replaceRunAppCalls(mainContent, (runAppArgs) =>
+    initSnippet(dsn, selectedFeatures, runAppArgs),
   );
 
   // Make the `main` function async if it's not already
   mainContent = mainContent.replace(
-    /void\s+main\(\)\s*\{/g,
-    "Future<void> main() async {",
+    /(?:Future<void>|void)\s+main\s*\(([^)]*)\)\s*\{/g,
+    "Future<void> main($1) async {",
   );
 
   return mainContent;
 }
 
-export function getLastImportLineLocation(sourceCode: string): number {
-  const importRegex = /import\s+['"].*['"].*;/gim;
-  return getLastReqExpLocation(sourceCode, importRegex);
+/**
+ * Rewrite an expression-bodied `main` (`void main() => runApp(...);`) as a
+ * block, so the init snippet's statements fit in it.
+ */
+function arrowMainToBlock(source: string): string {
+  const arrowMain =
+    /(?:Future<void>|void)\s+main\s*\(([^)]*)\)\s*(?:async\s*)?=>/.exec(source);
+  if (!arrowMain) {
+    return source;
+  }
+  const bodyStart = arrowMain.index + arrowMain[0].length;
+  const bodyEnd = scanCode(
+    source,
+    bodyStart,
+    (char, depth) => char === ";" && depth === 0,
+  );
+  if (bodyEnd === -1) {
+    return source;
+  }
+  const params = arrowMain[1] ?? "";
+  const body = source.slice(bodyStart, bodyEnd).trim();
+  return `${source.slice(0, arrowMain.index)}Future<void> main(${params}) async {\n  ${body};\n}${source.slice(bodyEnd + 1)}`;
 }
 
+/**
+ * Replace each `runApp(...);` statement with `replace(<its arguments>)`,
+ * matching the call's own closing parenthesis.
+ */
+function replaceRunAppCalls(
+  source: string,
+  replace: (runAppArgs: string) => string,
+): string {
+  const runAppCall = /\brunApp\s*\(/g;
+  let result = "";
+  let cursor = 0;
+  for (
+    let match = runAppCall.exec(source);
+    match;
+    match = runAppCall.exec(source)
+  ) {
+    const open = match.index + match[0].length - 1;
+    const close = scanCode(
+      source,
+      open,
+      (char, depth) => char === ")" && depth === 0,
+    );
+    if (close === -1) {
+      break;
+    }
+    const semicolon = /^\s*;/.exec(source.slice(close + 1));
+    if (!semicolon) {
+      continue;
+    }
+    result +=
+      source.slice(cursor, match.index) +
+      replace(source.slice(open + 1, close));
+    cursor = close + 1 + semicolon[0].length;
+    runAppCall.lastIndex = cursor;
+  }
+  return result + source.slice(cursor);
+}
+
+/**
+ * Index of the first character from `start` where `stop(char, depth)` holds,
+ * where `depth` counts open brackets after `char`. Skips strings and comments.
+ * Returns -1 when there is none, or when a bracket closes below `start`'s level.
+ */
+function scanCode(
+  source: string,
+  start: number,
+  stop: (char: string, depth: number) => boolean,
+): number {
+  let depth = 0;
+  for (let i = start; i < source.length; i++) {
+    const char = source.charAt(i);
+    if (char === "'" || char === '"') {
+      i = endOfString(source, i);
+      continue;
+    }
+    if (source.startsWith("//", i)) {
+      i = source.indexOf("\n", i);
+      if (i === -1) {
+        return -1;
+      }
+      continue;
+    }
+    if (source.startsWith("/*", i)) {
+      i = source.indexOf("*/", i);
+      if (i === -1) {
+        return -1;
+      }
+      i += 1;
+      continue;
+    }
+    if ("([{".includes(char)) {
+      depth++;
+    } else if (")]}".includes(char)) {
+      depth--;
+    }
+    if (stop(char, depth)) {
+      return i;
+    }
+    if (depth < 0) {
+      return -1;
+    }
+  }
+  return -1;
+}
+
+/** Index of the closing quote of the Dart string starting at `start`. */
+function endOfString(source: string, start: number): number {
+  const quote = source.charAt(start);
+  const delimiter = source.startsWith(quote.repeat(3), start)
+    ? quote.repeat(3)
+    : quote;
+  for (let i = start + delimiter.length; i < source.length; i++) {
+    if (source.charAt(i) === "\\") {
+      i++;
+    } else if (source.startsWith(delimiter, i)) {
+      return i + delimiter.length - 1;
+    }
+  }
+  return source.length;
+}
+
+export function getLastImportLineLocation(sourceCode: string): number {
+  const importRegex = /import\s+['"].*['"].*;/gim;
+  return Math.max(0, getLastReqExpLocation(sourceCode, importRegex));
+}
+
+/** Offset of the line after the `dependencies:` header, or -1 without one. */
 export function getDependenciesLocation(sourceCode: string): number {
-  const dependencyRegex = /^dependencies:\s*$/gim;
+  const dependencyRegex = /^dependencies:[ \t]*(?:#[^\r\n]*)?\r?$/gim;
   return getLastReqExpLocation(sourceCode, dependencyRegex);
 }
 
+/** Offset of the line after the `dev_dependencies:` header, or -1 without one. */
 export function getDevDependenciesLocation(sourceCode: string): number {
-  const dependencyRegex = /^dev_dependencies:\s*$/gim;
+  const dependencyRegex = /^dev_dependencies:[ \t]*(?:#[^\r\n]*)?\r?$/gim;
   return getLastReqExpLocation(sourceCode, dependencyRegex);
 }
 
 // Helper
 
+/**
+ * Insert `entry` at `index`, the start of the `section` body, or append the
+ * section with `entry` when `index` is -1 (the pubspec has no such section).
+ */
+function addToSection(
+  content: string,
+  section: string,
+  index: number,
+  entry: string,
+): string {
+  if (index === -1) {
+    const separator = content.endsWith("\n") || content === "" ? "" : "\n";
+    return `${content}${separator}\n${section}:\n${entry}`;
+  }
+  if (index > content.length) {
+    return `${content}\n${entry}`;
+  }
+  return content.slice(0, index) + entry + content.slice(index);
+}
+
 function getLastReqExpLocation(sourceCode: string, regExp: RegExp): number {
   let match = regExp.exec(sourceCode);
-  let importIndex = 0;
+  let importIndex = -1;
   while (match) {
     importIndex = match.index + match[0].length + 1;
     match = regExp.exec(sourceCode);

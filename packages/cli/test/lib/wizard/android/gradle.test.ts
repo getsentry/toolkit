@@ -87,6 +87,18 @@ android {
       expect(execute).toHaveBeenCalledWith("./gradlew");
     });
 
+    it("verifies with gradlew.bat on Windows", async () => {
+      vi.spyOn(process, "platform", "get").mockReturnValue("win32");
+      const file = writeGradle(
+        "build.gradle.kts",
+        `plugins {\n    id("com.android.application")\n}\n`,
+      );
+
+      await addGradlePlugin(file, "my-org", "my-app");
+
+      expect(execute).toHaveBeenCalledWith("gradlew.bat");
+    });
+
     it("adds a plugins block after the imports when there is none", async () => {
       const original = `import groovy.json.JsonSlurper
 
