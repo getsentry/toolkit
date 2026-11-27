@@ -182,7 +182,10 @@ async function runAndroidWizardWithTelemetry(
     )} to ${chalk.cyan("sentry.properties")}.`,
   );
 
-  await addSentryCliConfig({ authToken }, proguardMappingCliSetupConfig);
+  await addSentryCliConfig(
+    { authToken, url: selfHosted ? sentryUrl : undefined },
+    proguardMappingCliSetupConfig,
+  );
 
   // Offer optional project-scoped MCP config for Sentry with org and project scope
   await offerProjectScopedMcpConfig(
