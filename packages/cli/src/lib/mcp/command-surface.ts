@@ -39,6 +39,10 @@ async function runCall(
     url: `${config.sentryProtocol}://${config.sentryHost}`,
     org: call.org,
     project: call.project,
+    // The session's constraint is a limit: what an ID alone names
+    // (`issue view 12345`, `event view <event-id>`) is checked against it
+    // once it is found.
+    limitToTarget: true,
     cwd: setup.cwd,
     // The MCP server owns the process's Sentry client.
     telemetry: false,
