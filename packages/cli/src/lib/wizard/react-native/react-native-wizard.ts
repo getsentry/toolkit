@@ -321,7 +321,11 @@ Or setup using ${chalk.cyan(
   }
 }
 
-async function confirmFirstSentryException(orgSlug: string, projectId: string) {
+/** Asks whether the test event arrived; Ctrl+C exits the wizard. */
+export async function confirmFirstSentryException(
+  orgSlug: string,
+  projectId: string,
+) {
   const issuesStreamUrl = buildProjectIssuesUrl(orgSlug, projectId);
 
   clack.log
@@ -339,11 +343,11 @@ ${chalk.cyan(issuesStreamUrl)}`);
 `),
   );
 
-  const firstErrorConfirmed = clack.confirm({
-    message: `Have you successfully sent a test event?`,
-  });
-
-  return await firstErrorConfirmed;
+  return await abortIfCancelled(
+    clack.confirm({
+      message: `Have you successfully sent a test event?`,
+    }),
+  );
 }
 
 async function patchXcodeFiles(config: RNCliSetupConfigContent) {
