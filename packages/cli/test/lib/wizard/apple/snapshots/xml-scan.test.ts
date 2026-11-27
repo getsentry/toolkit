@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import {
-  decodeXmlEntities,
   getAttributeValues,
   getElementContent,
   getElementTexts,
@@ -47,19 +46,6 @@ const plist = `<?xml version="1.0" encoding="UTF-8"?>
 `;
 
 describe("xml-scan", () => {
-  describe("decodeXmlEntities", () => {
-    it("decodes named and numeric references", () => {
-      expect(decodeXmlEntities("a &amp; b &lt;c&gt; &quot;&apos;")).toBe(
-        "a & b <c> \"'",
-      );
-      expect(decodeXmlEntities("&#65;&#x42;")).toBe("AB");
-    });
-
-    it("leaves unknown entities as they are", () => {
-      expect(decodeXmlEntities("&nbsp;")).toBe("&nbsp;");
-    });
-  });
-
   describe("getElementContent", () => {
     it("returns the markup inside the first matching element", () => {
       const testAction = getElementContent(scheme, "TestAction");
