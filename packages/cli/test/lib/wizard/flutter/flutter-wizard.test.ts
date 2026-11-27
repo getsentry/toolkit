@@ -15,6 +15,7 @@ import {
   featureSelectionPrompt,
   showCopyPasteInstructions,
 } from "../../../../src/lib/wizard/utils/clack/index.js";
+import { clack } from "../../../../src/lib/wizard/utils/clack/prompts.js";
 import type { WizardOptions } from "../../../../src/lib/wizard/utils/types.js";
 
 vi.mock("../../../../src/lib/error-reporting.js", () => ({
@@ -144,6 +145,7 @@ describe("runFlutterWizard", () => {
   });
 
   it("shows the main.dart snippet and leaves main.dart alone without runApp", async () => {
+    const outro = vi.spyOn(clack, "outro");
     writeFileSync(path.join(projectDir, "pubspec.yaml"), PUBSPEC);
     mkdirSync(path.join(projectDir, "lib"));
     const mainFile = path.join(projectDir, "lib", "main.dart");
@@ -155,5 +157,6 @@ describe("runFlutterWizard", () => {
     expect(copyPasteFiles()).toEqual(["main.dart"]);
     expect(readFileSync(mainFile, "utf8")).toBe(main);
     expect(reportCliError).not.toHaveBeenCalled();
+    expect(outro.mock.calls[0]?.[0]).not.toContain("test error");
   });
 });

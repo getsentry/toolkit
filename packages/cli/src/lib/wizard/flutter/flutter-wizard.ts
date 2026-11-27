@@ -185,20 +185,22 @@ Set the ${chalk.cyan(
     ? `${sentryUrl}organizations/${selectedProject.organization.slug}/issues/?project=${selectedProject.id}`
     : `https://${selectedProject.organization.slug}.sentry.io/issues/?project=${selectedProject.id}`;
 
+  const testStep = mainPatched
+    ? "to test the setup - we've added a test error that will trigger on app start"
+    : "after adding the snippet above to check the setup";
+
   clack.outro(`${chalk.greenBright(
     "Successfully installed the Sentry Flutter SDK!",
   )}
     
     ${chalk.cyan("Next steps:")}
-    1. Run ${chalk.bold(
-      "flutter run",
-    )} to test the setup - we've added a test error that will trigger on app start
+    1. Run ${chalk.bold("flutter run")} ${testStep}
     2. For production builds, run ${chalk.bold(
       "flutter build apk --obfuscate --split-debug-info=build/debug-info",
     )} (or ios/macos) then ${chalk.bold(
       "flutter pub run sentry_dart_plugin",
     )} to upload debug symbols
-    3. View your test error and transaction data at ${issuesPageLink}
+    3. View your ${mainPatched ? "test error" : "errors"} and transaction data at ${issuesPageLink}
     
     ${chalk.cyan("Learn more:")}
     - Debug Symbols: https://docs.sentry.io/platforms/dart/guides/flutter/debug-symbols/
