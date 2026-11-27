@@ -1,8 +1,8 @@
 import { getActiveSpan } from "@sentry/core";
 import { z } from "zod";
 import {
+  ISSUE_RELATION_TYPES,
   RELATED_ISSUE_TYPE_STATUSES,
-  RELATED_ISSUE_TYPES,
 } from "../../api-client/schema";
 import type { RelatedIssues } from "../../api-client/types";
 import { apiServiceFromContext } from "../../internal/tool-helpers/api";
@@ -38,7 +38,7 @@ export const findRelatedIssuesOutputSchema = z.object({
         relations: z
           .array(
             z.object({
-              type: z.enum(RELATED_ISSUE_TYPES),
+              type: z.enum(ISSUE_RELATION_TYPES),
               score: z
                 .number()
                 .nullable()
@@ -54,7 +54,7 @@ export const findRelatedIssuesOutputSchema = z.object({
   relationTypes: z
     .array(
       z.object({
-        type: z.enum(RELATED_ISSUE_TYPES),
+        type: z.enum(ISSUE_RELATION_TYPES),
         status: z
           .enum(RELATED_ISSUE_TYPE_STATUSES)
           .describe(
@@ -110,7 +110,7 @@ export default defineTool({
     issueId: ParamIssueShortId.optional(),
     issueUrl: ParamIssueUrl.optional(),
     types: z
-      .array(z.enum(RELATED_ISSUE_TYPES))
+      .array(z.enum(ISSUE_RELATION_TYPES))
       .nullable()
       .default(null)
       .describe(
@@ -157,7 +157,8 @@ export default defineTool({
     const related = await apiService.getRelatedIssues({
       organizationSlug: parsed.organizationSlug,
       issueId: parsed.issueId,
-      types: params.types ?? undefined,
+      // Not investigations: get_issue_details shows those
+      types: params.types?.length ? params.types : ISSUE_RELATION_TYPES,
       limit: params.limit,
     });
 
@@ -210,14 +211,21 @@ export default defineTool({
       organizationSlug: parsed.organizationSlug,
       issueId: parsed.issueId,
       relatedIssues,
-      relationTypes: related.meta.types.map((meta) => ({
-        type: meta.type,
-        status: meta.status,
-        detail: meta.detail ?? null,
-        traceId: meta.traceId ?? null,
-        title: meta.title ?? null,
-        supergroup: meta.supergroup?.title ?? null,
-      })),
+      // investigations is never requested here; this only narrows the shared enum
+      relationTypes: related.meta.types.flatMap((meta) =>
+        meta.type === "investigations"
+          ? []
+          : [
+              {
+                type: meta.type,
+                status: meta.status,
+                detail: meta.detail ?? null,
+                traceId: meta.traceId ?? null,
+                title: meta.title ?? null,
+                supergroup: meta.supergroup?.title ?? null,
+              },
+            ],
+      ),
       notes,
       suggestedActions: inspectFirst ? [inspectFirst] : [],
     });

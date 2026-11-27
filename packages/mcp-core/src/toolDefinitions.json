@@ -7518,6 +7518,27 @@
                 "additionalProperties": false
               }
             },
+            "investigations": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "title": {
+                    "type": "string"
+                  },
+                  "url": {
+                    "type": "string"
+                  },
+                  "reason": {
+                    "description": "Why Seer found this issue relevant.",
+                    "type": ["string", "null"]
+                  }
+                },
+                "required": ["title", "url", "reason"],
+                "additionalProperties": false
+              },
+              "description": "Seer investigations whose evidence pointed to this issue."
+            },
             "unavailableTypes": {
               "type": "array",
               "items": {
@@ -7527,13 +7548,14 @@
                   "same_trace",
                   "contributing",
                   "same_title",
-                  "same_supergroup"
+                  "same_supergroup",
+                  "investigations"
                 ]
               },
               "description": "Relation types that failed, so some may be missing."
             }
           },
-          "required": ["issues", "unavailableTypes"],
+          "required": ["issues", "investigations", "unavailableTypes"],
           "additionalProperties": false
         },
         "event": {

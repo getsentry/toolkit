@@ -617,6 +617,7 @@ describe("get_issue_details structuredContent for a realistic error", () => {
           "usersImpacted": 41,
         },
         "relatedIssues": {
+          "investigations": [],
           "issues": [
             {
               "project": "CLOUDFLARE-MCP",

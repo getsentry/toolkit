@@ -2035,6 +2035,7 @@ describe("update_issue", () => {
       );
 
       expect(requests).toHaveLength(1);
+      // Every type that finds issues; the quest doesn't read investigations.
       expect(requests[0]?.searchParams.getAll("type")).toEqual([
         "similar_stacktrace",
         "same_trace",

@@ -179,7 +179,7 @@ describe("find_related_issues", () => {
 
   // Left to its default, Sentry would return every type it has, including
   // ones added after this release, which the response enum rejects.
-  it("names every known type when given an empty list", async () => {
+  it("names every issue relation type when given an empty list", async () => {
     let requested: URLSearchParams | undefined;
     mswServer.use(
       http.get(RELATED_URL, ({ request }) => {
