@@ -78,7 +78,10 @@ export default defineTool({
 
     const releases = await apiService.listReleases({
       organizationSlug,
-      projectSlug: params.projectSlug ?? undefined,
+      projectSlug:
+        params.projectSlug && params.projectSlug !== "all"
+          ? params.projectSlug
+          : undefined,
       query: params.query ?? undefined,
       limit: RESULT_LIMIT + 1,
     });
