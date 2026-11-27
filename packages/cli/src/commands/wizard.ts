@@ -17,7 +17,7 @@ import {
   parseOrgProjectInput,
 } from "../lib/arg-parsing.js";
 import { buildCommand } from "../lib/command.js";
-import { ORG_PROJECT_TARGET } from "../lib/completion-target.js";
+import { ORG_PROJECT_TARGET, parseText } from "../lib/completion-target.js";
 import { getEnv } from "../lib/env.js";
 import { ValidationError, WizardExitError } from "../lib/errors.js";
 import { parseBoolValue } from "../lib/parse-bool.js";
@@ -39,6 +39,8 @@ const usageHint = () => sentry`wizard ${USAGE}`;
 
 type WizardFlags = {
   readonly force: boolean;
+  readonly "app-target"?: string;
+  readonly "hosted-test-target"?: string;
 };
 
 /** Parsed `sentry wizard` arguments. */
@@ -208,6 +210,20 @@ export const wizardCommand = buildCommand({
           "Change a project with uncommitted changes without asking, and install the SDK even when the package manager's checks fail",
         default: false,
       },
+      "app-target": {
+        kind: "parsed",
+        parse: parseText,
+        optional: true,
+        brief:
+          "Xcode app target that SnapshotPreviews uses, instead of picking one (appleSnapshots only)",
+      },
+      "hosted-test-target": {
+        kind: "parsed",
+        parse: parseText,
+        optional: true,
+        brief:
+          "Hosted XCTest target that renders the snapshots, instead of picking one (appleSnapshots only)",
+      },
     },
     aliases: { f: "force" },
   },
@@ -223,6 +239,10 @@ export const wizardCommand = buildCommand({
           forceInstall: flags.force,
           ignoreGitChanges: flags.force,
           spotlight: isSpotlightEnabled(),
+        },
+        appleSnapshotsTargets: {
+          appTarget: flags["app-target"],
+          hostedTestTarget: flags["hosted-test-target"],
         },
       });
     } catch (error) {

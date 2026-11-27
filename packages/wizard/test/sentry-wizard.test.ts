@@ -201,6 +201,41 @@ describe("sentry-wizard", () => {
     });
   });
 
+  test("passes --app-target and --hosted-test-target on with their values", async () => {
+    const result = run(bin, [
+      "--app-target",
+      "App",
+      "-i",
+      "appleSnapshots",
+      "--hosted-test-target=AppTests",
+    ]);
+
+    expect(await result.done).toEqual({ code: 0, signal: null });
+    expect(result.stderr()).toBe(NOTICE);
+    expect(JSON.parse(result.stdout())).toEqual({
+      args: [
+        "wizard",
+        "appleSnapshots",
+        "--app-target",
+        "App",
+        "--hosted-test-target",
+        "AppTests",
+      ],
+    });
+  });
+
+  test("drops --app-target without a value, with a notice", async () => {
+    const result = run(bin, ["-i", "appleSnapshots", "--app-target"]);
+
+    expect(await result.done).toEqual({ code: 0, signal: null });
+    expect(result.stderr()).toBe(
+      NOTICE + "Ignoring --app-target: it needs a value.\n",
+    );
+    expect(JSON.parse(result.stdout())).toEqual({
+      args: ["wizard", "appleSnapshots"],
+    });
+  });
+
   test("drops other old flags and their values, with a notice for each", async () => {
     const result = run(bin, [
       "--project",

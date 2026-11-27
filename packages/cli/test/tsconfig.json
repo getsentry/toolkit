@@ -4,5 +4,5 @@
     "lib": ["ESNext", "DOM"]
   },
   "include": ["**/*.ts", "**/*.tsx", "../src/lib/wizard/xcode.d.ts"],
-  "exclude": ["lib/wizard/**/fixtures/**"]
+  "exclude": ["lib/wizard/**/fixtures/**", "wizard-e2e/test-applications"]
 }

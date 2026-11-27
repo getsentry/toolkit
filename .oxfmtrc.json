@@ -15,6 +15,7 @@
     "packages/cli/test/lib/wizard/**/fixtures/**",
     "packages/mcp-core/src/ui/chart-app.generated.ts",
     "packages/codemod-cli3to4/tests/**",
+    "packages/cli/test/wizard-e2e/test-applications/**",
     "**/worker-configuration.d.ts",
     "**/tsconfig*.json"
   ]

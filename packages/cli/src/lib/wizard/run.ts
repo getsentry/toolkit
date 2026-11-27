@@ -8,6 +8,7 @@
 
 import { isatty } from "node:tty";
 import { ValidationError } from "../errors.js";
+import type { AppleSnapshotsWizardOptions } from "./apple/options.js";
 import { abortIfCancelled } from "./utils/clack/index.js";
 import { clack } from "./utils/clack/prompts.js";
 import type { WizardOptions } from "./utils/types.js";
@@ -44,8 +45,17 @@ export type WizardIntegration = (typeof WIZARD_INTEGRATIONS)[number]["id"];
 export const INTEGRATION_IDS: readonly WizardIntegration[] =
   WIZARD_INTEGRATIONS.map((integration) => integration.id);
 
+/** `--app-target` and `--hosted-test-target`, which only Apple Snapshots reads. */
+type AppleSnapshotsTargets = Pick<
+  AppleSnapshotsWizardOptions,
+  "appTarget" | "hostedTestTarget"
+>;
+
 /** Runs the wizard of one integration. */
-type WizardRunner = (options: WizardOptions) => Promise<void>;
+type WizardRunner = (
+  options: WizardOptions,
+  appleSnapshotsTargets: AppleSnapshotsTargets,
+) => Promise<void>;
 
 /**
  * The flow of each integration. Integrations without one are still being
@@ -66,16 +76,28 @@ const WIZARD_RUNNERS: Partial<Record<WizardIntegration, WizardRunner>> = {
       await import("./sourcemaps/sourcemaps-wizard.js");
     await runSourcemapsWizard(options);
   },
+  android: async (options) => {
+    const { runAndroidWizard } = await import("./android/android-wizard.js");
+    await runAndroidWizard(options);
+  },
+  flutter: async (options) => {
+    const { runFlutterWizard } = await import("./flutter/flutter-wizard.js");
+    await runFlutterWizard(options);
+  },
   ios: async (options) => {
     const { runAppleWizard } = await import("./apple/apple-wizard.js");
     await runAppleWizard(options);
   },
-  appleSnapshots: async (options) => {
+  appleSnapshots: async (options, appleSnapshotsTargets) => {
     const { runAppleSnapshotsWizard } =
       await import("./apple/snapshots/apple-snapshots-wizard.js");
     // Without a terminal to prompt on, pick the only target or fail with
     // the choices, as the CLI does for auto-login (`isatty(0)`).
-    await runAppleSnapshotsWizard({ ...options, nonInteractive: !isatty(0) });
+    await runAppleSnapshotsWizard({
+      ...options,
+      ...appleSnapshotsTargets,
+      nonInteractive: !isatty(0),
+    });
   },
   reactNative: async (options) => {
     const { runReactNativeWizard } =
@@ -84,12 +106,19 @@ const WIZARD_RUNNERS: Partial<Record<WizardIntegration, WizardRunner>> = {
   },
 };
 
+/** Whether `integration` has a flow in this version. */
+export function hasWizardRunner(integration: WizardIntegration): boolean {
+  return integration in WIZARD_RUNNERS;
+}
+
 /** What `sentry wizard` passes to {@link runWizard}. */
 export type RunWizardArgs = {
   /** The integration to set up; prompts for one when unset. */
   integration?: WizardIntegration | undefined;
   /** The options every wizard flow takes. */
   wizardOptions: WizardOptions;
+  /** The Xcode targets Apple Snapshots uses instead of picking them. */
+  appleSnapshotsTargets?: AppleSnapshotsTargets | undefined;
 };
 
 /**
@@ -109,7 +138,7 @@ export async function runWizard(args: RunWizardArgs): Promise<void> {
       "integration",
     );
   }
-  await runner(args.wizardOptions);
+  await runner(args.wizardOptions, args.appleSnapshotsTargets ?? {});
 }
 
 /** Ask which integration to set up, out of the ones that have a flow. */
@@ -118,7 +147,7 @@ async function askForIntegration(): Promise<WizardIntegration> {
   const integration = await abortIfCancelled(
     clack.select<WizardIntegration>({
       message: "What do you want to set up?",
-      options: WIZARD_INTEGRATIONS.filter(({ id }) => id in WIZARD_RUNNERS).map(
+      options: WIZARD_INTEGRATIONS.filter(({ id }) => hasWizardRunner(id)).map(
         ({ id, label }) => ({ value: id, label }),
       ),
     }),
