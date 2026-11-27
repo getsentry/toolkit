@@ -12,6 +12,8 @@ import {
   AutofixRunSchema,
   AutofixRunStateSchema,
   ClientKeySchema,
+  DashboardListItemSchema,
+  DashboardSchema,
   EventSchema,
   FlamegraphSchema,
   IssueSchema,
@@ -1157,5 +1159,38 @@ describe("event packages", () => {
   ])("retains $label package metadata during event parsing", ({ packages }) => {
     const event = EventSchema.parse({ ...createDefaultEvent(), packages });
     expect(event.packages).toEqual(packages);
+  });
+});
+
+describe("dashboard environment", () => {
+  const listItem = {
+    id: "1",
+    title: "Dashboard",
+    dateCreated: "2026-01-01T00:00:00Z",
+  };
+  const dashboard = { ...listItem, widgets: [] };
+
+  it.each([
+    ["null", null, []],
+    ["missing", undefined, []],
+    ["an array", ["production"], ["production"]],
+  ])("parses %s environment on list items", (_label, environment, expected) => {
+    const parsed = DashboardListItemSchema.parse({ ...listItem, environment });
+    expect(parsed.environment).toEqual(expected);
+  });
+
+  it.each([
+    ["null", null, []],
+    ["missing", undefined, []],
+    ["an array", ["production"], ["production"]],
+  ])("parses %s environment on dashboards", (_label, environment, expected) => {
+    const parsed = DashboardSchema.parse({ ...dashboard, environment });
+    expect(parsed.environment).toEqual(expected);
+  });
+
+  it("rejects non-string environment entries", () => {
+    expect(() =>
+      DashboardListItemSchema.parse({ ...listItem, environment: [1] }),
+    ).toThrow();
   });
 });
