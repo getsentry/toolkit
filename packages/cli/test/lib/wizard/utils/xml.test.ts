@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
   childElements,
+  decodeXmlEntities,
   parseXml,
-} from "../../../../src/lib/wizard/android/xml.js";
+} from "../../../../src/lib/wizard/utils/xml.js";
 
 describe("parseXml", () => {
   it("parses nested elements and their attributes", () => {
@@ -100,5 +101,13 @@ describe("childElements", () => {
 
   it("returns nothing for a missing element", () => {
     expect(childElements(undefined, "b")).toEqual([]);
+  });
+});
+
+describe("decodeXmlEntities", () => {
+  it("decodes the predefined and numeric references and keeps unknown ones", () => {
+    expect(
+      decodeXmlEntities("&lt;a&gt; &amp; &quot;&apos; &#65;&#x42; &nbsp;"),
+    ).toBe(`<a> & "' AB &nbsp;`);
   });
 });

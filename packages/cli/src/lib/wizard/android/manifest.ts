@@ -9,7 +9,7 @@ import { reportCliError } from "../../error-reporting.js";
 import { debug } from "../utils/debug.js";
 import { clack } from "../utils/clack/prompts.js";
 import { manifest } from "./templates.js";
-import { childElements, parseXml, type XmlElement } from "./xml.js";
+import { childElements, parseXml, type XmlElement } from "../utils/xml.js";
 
 /**
  * Looks for the closing </application> tag in the manifest and adds the Sentry config after it.

@@ -1,11 +1,10 @@
 /**
- * A minimal XML reader for `AndroidManifest.xml`.
+ * A minimal XML reader for the wizards.
  *
- * The Android wizard only reads element names and attributes (the manifest's
- * `package`, and each activity's `android:name` and intent filters), so this
- * parses elements and attributes into a tree and skips everything else: text,
- * comments, CDATA, processing instructions, and the doctype. It never writes
- * XML; the wizard edits the manifest as a string to keep its formatting.
+ * It parses elements and attributes into a tree and skips everything else:
+ * text, comments, CDATA, processing instructions, and the doctype. It never
+ * writes XML; wizards edit files as strings to keep their formatting. The
+ * Android wizard uses it to read `AndroidManifest.xml`.
  */
 
 /** One XML element: its tag name, attributes, and child elements. */
@@ -28,7 +27,7 @@ const NAMED_ENTITIES: Record<string, string> = {
 };
 
 /** Replace the predefined and numeric character references in `value`. */
-function decodeEntities(value: string): string {
+export function decodeXmlEntities(value: string): string {
   return value.replace(
     /&(#x[0-9a-f]+|#\d+|[a-z]+);/gi,
     (match, entity: string) => {
@@ -119,7 +118,7 @@ export function parseXml(xml: string): XmlElement {
         break;
       }
       const [, attributeName = "", doubleQuoted, singleQuoted] = attribute;
-      element.attributes[attributeName] = decodeEntities(
+      element.attributes[attributeName] = decodeXmlEntities(
         doubleQuoted ?? singleQuoted ?? "",
       );
       cursor = ATTRIBUTE_PATTERN.lastIndex;
