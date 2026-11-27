@@ -28,12 +28,20 @@ export function getTargetScope(): TargetScope | undefined {
   return project ? { org, project } : { org };
 }
 
+/** The command group that lists what a refused subject names (`Event abc`). */
+const LIST_GROUPS: Readonly<Record<string, string>> = {
+  Event: "event",
+  Trace: "trace",
+  Replay: "replay",
+};
+
 function outsideScope(subject: string, scope: TargetScope): ResolutionError {
   const target = scope.project ? `${scope.org}/${scope.project}` : scope.org;
+  const group = LIST_GROUPS[subject.split(" ", 1)[0] ?? ""] ?? "issue";
   return new ResolutionError(
     subject,
     `is outside this session's scope (${target})`,
-    sentry`issue list ${scope.project ? target : `${target}/`}`,
+    sentry`${group} list ${scope.project ? target : `${target}/`}`,
     [`This session can only read or change data in ${target}.`],
   );
 }

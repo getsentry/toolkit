@@ -421,11 +421,6 @@ export const viewCommand = buildCommand({
       throw error;
     }
 
-    if (flags.web) {
-      await openInBrowser(buildReplayUrl(resolved.org, replay.id), "replay");
-      return;
-    }
-
     await validateReplayProjectScope({
       org: resolved.org,
       project: resolved.project,
@@ -433,6 +428,11 @@ export const viewCommand = buildCommand({
       replayId,
       replay,
     });
+
+    if (flags.web) {
+      await openInBrowser(buildReplayUrl(resolved.org, replay.id), "replay");
+      return;
+    }
 
     const enrichment = await enrichReplayView(resolved.org, replay);
     const data: ReplayViewData = {

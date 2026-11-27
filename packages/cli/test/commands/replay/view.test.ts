@@ -394,6 +394,19 @@ describe("viewCommand.func", () => {
     ).rejects.toThrow(ResolutionError);
   });
 
+  test("rejects replays outside the explicit project scope with --web", async () => {
+    resolveTargetSpy.mockResolvedValue({ org: "test-org", project: "cli" });
+    resolveReplaySpy.mockResolvedValue(sampleReplay({ project_id: "999" }));
+
+    const { context } = createMockContext();
+    const func = await loadCommand(viewCommand);
+
+    await expect(
+      func.call(context, { json: false, web: true, fresh: false }, REPLAY_ID),
+    ).rejects.toThrow(ResolutionError);
+    expect(openInBrowserSpy).not.toHaveBeenCalled();
+  });
+
   test("allows archived replays with no project ID in explicit project scope", async () => {
     resolveTargetSpy.mockResolvedValue({ org: "test-org", project: "cli" });
     resolveReplaySpy.mockResolvedValue(
