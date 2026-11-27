@@ -3,8 +3,8 @@
  * Sentry bundler plugin (Angular, tsc, Create React App, …).
  *
  * Installs the `sentry` CLI package, adds a `sentry:sourcemaps` npm script
- * that runs `sentry sourcemap inject` and `sentry sourcemap upload` on the
- * build output, optionally appends it to the production build script, and
+ * that runs `sentry sourcemap upload` on the build output, optionally
+ * appends it to the production build script, and
  * writes the org, project, self-hosted URL, and auth token to `.sentryclirc`.
  * v4 reads that file: `[defaults]` feeds org/project/url resolution and
  * `[auth] token` becomes `SENTRY_AUTH_TOKEN`.
@@ -188,8 +188,9 @@ export async function setupNpmScriptInCI(): Promise<void> {
 }
 
 /**
- * The `sentry:sourcemaps` script: inject debug IDs into the build output,
- * then upload it. `sentry sourcemap upload` reads the org and project from
+ * The `sentry:sourcemaps` script: upload the build output. `sentry sourcemap
+ * upload` injects missing debug IDs into the files first, so the deployed
+ * build carries them. It reads the org and project from
  * `.sentryclirc` locally. In CI it resolves them from the DSN on sentry.io,
  * and from `SENTRY_ORG`, `SENTRY_PROJECT` and `SENTRY_URL` for self-hosted.
  */
@@ -200,7 +201,7 @@ export function getSentryCliNpmScript(
   // The script runs the `sentry` binary of the package installed above, so
   // it names `sentry` itself, not the program running the wizard.
   // oxlint-disable-next-line sentry-cli/no-hardcoded-sentry-command -- a package.json script, not a hint.
-  return `sentry sourcemap inject ${artifactPath} && sentry sourcemap upload ${artifactPath}`;
+  return `sentry sourcemap upload ${artifactPath}`;
 }
 
 /** Characters that make a shell split or expand an unquoted argument. */
