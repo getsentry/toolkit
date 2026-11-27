@@ -318,19 +318,22 @@ export function selectN1EvidenceSpans(
         MAX_SPANS_IN_TREE,
       )
     : [];
-  if (traceRoots.length > 0 || !isValidSpanArray(spansData)) {
+  if (traceRoots.length > 0) {
     return traceRoots;
   }
-  const spanTree = selectN1QuerySpans(
-    spansData,
-    evidenceData,
-    MAX_SPANS_IN_TREE,
-  );
-  if (spanTree.length > 0) {
-    return spanTree;
+  const eventSpans = isValidSpanArray(spansData) ? spansData : [];
+  if (eventSpans.length > 0) {
+    const spanTree = selectN1QuerySpans(
+      eventSpans,
+      evidenceData,
+      MAX_SPANS_IN_TREE,
+    );
+    if (spanTree.length > 0) {
+      return spanTree;
+    }
   }
   const spansById = new Map<string, RawSpan>();
-  for (const span of spansData) {
+  for (const span of eventSpans) {
     const identifier = getSpanIdentifier(span);
     if (identifier) {
       spansById.set(identifier, span);

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { getSeerActionabilityLabel } from "./formatting";
+import { getSeerActionabilityLabel, selectN1EvidenceSpans } from "./formatting";
 
 describe("getSeerActionabilityLabel", () => {
   it("returns correct labels for threshold boundaries", () => {
@@ -39,5 +39,16 @@ describe("getSeerActionabilityLabel", () => {
     expect(getSeerActionabilityLabel(0.25)).toBe("super_low");
     expect(getSeerActionabilityLabel(0.1)).toBe("super_low");
     expect(getSeerActionabilityLabel(0)).toBe("super_low");
+  });
+});
+
+describe("selectN1EvidenceSpans", () => {
+  it("falls back to the offending span IDs without a trace or spans entry", () => {
+    expect(
+      selectN1EvidenceSpans(
+        { offenderSpanIds: ["aaaaaaaaaaaaaaaa", "bbbbbbbbbbbbbbbb"] },
+        undefined,
+      ).map((span) => span.span_id),
+    ).toEqual(["aaaaaaaaaaaaaaaa", "bbbbbbbbbbbbbbbb"]);
   });
 });
