@@ -943,7 +943,7 @@ describe("get_issue_details", () => {
           const url = new URL(request.url);
           expect(url.searchParams.get("returnIds")).toBe("true");
           expect(url.searchParams.get("query")).toBe("issue.id:[6507376925]");
-          expect(url.searchParams.get("data_source")).toBe("discover");
+          expect(url.searchParams.get("data_source")).toBe("errors");
           expect(url.searchParams.get("statsPeriod")).toBe("90d");
           expect(url.searchParams.get("project")).toBe("-1");
 
