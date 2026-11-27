@@ -24,6 +24,23 @@ vi.mock("../../src/lib/telemetry.js", async (importOriginal) => ({
   isTelemetryEnabled,
 }));
 
+const { runRemixWizard, runReactRouterWizard, runSvelteKitWizard } = vi.hoisted(
+  () => ({
+    runRemixWizard: vi.fn<(options: unknown) => Promise<void>>(),
+    runReactRouterWizard: vi.fn<(options: unknown) => Promise<void>>(),
+    runSvelteKitWizard: vi.fn<(options: unknown) => Promise<void>>(),
+  }),
+);
+vi.mock("../../src/lib/wizard/remix/remix-wizard.js", () => ({
+  runRemixWizard,
+}));
+vi.mock("../../src/lib/wizard/react-router/react-router-wizard.js", () => ({
+  runReactRouterWizard,
+}));
+vi.mock("../../src/lib/wizard/sveltekit/sveltekit-wizard.js", () => ({
+  runSvelteKitWizard,
+}));
+
 import {
   parseWizardArguments,
   wizardCommand,
@@ -266,6 +283,20 @@ describe("sentry wizard", () => {
       expect(nextjsOptions()).toMatchObject({ telemetryEnabled: enabled });
     },
   );
+
+  test.each([
+    ["remix", runRemixWizard],
+    ["reactRouter", runReactRouterWizard],
+    ["sveltekit", runSvelteKitWizard],
+  ])("runs the %s wizard", async (integration, runner) => {
+    await runWizardCommand({}, "acme/my-project", integration);
+
+    expect(runner).toHaveBeenCalledWith(
+      expect.objectContaining({
+        target: { type: "explicit", org: "acme", project: "my-project" },
+      }),
+    );
+  });
 
   const unported = INTEGRATION_IDS.find((id) => !hasWizardRunner(id));
 

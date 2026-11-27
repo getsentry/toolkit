@@ -4,6 +4,14 @@ name: Wizard E2E
 # framework app, installs its packages, and builds and runs it. They take
 # minutes per app, so they run only when the wizard or its tests change.
 on:
+  push:
+    branches: [main]
+    paths:
+      - "packages/cli/src/commands/wizard.ts"
+      - "packages/cli/src/lib/wizard/**"
+      - "packages/cli/test/wizard-e2e/**"
+      - "packages/cli/test/mocks/**"
+      - ".github/workflows/wizard-e2e.yml"
   pull_request:
     paths:
       - "packages/cli/src/commands/wizard.ts"
