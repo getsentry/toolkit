@@ -924,6 +924,11 @@ describe("403 scope challenge guidance", () => {
       "org:admin org:billing org:write",
       `auth refresh --scope ${[...OAUTH_SCOPES, "org:write"].join(",")}`,
     ],
+    [
+      "login",
+      "user_preference:read user_preference:write",
+      `auth refresh --scope ${[...OAUTH_SCOPES, "user_preference:read"].join(",")}`,
+    ],
   ] as const)("%s token, accepted %s: %s", (credential, scopes, expected) => {
     expect(detailFor(credential, scopes)).toContain(expected);
   });
