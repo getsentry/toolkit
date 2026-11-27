@@ -119,6 +119,21 @@ sentry:
       );
     });
 
+    it("adds the packages when they are only in comments", () => {
+      writeFileSync(
+        pubspecFile,
+        "name: flutter_example\n\ndependencies:\n  # sentry_flutter: ^8.0.0\n\ndev_dependencies:\n  # sentry_dart_plugin: ^2.0.0\n",
+      );
+
+      expect(
+        patchPubspec(pubspecFile, "^9.0.0", "^3.0.0", "my-app", "my-org"),
+      ).toBe(true);
+
+      const patched = readFileSync(pubspecFile, "utf8");
+      expect(patched).toMatch(/^ {2}sentry_flutter: \^9\.0\.0$/m);
+      expect(patched).toMatch(/^ {2}sentry_dart_plugin: \^3\.0\.0$/m);
+    });
+
     it("adds the plugin options when a dependency is named sentry", () => {
       writeFileSync(
         pubspecFile,

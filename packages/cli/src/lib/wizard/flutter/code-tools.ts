@@ -71,7 +71,7 @@ export function patchPubspec(
 
     let pubspecContent = readFileSync(pubspecFile, "utf8");
 
-    if (!pubspecContent.includes("sentry_flutter:")) {
+    if (!/^[ \t]*sentry_flutter:/m.test(pubspecContent)) {
       pubspecContent = addToSection(
         pubspecContent,
         "dependencies",
@@ -92,7 +92,7 @@ export function patchPubspec(
       );
     }
 
-    if (!pubspecContent.includes("sentry_dart_plugin:")) {
+    if (!/^[ \t]*sentry_dart_plugin:/m.test(pubspecContent)) {
       pubspecContent = addToSection(
         pubspecContent,
         "dev_dependencies",
@@ -419,7 +419,17 @@ function endOfString(source: string, start: number): number {
 
 export function getLastImportLineLocation(sourceCode: string): number {
   const importRegex = /import\s+['"].*['"].*;/gim;
-  return Math.max(0, getLastReqExpLocation(sourceCode, importRegex));
+  let importIndex = 0;
+  for (
+    let match = importRegex.exec(sourceCode);
+    match;
+    match = importRegex.exec(sourceCode)
+  ) {
+    if (isCode(sourceCode, match.index)) {
+      importIndex = match.index + match[0].length + 1;
+    }
+  }
+  return importIndex;
 }
 
 /** Offset of the line after the `dependencies:` header, or -1 without one. */

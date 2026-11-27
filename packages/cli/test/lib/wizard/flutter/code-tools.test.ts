@@ -306,5 +306,17 @@ ${main} {
         code.indexOf("//<insert-location>"),
       );
     });
+
+    it("ignores imports inside comments", () => {
+      const code =
+        `import 'package:flutter/widgets.dart';\n` +
+        `//<insert-location>\n` +
+        `/* import 'package:foo/foo.dart'; */\n` +
+        `// import 'package:bar/bar.dart';\n` +
+        `class X {}`;
+      expect(getLastImportLineLocation(code)).toBe(
+        code.indexOf("//<insert-location>"),
+      );
+    });
   });
 });
