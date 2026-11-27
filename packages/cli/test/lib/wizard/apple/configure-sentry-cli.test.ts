@@ -119,6 +119,36 @@ xcuserdata/
       });
     });
 
+    describe("only mentions '.sentryclirc' in a comment", () => {
+      it("should append the .sentryclirc file to the .gitignore file", () => {
+        // -- Arrange --
+        fs.writeFileSync(gitignorePath, "# .sentryclirc\nxcuserdata/\n");
+
+        // -- Act --
+        configureSentryCLI({ projectDir, authToken, orgSlug, projectSlug });
+
+        // -- Assert --
+        expect(fs.readFileSync(gitignorePath, "utf8")).toBe(
+          "# .sentryclirc\nxcuserdata/\n\n.sentryclirc\n",
+        );
+      });
+    });
+
+    describe("contains '/.sentryclirc'", () => {
+      it("should not append the .sentryclirc file to the .gitignore file", () => {
+        // -- Arrange --
+        fs.writeFileSync(gitignorePath, "xcuserdata/\n/.sentryclirc\n");
+
+        // -- Act --
+        configureSentryCLI({ projectDir, authToken, orgSlug, projectSlug });
+
+        // -- Assert --
+        expect(fs.readFileSync(gitignorePath, "utf8")).toBe(
+          "xcuserdata/\n/.sentryclirc\n",
+        );
+      });
+    });
+
     describe("does not contain '.sentryclirc'", () => {
       it("should append the .sentryclirc file to the .gitignore file", () => {
         // -- Arrange --

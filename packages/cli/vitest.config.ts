@@ -108,7 +108,8 @@ export default defineConfig({
     isolate: true,
     pool: "forks",
     include: ["test/**/*.test.ts"],
-    exclude: ["**/node_modules/**", "**/dist/**"],
+    // `test:wizard-e2e` runs these with their own config.
+    exclude: ["**/node_modules/**", "**/dist/**", "test/wizard-e2e/**"],
     coverage: {
       reporter: ["lcov"],
     },

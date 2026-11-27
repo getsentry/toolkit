@@ -42,6 +42,7 @@ import {
 import type { SentryContext } from "../../src/context.js";
 import { buildCommand } from "../../src/lib/command.js";
 import { ValidationError, WizardExitError } from "../../src/lib/errors.js";
+import { hasWizardRunner, INTEGRATION_IDS } from "../../src/lib/wizard/run.js";
 import type { Writer } from "../../src/types/index.js";
 import { loadCommand, useTestConfigDir } from "../helpers.js";
 
@@ -273,11 +274,16 @@ describe("sentry wizard", () => {
     );
   });
 
-  test("reports an integration this version can't set up yet", async () => {
-    await expect(runWizardCommand({}, "flutter")).rejects.toThrow(
-      "The flutter wizard is not available in this version yet.",
-    );
-  });
+  const unported = INTEGRATION_IDS.find((id) => !hasWizardRunner(id));
+
+  test.runIf(unported)(
+    "reports an integration this version can't set up yet",
+    async () => {
+      await expect(runWizardCommand({}, unported ?? "")).rejects.toThrow(
+        `The ${unported} wizard is not available in this version yet.`,
+      );
+    },
+  );
 
   test("exits with the wizard's code when it stops", async () => {
     runNextjsWizard.mockRejectedValue(new WizardExitError(0));
