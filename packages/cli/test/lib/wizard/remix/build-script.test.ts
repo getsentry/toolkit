@@ -24,12 +24,15 @@ vi.mock("@clack/prompts", () => {
 
 vi.mock("../../../../src/lib/wizard/utils/clack/index.js", async () => ({
   ...(await vi.importActual("../../../../src/lib/wizard/utils/clack/index.js")),
-  getPackageDotJson: vi.fn().mockResolvedValue({
-    scripts: {
-      build: "remix build",
-    },
-    version: "1.0.0",
-  }),
+  // A fresh object per call: updateBuildScript mutates the one it gets.
+  getPackageDotJson: vi.fn(() =>
+    Promise.resolve({
+      scripts: {
+        build: "remix build",
+      },
+      version: "1.0.0",
+    }),
+  ),
 }));
 
 describe("updateBuildScript", () => {
@@ -138,5 +141,23 @@ describe("updateBuildScript", () => {
         isHydrogen: false,
       }),
     ).rejects.toThrow("build` script doesn't contain a known build command");
+  });
+
+  it("leaves an already instrumented build script alone on a re-run", async () => {
+    vi.mocked(getPackageDotJson).mockResolvedValueOnce({
+      scripts: {
+        build:
+          "remix build --sourcemap && npx @sentry/remix --upload-sourcemaps --org my-org --project my-project",
+      },
+      version: "1.0.0",
+    });
+
+    await updateBuildScript({
+      org: "my-org",
+      project: "my-project",
+      isHydrogen: false,
+    });
+
+    expect(writeFileSpy).not.toHaveBeenCalled();
   });
 });
