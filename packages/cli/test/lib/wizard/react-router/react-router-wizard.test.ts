@@ -40,6 +40,7 @@ vi.mock("../../../../src/lib/wizard/utils/node-version.js", () => ({
 }));
 
 import { runReactRouterWizard } from "../../../../src/lib/wizard/react-router/react-router-wizard.js";
+import { printWelcome } from "../../../../src/lib/wizard/utils/clack/index.js";
 
 describe("runReactRouterWizard", () => {
   beforeEach(() => {
@@ -63,6 +64,19 @@ describe("runReactRouterWizard", () => {
           packageNameDisplayLabel: "@sentry/react-router",
           forceInstall,
         }),
+      );
+    },
+  );
+
+  it.each([true, false])(
+    "shows the telemetry disclosure when telemetryEnabled=%s",
+    async (telemetryEnabled) => {
+      await expect(
+        runReactRouterWizard({ telemetryEnabled, forceInstall: false }),
+      ).rejects.toThrow("stop after install");
+
+      expect(printWelcome).toHaveBeenCalledWith(
+        expect.objectContaining({ telemetryEnabled }),
       );
     },
   );

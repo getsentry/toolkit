@@ -302,6 +302,17 @@ export function addReactRouterPluginToViteConfig(
   return { success: true, wasConverted };
 }
 
+/**
+ * The project's Vite config filename: an existing `vite.config.ts`, else an
+ * existing `vite.config.js`, else the one matching the project's language.
+ */
+export function getViteConfigFilename(isTS: boolean): string {
+  const existing = ["vite.config.ts", "vite.config.js"].find((name) =>
+    existsSync(path.join(process.cwd(), name)),
+  );
+  return existing ?? `vite.config.${isTS ? "ts" : "js"}`;
+}
+
 export async function instrumentViteConfig(
   orgSlug: string,
   projectSlug: string,
@@ -309,9 +320,7 @@ export async function instrumentViteConfig(
     undefined,
   ),
 ): Promise<{ wasConverted: boolean }> {
-  const configPath = existsSync(path.join(process.cwd(), "vite.config.ts"))
-    ? path.join(process.cwd(), "vite.config.ts")
-    : path.join(process.cwd(), "vite.config.js");
+  const configPath = path.join(process.cwd(), getViteConfigFilename(true));
 
   if (!existsSync(configPath)) {
     throw new Error("Could not find vite.config.ts or vite.config.js");

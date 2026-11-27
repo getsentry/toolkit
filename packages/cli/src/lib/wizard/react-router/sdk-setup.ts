@@ -19,11 +19,14 @@ import { getSentryInstrumentationServerContent } from "./templates.js";
 import { instrumentServerEntry } from "./codemods/server-entry.js";
 import { abortIfCancelled, getPackageDotJson } from "../utils/clack/index.js";
 import { instrumentClientEntry } from "./codemods/client.entry.js";
-import { instrumentViteConfig } from "./codemods/vite.js";
 import {
   getReactRouterConfigFilename,
   instrumentReactRouterConfig,
 } from "./codemods/react-router-config.js";
+import {
+  getViteConfigFilename,
+  instrumentViteConfig,
+} from "./codemods/vite.js";
 
 const REACT_ROUTER_REVEAL_COMMAND = "npx react-router reveal";
 const INSTRUMENTATION_FILE = "instrument.server.mjs";
@@ -352,10 +355,7 @@ export async function configureReactRouterVitePlugin(
   projectSlug: string,
   vitePluginImportPath: string,
 ): Promise<void> {
-  const configPath = existsSync(path.join(process.cwd(), "vite.config.ts"))
-    ? path.join(process.cwd(), "vite.config.ts")
-    : path.join(process.cwd(), "vite.config.js");
-  const filename = chalk.cyan(path.basename(configPath));
+  const filename = chalk.cyan(getViteConfigFilename(true));
 
   try {
     const { wasConverted } = await instrumentViteConfig(
