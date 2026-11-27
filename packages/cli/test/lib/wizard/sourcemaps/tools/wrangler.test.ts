@@ -149,6 +149,29 @@ describe("safeInsertArgsToWranglerDeployCommand", () => {
     );
   });
 
+  it("leaves a deploy command that already has every arg unchanged on a rerun", () => {
+    const once = safeInsertArgsToWranglerDeployCommand(
+      "wrangler deploy && echo done",
+      "dist",
+    );
+
+    expect(once).toBeDefined();
+    expect(safeInsertArgsToWranglerDeployCommand(once ?? "", "dist")).toBe(
+      once,
+    );
+  });
+
+  it("keeps an existing --var=SENTRY_RELEASE arg", () => {
+    expect(
+      safeInsertArgsToWranglerDeployCommand(
+        "wrangler deploy --var=SENTRY_RELEASE:1.0.0",
+        "dist",
+      ),
+    ).toBe(
+      "wrangler deploy --var=SENTRY_RELEASE:1.0.0 --outdir 'dist' --upload-source-maps",
+    );
+  });
+
   it.each([
     "notwrangler deploy",
     "wrangler dev",

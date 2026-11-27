@@ -394,8 +394,20 @@ export function safeInsertArgsToWranglerDeployCommand(
 
   // This is how we inject the SENTRY_RELEASE variable,
   // which is picked up by the CloudFlare SDK.
-  // multiple --var arguments are allowed, so no need to check for existing --var arguments.
-  newArgs.push("--var", `SENTRY_RELEASE:${PROPOSE_VERSION}`);
+  // Skip it when the script already sets SENTRY_RELEASE, e.g. on a rerun.
+  if (
+    !existingArgs.some(
+      (arg) =>
+        arg.startsWith("SENTRY_RELEASE:") ||
+        arg.startsWith("--var=SENTRY_RELEASE:"),
+    )
+  ) {
+    newArgs.push("--var", `SENTRY_RELEASE:${PROPOSE_VERSION}`);
+  }
+
+  if (newArgs.length === 0) {
+    return deployCommand;
+  }
 
   // Insert at the deploy command's own position: the same text can appear
   // earlier in the script, such as in `echo wrangler deploy`.
