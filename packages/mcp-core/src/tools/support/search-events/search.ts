@@ -74,6 +74,7 @@ import {
   isAggregateQuery,
   isSemanticFilterDowngrade,
   looksLikeSentrySearchSyntax,
+  mixesSearchSyntaxWithProse,
   normalizeNumericIssueFilters,
   readRegexFilterValue,
   recordEventsSearchValidationTelemetry,
@@ -825,8 +826,12 @@ async function executeSearchEvents(
   const hasExplicitSort = explicitSort !== undefined;
   const hasExplicitTraceItemDataset =
     hasExplicitDataset && isTraceItemDataset(inputDataset);
+  // Prose around a filter, like `environment:production, count by span.op`,
+  // is a request for the agent to translate, not a search to run as typed.
   const shouldTrustStructuredTraceSearch =
-    hasStructuredQuery && hasExplicitTraceItemDataset;
+    hasStructuredQuery &&
+    hasExplicitTraceItemDataset &&
+    !mixesSearchSyntaxWithProse(params.query, inputDataset);
   const environmentFilter = formatEnvironmentFilter(params.environment);
   const explicitStructuredTraceQuery = shouldTrustStructuredTraceSearch
     ? appendSearchFilter(params.query ?? "", environmentFilter)

@@ -13,6 +13,7 @@ import {
   formatKnownUserValue,
   isSemanticFilterDowngrade,
   looksLikeSentrySearchSyntax,
+  mixesSearchSyntaxWithProse,
   normalizeNumericIssueFilters,
 } from "./utils";
 
@@ -275,6 +276,24 @@ describe("formatEventValue", () => {
 });
 
 describe("search query helpers", () => {
+  it("detects natural language around filters", () => {
+    for (const query of [
+      "environment:production, count grouped by span.op",
+      "production transactions (is_transaction:true), show release",
+    ]) {
+      expect(mixesSearchSyntaxWithProse(query, "spans")).toBe(true);
+    }
+    for (const query of [
+      "span.op:db SELECT",
+      'span.op:db "SELECT users"',
+      "environment:production span.op:http.server",
+      "is_transaction:true AND sentry.environment:production",
+      "count of spans grouped by span.op",
+    ]) {
+      expect(mixesSearchSyntaxWithProse(query, "spans")).toBe(false);
+    }
+  });
+
   it("rewrites numeric issue filters to issue.id", () => {
     expect(normalizeNumericIssueFilters("issue:123 level:error")).toBe(
       "issue.id:123 level:error",
