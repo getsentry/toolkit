@@ -661,4 +661,22 @@ export default {
       expect(modifiedConfig.error).toBe("Failed to parse Svelte config");
     });
   });
+
+  it("keeps tracing.server true in the file when tracing is declined", () => {
+    const { result, error } = _enableTracingAndInstrumentationInConfig(
+      `export default {
+  kit: {
+    experimental: {
+      tracing: { server: true },
+    },
+  },
+};
+`,
+      false,
+    );
+
+    expect(error).toBeUndefined();
+    expect(result).toMatch(/tracing:\s*\{\s*server:\s*true/);
+    expect(result).not.toMatch(/tracing:\s*\{\s*server:\s*false/);
+  });
 });

@@ -13,6 +13,7 @@ vi.mock("@clack/prompts", () => ({
   log: { info: vi.fn(), warn: vi.fn(), success: vi.fn() },
 }));
 
+import { log } from "@clack/prompts";
 import { createExamplePage } from "../../../../src/lib/wizard/react-router/sdk-example.js";
 
 describe("createExamplePage", () => {
@@ -54,6 +55,26 @@ export default [index("routes/home.jsx")];
     );
     expect(updated).toContain(
       'route("/api/sentry-example-api", "routes/api.sentry-example-api.js")',
+    );
+  });
+
+  it("gives JavaScript paths in the manual routes fallback", async () => {
+    writeFileSync(
+      path.join(tmpDir, "app", "routes.js"),
+      "export default routes;\n",
+    );
+
+    await createExamplePage({
+      selfHosted: false,
+      orgSlug: "org",
+      projectId: "1",
+      url: "https://sentry.io/",
+      isTS: false,
+      projectDir: tmpDir,
+    });
+
+    expect(log.info).toHaveBeenCalledWith(
+      'Please manually add these routes to your routes.js file: route("/sentry-example-page", "routes/sentry-example-page.jsx") and route("/api/sentry-example-api", "routes/api.sentry-example-api.js")',
     );
   });
 });

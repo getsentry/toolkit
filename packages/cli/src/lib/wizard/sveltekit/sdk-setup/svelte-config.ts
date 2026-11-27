@@ -327,7 +327,11 @@ export function _enableTracingAndInstrumentationInConfig(
       };
     }
 
-    kitExperimentalTracingSeverProp.value = b.booleanLiteral(enableTracing);
+    // Never turn off server tracing that the file already enables, even when
+    // the loaded config didn't show it.
+    kitExperimentalTracingSeverProp.value = b.booleanLiteral(
+      enableTracing || kitExperimentalTracingSeverProp.value.value,
+    );
   } else {
     experimentalTracingObject.properties.push(
       b.objectProperty(b.identifier("server"), b.booleanLiteral(enableTracing)),

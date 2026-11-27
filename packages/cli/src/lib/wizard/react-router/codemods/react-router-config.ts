@@ -72,9 +72,15 @@ export function addSentryBuildEndToReactRouterConfig(program: t.Program): {
     return { success: false, ssrWasChanged: false };
   }
 
-  const buildEndProp = findProperty(configObj, "buildEnd");
+  // `buildEnd: async () => {}` is a property, `async buildEnd() {}` a method.
+  const hasBuildEnd = configObj.properties.some(
+    (p) =>
+      (p.type === "ObjectProperty" || p.type === "ObjectMethod") &&
+      ((p.key.type === "Identifier" && p.key.name === "buildEnd") ||
+        (p.key.type === "StringLiteral" && p.key.value === "buildEnd")),
+  );
 
-  if (buildEndProp) {
+  if (hasBuildEnd) {
     throw new Error(
       "A buildEnd hook already exists in your React Router config.",
     );
@@ -159,19 +165,28 @@ export function hasReactRouterSentryContent(program: t.Program): boolean {
   return hasSentry;
 }
 
+/**
+ * The project's React Router config filename. Prefers an existing config with
+ * either extension, so a `.js` config in a TypeScript project is updated
+ * instead of shadowed by a new `.ts` file.
+ */
+export function getReactRouterConfigFilename(isTS: boolean): string {
+  const preferred = `react-router.config.${isTS ? "ts" : "js"}`;
+  const other = `react-router.config.${isTS ? "js" : "ts"}`;
+  return (
+    [preferred, other].find((candidate) =>
+      existsSync(path.join(process.cwd(), candidate)),
+    ) ?? preferred
+  );
+}
+
 export async function instrumentReactRouterConfig(
   isTS: boolean,
   vitePluginImportPath: string = getSentryReactRouterVitePluginImportPath(
     undefined,
   ),
 ): Promise<{ ssrWasChanged: boolean }> {
-  // Prefer an existing config with either extension, so a `.js` config in a
-  // TypeScript project is updated instead of shadowed by a new `.ts` file.
-  const preferredFilename = `react-router.config.${isTS ? "ts" : "js"}`;
-  const configFilename =
-    [preferredFilename, `react-router.config.${isTS ? "js" : "ts"}`].find(
-      (candidate) => existsSync(path.join(process.cwd(), candidate)),
-    ) ?? preferredFilename;
+  const configFilename = getReactRouterConfigFilename(isTS);
   const configPath = path.join(process.cwd(), configFilename);
 
   if (!existsSync(configPath)) {
