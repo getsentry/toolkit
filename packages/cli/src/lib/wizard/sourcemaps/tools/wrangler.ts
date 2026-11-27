@@ -366,11 +366,12 @@ export function safeInsertArgsToWranglerDeployCommand(
   outDir: string,
 ): string | undefined {
   // split deployCommand into individual bash commands (potentially separated by &&, ||, >> etc.)
-  const originalWranglerDeployCommand = getWranglerDeployCommand(deployCommand);
+  const wranglerDeployCommand = findWranglerDeployCommand(deployCommand);
 
-  if (!originalWranglerDeployCommand) {
+  if (!wranglerDeployCommand) {
     return undefined;
   }
+  const originalWranglerDeployCommand = wranglerDeployCommand.text;
 
   const existingArgs = originalWranglerDeployCommand
     .split(" ")
@@ -396,12 +397,13 @@ export function safeInsertArgsToWranglerDeployCommand(
   // multiple --var arguments are allowed, so no need to check for existing --var arguments.
   newArgs.push("--var", `SENTRY_RELEASE:${PROPOSE_VERSION}`);
 
-  return deployCommand
-    .replace(
-      originalWranglerDeployCommand,
-      `${originalWranglerDeployCommand} ${newArgs.join(" ")} `,
-    )
-    .trim();
+  // Insert at the deploy command's own position: the same text can appear
+  // earlier in the script, such as in `echo wrangler deploy`.
+  const end =
+    wranglerDeployCommand.start + originalWranglerDeployCommand.length;
+  return `${deployCommand.slice(0, end)} ${newArgs.join(" ")} ${deployCommand.slice(
+    end,
+  )}`.trim();
 }
 
 /**
@@ -464,10 +466,11 @@ const COMMAND_SEPARATORS = ["&&", "||", ">>", ">", "<", "|", ";"];
  * Split a package script into its individual commands at the operators in
  * {@link COMMAND_SEPARATORS}. Operators inside quotes or a `$(…)` command
  * substitution (such as the `| head -n 1` of the release version this
- * wizard adds) don't split. The commands are substrings of `script`.
+ * wizard adds) don't split. Each command is a substring of `script` that
+ * starts at `start`.
  */
-function splitShellCommands(script: string): string[] {
-  const commands: string[] = [];
+function splitShellCommands(script: string): { start: number; text: string }[] {
+  const commands: { start: number; text: string }[] = [];
   let start = 0;
   let depth = 0;
   let quote: string | undefined;
@@ -501,14 +504,14 @@ function splitShellCommands(script: string): string[] {
         ? COMMAND_SEPARATORS.find((op) => script.startsWith(op, i))
         : undefined;
     if (separator) {
-      commands.push(script.slice(start, i));
+      commands.push({ start, text: script.slice(start, i) });
       i += separator.length;
       start = i;
       continue;
     }
     i += 1;
   }
-  commands.push(script.slice(start));
+  commands.push({ start, text: script.slice(start) });
   return commands;
 }
 
@@ -551,8 +554,15 @@ function isWranglerRunnerArg(arg: string): boolean {
 export function getWranglerDeployCommand(
   deployCommand: string,
 ): string | undefined {
-  return splitShellCommands(deployCommand).find((cmd) => {
-    const argv = cmd
+  return findWranglerDeployCommand(deployCommand)?.text;
+}
+
+/** {@link getWranglerDeployCommand}, with where it starts in `deployCommand`. */
+function findWranglerDeployCommand(
+  deployCommand: string,
+): { start: number; text: string } | undefined {
+  return splitShellCommands(deployCommand).find(({ text }) => {
+    const argv = text
       .split(" ")
       .map((arg) => arg.trim())
       .filter(Boolean);

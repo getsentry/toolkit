@@ -51,6 +51,17 @@ describe("getSentryCliCommand", () => {
 });
 
 describe("safeInsertArgsToWranglerDeployCommand", () => {
+  it("adds the args to the deploy command, not to earlier text that matches it", () => {
+    const result = safeInsertArgsToWranglerDeployCommand(
+      "echo Running wrangler deploy && wrangler deploy",
+      "dist",
+    );
+
+    expect(result).toMatch(
+      /^echo Running wrangler deploy && wrangler deploy --outdir 'dist' --upload-source-maps --var SENTRY_RELEASE:/,
+    );
+  });
+
   it("correctly inserts args into default command", () => {
     const newCommand = safeInsertArgsToWranglerDeployCommand(
       "wrangler deploy",
