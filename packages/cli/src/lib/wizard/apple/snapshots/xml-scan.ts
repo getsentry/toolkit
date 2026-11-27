@@ -44,9 +44,19 @@ export function decodeXmlEntities(value: string): string {
   );
 }
 
-/** `xml` without comments, CDATA sections and declarations. */
+/**
+ * `xml` without comments, CDATA sections and declarations. Strips until
+ * nothing changes, so removing one span can't leave another behind, such as
+ * the `<!-- … -->` that `<<!-- x -->!-- … -->` turns into.
+ */
 function stripIgnoredMarkup(xml: string): string {
-  return xml.replace(IGNORED_MARKUP_RE, "");
+  let previous: string;
+  let stripped = xml;
+  do {
+    previous = stripped;
+    stripped = previous.replace(IGNORED_MARKUP_RE, "");
+  } while (stripped !== previous);
+  return stripped;
 }
 
 /**

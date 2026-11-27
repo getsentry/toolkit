@@ -94,6 +94,12 @@ describe("xml-scan", () => {
         "App & UITests",
       ]);
     });
+
+    it("skips a comment that only forms once an inner comment is removed", () => {
+      const xml =
+        '<<!-- x -->!-- <Ref BlueprintName="Hidden"/> --><Ref BlueprintName="Shown"/>';
+      expect(getAttributeValues(xml, "BlueprintName")).toEqual(["Shown"]);
+    });
   });
 
   describe("getElementTexts", () => {

@@ -59,6 +59,14 @@ function unquote(value: unknown): string {
   return typeof value === "string" ? value.replace(/"/g, "") : "";
 }
 
+/**
+ * `value` as a quoted `project.pbxproj` string. Backslashes are escaped
+ * before quotes, so a backslash in `value` can't end the string early.
+ */
+function quotePbxString(value: string): string {
+  return `"${value.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
+}
+
 function stripAppExtension(value: string | undefined): string | undefined {
   return value?.endsWith(".app") ? value.slice(0, -".app".length) : value;
 }
@@ -1213,8 +1221,6 @@ export class XcodeProject {
     inputPaths: string[] = [],
   ): string {
     const buildPhaseUuid = this.project.generateUuid();
-    const escapedScript = script.replace(/"/g, '\\"');
-
     // Create the shell script build phase object
     const buildPhase = {
       isa: "PBXShellScriptBuildPhase" as const,
@@ -1224,7 +1230,7 @@ export class XcodeProject {
       outputPaths: [],
       runOnlyForDeploymentPostprocessing: 0,
       shellPath: "/bin/sh",
-      shellScript: `"${escapedScript}"`,
+      shellScript: quotePbxString(script),
       name: `"${name}"`,
     };
 
@@ -1267,8 +1273,7 @@ export class XcodeProject {
       return;
     }
 
-    const escapedScript = script.replace(/"/g, '\\"');
-    buildPhase.shellScript = `"${escapedScript}"`;
+    buildPhase.shellScript = quotePbxString(script);
     buildPhase.inputPaths = inputPaths;
     buildPhase.shellPath = "/bin/sh";
   }

@@ -716,10 +716,9 @@ describe("XcodeManager", () => {
                 projectData.slug,
                 variant.uploadSource,
               );
-              const expectedShellScript = `"${generatedShellScript.replace(
-                /"/g,
-                '\\"',
-              )}"`;
+              const expectedShellScript = `"${generatedShellScript
+                .replace(/\\/g, "\\\\")
+                .replace(/"/g, '\\"')}"`;
 
               // -- Act --
               xcodeProject.updateXcodeProject(
@@ -2512,6 +2511,21 @@ describe("XcodeManager", () => {
           expect(buildPhase).toBeDefined();
           expect(typeof buildPhase).not.toBe("string");
         });
+      });
+
+      it("escapes backslashes before quotes in the script", () => {
+        const buildPhaseId = xcodeProject.addScriptBuildPhase(
+          "INVALID_TARGET_KEY",
+          "Test Script",
+          'echo "a\\" b',
+          [],
+        );
+
+        const buildPhase =
+          xcodeProject.objects.PBXShellScriptBuildPhase?.[buildPhaseId];
+        expect(
+          typeof buildPhase === "object" ? buildPhase.shellScript : undefined,
+        ).toBe('"echo \\"a\\\\\\" b"');
       });
 
       describe("when target does not exist", () => {

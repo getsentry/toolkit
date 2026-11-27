@@ -43,6 +43,8 @@ overrides:
   sharp: ^0.35.5
   source-map-js: ^1.2.2
   undici: ^7.30.1
+  # GHSA-w5hq-g745-h8pq: xcode@3 pins uuid@7; it only calls uuid.v4().
+  "xcode@3>uuid": ^11.1.1
   # GHSA-mrhx-c7xc-m3w5: keep every zod copy at or above the patched release.
   zod: ^4.6.6
 
