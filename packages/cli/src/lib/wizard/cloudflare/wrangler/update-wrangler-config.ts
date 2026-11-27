@@ -40,6 +40,11 @@ type WranglerConfigUpdateOptions = {
    * e.g. flags superseded by one of the flags being added.
    */
   removeCompatibilityFlags?: string[] | undefined;
+  /**
+   * Set `compatibility_date` only when the config doesn't have one yet: the
+   * date pins the Worker's runtime behaviour.
+   */
+  keepCompatibilityDate?: boolean | undefined;
 };
 
 const getTomlConfigSnippet = (
@@ -58,7 +63,9 @@ const getTomlConfigSnippet = (
               .join(", ")} from compatibility_flags if present\n`
           : ""
       }${main ? `main = "${main}"\n` : ""}compatibility_flags = ["nodejs_compat"]
-compatibility_date = "${new Date().toISOString().slice(0, 10)}"
+compatibility_date = "${new Date().toISOString().slice(0, 10)}"${
+        options.keepCompatibilityDate ? " # only if not set yet" : ""
+      }
 
 [version_metadata]
 binding = "CF_VERSION_METADATA"`,
@@ -213,7 +220,13 @@ function updateJsoncObject(
   options: WranglerConfigUpdateOptions = {},
 ): void {
   for (const [key, value] of Object.entries(updates)) {
-    if (value === null || value === undefined) {
+    if (
+      value === null ||
+      value === undefined ||
+      (key === "compatibility_date" &&
+        options.keepCompatibilityDate &&
+        getObjectProperty(jsonObject, key))
+    ) {
       continue;
     }
 

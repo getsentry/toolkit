@@ -100,6 +100,40 @@ describe("updateWranglerConfig", () => {
       expect(parsed["compatibility_date"]).toEqual("1337-01-01");
     });
 
+    it("keeps an existing compatibility_date when asked to", async () => {
+      fs.writeFileSync(
+        path.join(tmpDir, "wrangler.json"),
+        '{ "name": "w", "compatibility_date": "2024-01-01" }',
+      );
+
+      await updateWranglerConfig(
+        { compatibility_date: "1337-01-01", main: "src/index.ts" },
+        { keepCompatibilityDate: true },
+      );
+
+      const parsed = JSON.parse(readResult("wrangler.json")) as Record<
+        string,
+        unknown
+      >;
+      expect(parsed["compatibility_date"]).toBe("2024-01-01");
+      expect(parsed["main"]).toBe("src/index.ts");
+    });
+
+    it("adds compatibility_date when asked to keep one the config doesn't have", async () => {
+      fs.writeFileSync(path.join(tmpDir, "wrangler.json"), '{ "name": "w" }');
+
+      await updateWranglerConfig(
+        { compatibility_date: "1337-01-01" },
+        { keepCompatibilityDate: true },
+      );
+
+      const parsed = JSON.parse(readResult("wrangler.json")) as Record<
+        string,
+        unknown
+      >;
+      expect(parsed["compatibility_date"]).toBe("1337-01-01");
+    });
+
     it("merges array fields in JSON config", async () => {
       copyFixture("wrangler-with-flags.json", "wrangler.json");
 
@@ -297,6 +331,19 @@ describe("updateWranglerConfig", () => {
       });
 
       expect(shownSnippet()).toContain('main = "src/index.ts"');
+    });
+
+    it("tells the user to keep their compatibility_date when asked to", async () => {
+      fs.writeFileSync(path.join(tmpDir, "wrangler.toml"), 'name = "w"\n');
+
+      await updateWranglerConfig(
+        { compatibility_flags: ["nodejs_compat"] },
+        { keepCompatibilityDate: true },
+      );
+
+      expect(shownSnippet()).toMatch(
+        /compatibility_date = .* # only if not set yet/,
+      );
     });
 
     it("leaves main out when the update doesn't include it", async () => {
