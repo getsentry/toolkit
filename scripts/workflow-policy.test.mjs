@@ -21,6 +21,10 @@ const PULL_REQUEST_WORKFLOWS = new Map([
     "Starts the MCP Worker and publishes a smoke-test report.",
   ],
   ["token-cost.yml", "Reports MCP tool token costs against main."],
+  [
+    "wizard-e2e.yml",
+    "Runs one sentry wizard E2E test per job; each installs and builds a framework app.",
+  ],
 ]);
 
 const PULL_REQUEST_EVENTS = [
