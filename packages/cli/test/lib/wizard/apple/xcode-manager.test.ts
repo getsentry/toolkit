@@ -1220,6 +1220,32 @@ describe("XcodeManager", () => {
     });
 
     describe("getSourceFilesForTarget", () => {
+      it("treats a file reference without sourceTree as <group>", () => {
+        // -- Arrange --
+        const xcodeProject = new XcodeProject(projectWithSynchronizedFolders);
+        const expected = xcodeProject.getSourceFilesForTarget("Project");
+        let stripped = 0;
+        for (const fileRef of Object.values(
+          xcodeProject.objects.PBXFileReference ?? {},
+        )) {
+          if (
+            typeof fileRef === "object" &&
+            fileRef.sourceTree?.replace(/"/g, "") === "<group>"
+          ) {
+            delete fileRef.sourceTree;
+            stripped += 1;
+          }
+        }
+
+        // -- Act --
+        const files = xcodeProject.getSourceFilesForTarget("Project");
+
+        // -- Assert --
+        expect(stripped).toBeGreaterThan(0);
+        expect(expected?.length).toBeGreaterThan(0);
+        expect(files).toEqual(expected);
+      });
+
       describe("targets are undefined", () => {
         it("should return undefined", () => {
           // -- Arrange --

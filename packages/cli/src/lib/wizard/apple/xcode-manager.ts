@@ -1392,7 +1392,8 @@ export class XcodeProject {
     // - 'DEVELOPER_DIR': The file path is relative to the developer directory, i.e. the directory where the Xcode command line tools are installed
 
     // The default is '<group>'
-    const fileRefSourceTree = fileRef.obj.sourceTree?.replace(/"/g, "") ?? "";
+    const fileRefSourceTree =
+      fileRef.obj.sourceTree?.replace(/"/g, "") ?? "<group>";
     switch (fileRefSourceTree) {
       case "<absolute>":
         return fileRef.obj.path.replace(/"/g, "");
