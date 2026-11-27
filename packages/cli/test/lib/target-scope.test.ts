@@ -4,7 +4,7 @@
  * checks by their response, or refuses.
  */
 
-import { beforeEach, describe, expect, test, vi } from "vitest";
+import { beforeEach, describe, expect, test } from "vitest";
 import {
   SCOPE_ORG_ENV_VAR,
   SCOPE_PROJECT_ENV_VAR,
@@ -15,14 +15,6 @@ import {
   __resetScopeLookupsForTests,
   withTargetScope,
 } from "../../src/lib/target-scope.js";
-
-// The scope rules Sentry declares (`x-sentry-project-scope`), until the
-// installed `@sentry/api` carries them. `target-scope-catalog.test.ts`
-// checks the fixture against the generated catalog once it does.
-vi.mock("../../src/generated/project-scope-operations.json", async () => ({
-  default: (await import("../../test/fixtures/project-scope-operations.json"))
-    .default,
-}));
 
 const BASE = "https://sentry.io/api/0/";
 const WEB = { id: "1", slug: "web" };

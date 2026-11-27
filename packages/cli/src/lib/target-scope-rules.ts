@@ -15,6 +15,9 @@
  */
 
 import generatedProjectScopes from "../generated/project-scope-operations.json" with { type: "json" };
+// INTERIM: delete with the `@sentry/api` 3.x bump, along with
+// `projectScopeDeclarations` and the JSON file.
+import interimProjectScopes from "./interim-project-scope-operations.json" with { type: "json" };
 
 /** How a matched request stays in the scope's project. */
 type ScopeEnforcement =
@@ -223,7 +226,22 @@ export function catalogRules(entries: unknown): {
   return { orgReads, rules: [...checked, ...lookedUpFirst] };
 }
 
-const CATALOG = catalogRules(generatedProjectScopes);
+/**
+ * The `x-sentry-project-scope` declarations to build rules from: the
+ * installed `@sentry/api` catalog's, or, while it has none, an interim copy
+ * of what getsentry/sentry#132722 declares. The copy keeps project scopes
+ * working until the `@sentry/api` 3.x bump, which deletes it.
+ */
+export function projectScopeDeclarations(
+  generated: readonly unknown[],
+  interim: readonly unknown[],
+): readonly unknown[] {
+  return generated.length > 0 ? generated : interim;
+}
+
+const CATALOG = catalogRules(
+  projectScopeDeclarations(generatedProjectScopes, interimProjectScopes),
+);
 
 /**
  * Read-only organization metadata a project scope may read: what Sentry
