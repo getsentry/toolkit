@@ -119,4 +119,12 @@ describe("getSentryExampleComponentCode", () => {
       "https://myorg.sentry.io/issues/?project=123456789",
     );
   });
+
+  it("does not log to the browser console", () => {
+    const exampleComponentCode = getSentryExampleComponentCode({
+      orgSlug: "myOrg",
+      projectId: "123456789",
+    });
+    expect(exampleComponentCode).not.toContain("console.log");
+  });
 });

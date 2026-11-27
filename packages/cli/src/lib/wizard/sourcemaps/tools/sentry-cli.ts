@@ -40,6 +40,8 @@ let addedToBuildCommand = false;
 
 type configureSentryCLIOptions = SourceMapUploadToolConfigurationOptions & {
   defaultArtifactPath?: string | undefined;
+  /** Passed to the package manager when installing the `sentry` CLI. */
+  forceInstall?: boolean | undefined;
 };
 
 /**
@@ -63,6 +65,7 @@ export async function configureSentryCLI(
     packageName: "sentry@^4",
     alreadyInstalled: hasPackageInstalled("sentry", packageDotJson),
     devDependency: true,
+    forceInstall: options.forceInstall,
   });
 
   let validPath = false;

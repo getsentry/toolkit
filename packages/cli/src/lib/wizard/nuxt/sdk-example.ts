@@ -41,7 +41,7 @@ export async function supportsExamplePage(isNuxtV4: boolean): Promise<boolean> {
   }
 
   const content = await promises.readFile(path.resolve(app), "utf8");
-  return !!content.match(/<NuxtPage/g);
+  return /<(?:NuxtPage|nuxt-page)[\s/>]/.test(content);
 }
 
 /** Write the example page and its API route. */
@@ -128,19 +128,36 @@ export async function createExamplePage(
 
 /** Write the `SentryErrorButton` example component. */
 export async function createExampleComponent(isNuxtV4: boolean): Promise<void> {
-  const src = getSrcDirectory(isNuxtV4);
-  const components = path.join(src, "components");
+  try {
+    const src = getSrcDirectory(isNuxtV4);
+    const components = path.join(src, "components");
 
-  if (!existsSync(path.resolve(components))) {
-    mkdirSync(path.resolve(components), { recursive: true });
+    if (!existsSync(path.resolve(components))) {
+      mkdirSync(path.resolve(components), { recursive: true });
+    }
+
+    const exampleComponent = path.join(components, "SentryErrorButton.vue");
+
+    await promises.writeFile(
+      path.resolve(exampleComponent),
+      getSentryErrorButtonTemplate(),
+    );
+
+    clack.log.success(`Created ${chalk.cyan(exampleComponent)}.`);
+  } catch (e: unknown) {
+    clack.log.error(
+      "Error while creating an example component to test Sentry:",
+    );
+    clack.log.info(
+      chalk.dim(
+        e instanceof Error
+          ? e.toString()
+          : typeof e === "string"
+            ? e
+            : "Unknown error",
+      ),
+    );
+    reportCliError(e);
+    await abort("Exiting Wizard");
   }
-
-  const exampleComponent = path.join(components, "SentryErrorButton.vue");
-
-  await promises.writeFile(
-    path.resolve(exampleComponent),
-    getSentryErrorButtonTemplate(),
-  );
-
-  clack.log.success(`Created ${chalk.cyan(exampleComponent)}.`);
 }

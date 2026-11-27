@@ -11,7 +11,13 @@ import path from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { createExamplePage } from "../../../../src/lib/wizard/nuxt/sdk-example.js";
+import { WizardExitError } from "../../../../src/lib/errors.js";
+import { reportCliError } from "../../../../src/lib/error-reporting.js";
+import {
+  createExampleComponent,
+  createExamplePage,
+  supportsExamplePage,
+} from "../../../../src/lib/wizard/nuxt/sdk-example.js";
 
 vi.mock("@clack/prompts", () => ({
   log: {
@@ -20,6 +26,11 @@ vi.mock("@clack/prompts", () => ({
     warn: vi.fn(),
     error: vi.fn(),
   },
+  outro: vi.fn(),
+}));
+
+vi.mock("../../../../src/lib/error-reporting.js", () => ({
+  reportCliError: vi.fn(),
 }));
 
 const options = {
@@ -67,5 +78,32 @@ describe("createExamplePage", () => {
     expect(readFileSync("server/api/sentry-example-api.ts", "utf8")).toBe(
       "// user's route",
     );
+  });
+});
+
+describe("createExampleComponent", () => {
+  it("reports the error and exits cleanly when the component can't be written", async () => {
+    // A file where the components directory should be makes the write fail.
+    writeFileSync("components", "");
+
+    await expect(createExampleComponent(false)).rejects.toBeInstanceOf(
+      WizardExitError,
+    );
+    expect(reportCliError).toHaveBeenCalled();
+  });
+});
+
+describe("supportsExamplePage", () => {
+  it.each([
+    ["<NuxtPage />", true],
+    ["<NuxtPage/>", true],
+    ["<nuxt-page />", true],
+    ["<nuxt-page></nuxt-page>", true],
+    ["<NuxtPageWrapper />", false],
+    ["<NuxtLayout />", false],
+  ])("returns %s => %s for app.vue", async (tag, expected) => {
+    writeFileSync("app.vue", `<template>${tag}</template>`);
+
+    await expect(supportsExamplePage(false)).resolves.toBe(expected);
   });
 });

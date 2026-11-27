@@ -11,7 +11,10 @@ import {
 
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as packageManagerHelpers from "../../../../../src/lib/wizard/utils/package-manager.js";
-import { getPackageDotJson } from "../../../../../src/lib/wizard/utils/clack/index.js";
+import {
+  getPackageDotJson,
+  installPackage,
+} from "../../../../../src/lib/wizard/utils/clack/index.js";
 
 import { vi, it, describe, expect, afterEach } from "vitest";
 
@@ -175,6 +178,47 @@ describe("configureSentryCLI", () => {
       rmSync(dir, { recursive: true, force: true });
     }
   });
+});
+
+describe("configureSentryCLI forceInstall", () => {
+  it.each([true, false])(
+    "passes forceInstall=%s to the sentry CLI install",
+    async (forceInstall) => {
+      const dir = realpathSync(
+        mkdtempSync(path.join(tmpdir(), "sentry-cli-force-")),
+      );
+      const originalCwd = process.cwd();
+      try {
+        process.chdir(dir);
+        textMock.mockResolvedValueOnce(dir);
+        selectMock.mockResolvedValueOnce(false);
+        vi.mocked(getPackageDotJson).mockResolvedValue({
+          scripts: { build: "tsc" },
+          version: "1.0.0",
+        });
+
+        await configureSentryCLI(
+          {
+            orgSlug: "my-org",
+            projectSlug: "my-project",
+            selfHosted: false,
+            url: "https://sentry.io/",
+            authToken: "token",
+            forceInstall,
+          },
+          () => Promise.resolve(),
+          true,
+        );
+
+        expect(installPackage).toHaveBeenLastCalledWith(
+          expect.objectContaining({ packageName: "sentry@^4", forceInstall }),
+        );
+      } finally {
+        process.chdir(originalCwd);
+        rmSync(dir, { recursive: true, force: true });
+      }
+    },
+  );
 });
 
 describe("setSentryCliRcDefaults", () => {
