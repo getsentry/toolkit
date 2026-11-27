@@ -92,35 +92,71 @@ function createSentryPluginCall(
 }
 
 /**
+ * A name for Vite's config env parameter that no identifier in the file uses
+ * yet, so it can't shadow or redeclare one of the project's own bindings.
+ */
+function getUnusedConfigEnvName(program: t.Program): string {
+  const used = new Set<string>();
+  recast.visit(program, {
+    visitIdentifier(path) {
+      used.add(path.node.name);
+      this.traverse(path);
+    },
+  });
+  const candidates = ["config", "configEnv", "viteConfigEnv"];
+  for (let i = 2; ; i++) {
+    const name = candidates.shift() ?? `viteConfigEnv${i}`;
+    if (!used.has(name)) {
+      return name;
+    }
+  }
+}
+
+/**
  * Name of the `defineConfig` callback parameter that holds Vite's config
- * env, so `sentryReactRouter` can receive it. A missing parameter is added
- * as `config`; a destructured one (`({ mode }) => ...`) is renamed to
- * `config` and destructured again at the start of the body.
+ * env, so `sentryReactRouter` can receive it. An identifier parameter (also
+ * with a default) is used as is. A missing parameter is added under
+ * `unusedName`; a destructured one (`({ mode }) => ...`, also with a default)
+ * is renamed to `unusedName` and destructured again at the start of the body.
  */
 function ensureConfigEnvParam(
   fn: t.ArrowFunctionExpression | t.FunctionExpression,
+  unusedName: string,
 ): string {
   const b = recast.types.builders;
   const [firstParam] = fn.params;
   if (firstParam?.type === "Identifier") {
     return firstParam.name;
   }
-  const configEnv = b.identifier("config");
+  if (
+    firstParam?.type === "AssignmentPattern" &&
+    firstParam.left.type === "Identifier"
+  ) {
+    return firstParam.left.name;
+  }
+  const configEnv = b.identifier(unusedName);
   if (!firstParam) {
     fn.params.push(configEnv);
-    return configEnv.name;
+    return unusedName;
   }
 
-  fn.params[0] = configEnv;
+  // `({ mode } = {}) =>` keeps its default on the renamed parameter.
+  const hasDefault = firstParam.type === "AssignmentPattern";
+  fn.params[0] = hasDefault
+    ? b.assignmentPattern(configEnv, firstParam.right)
+    : configEnv;
   const destructure = b.variableDeclaration("const", [
-    b.variableDeclarator(firstParam, configEnv),
+    b.variableDeclarator(
+      hasDefault ? firstParam.left : firstParam,
+      b.identifier(unusedName),
+    ),
   ]);
   if (fn.body.type === "BlockStatement") {
     fn.body.body.unshift(destructure);
   } else {
     fn.body = b.blockStatement([destructure, b.returnStatement(fn.body)]);
   }
-  return configEnv.name;
+  return unusedName;
 }
 
 /** Adds @sentry/react-router to optimizeDeps.exclude to prevent 504 errors during dev. */
@@ -215,8 +251,9 @@ export function addReactRouterPluginToViteConfig(
     if (arg.type === "ObjectExpression") {
       configObj = arg;
       // Convert to function form
+      configEnvName = getUnusedConfigEnvName(program);
       const arrowFunction = b.arrowFunctionExpression(
-        [b.identifier("config")],
+        [b.identifier(configEnvName)],
         configObj,
       );
       defineConfigCall.arguments[0] = arrowFunction;
@@ -227,7 +264,10 @@ export function addReactRouterPluginToViteConfig(
     ) {
       configObj = extractFromFunctionBody(arg.body);
       if (configObj) {
-        configEnvName = ensureConfigEnvParam(arg);
+        configEnvName = ensureConfigEnvParam(
+          arg,
+          getUnusedConfigEnvName(program),
+        );
       }
     }
   }

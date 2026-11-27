@@ -365,4 +365,25 @@ export default function App() {
     );
     expect(result).not.toContain("captureRemixErrorBoundaryError(error)");
   });
+
+  it.each([["useRouteError() as Error"], ["useRouteError()!"]])(
+    "reuses a typed read: %s",
+    async (read) => {
+      const result =
+        await instrumentRootSource(`import { Outlet, useRouteError } from '@remix-run/react';
+
+export function ErrorBoundary() {
+  const error = ${read};
+  return <div>{String(error)}</div>;
+}
+
+export default function App() {
+  return <Outlet />;
+}
+`);
+
+      expect(result.match(/const error =/g)).toHaveLength(1);
+      expect(result).toContain("captureRemixErrorBoundaryError(error);");
+    },
+  );
 });

@@ -167,6 +167,26 @@ export default defineConfig(config => ({
         "defineConfig(function () { return { plugins: [] }; })",
         /function\s*\(config\)[\s\S]*\}, config\)/,
       ],
+      [
+        "a destructured parameter with a default",
+        "defineConfig(({ mode } = {}) => ({ plugins: [], define: { mode } }))",
+        /\(config = \{\}\) => \{\s*const \{\s*mode\s*\} = config;[\s\S]*\}, config\)/,
+      ],
+      [
+        "an identifier parameter with a default",
+        "defineConfig((env = {}) => ({ plugins: [] }))",
+        /\}, env\)/,
+      ],
+      [
+        "a file that already binds config",
+        "defineConfig(({ mode }) => { const config = { mode }; return { plugins: [], define: config }; })",
+        /\(?configEnv\)? => \{\s*const \{\s*mode\s*\} = configEnv;[\s\S]*\}, configEnv\)/,
+      ],
+      [
+        "an object config next to a module-level config",
+        "defineConfig({ plugins: [] }); const config = 1",
+        /\(?configEnv\)? => [\s\S]*\}, configEnv\)/,
+      ],
     ])(
       "passes the config env to sentryReactRouter for %s",
       async (_name, defineConfig, expected) => {

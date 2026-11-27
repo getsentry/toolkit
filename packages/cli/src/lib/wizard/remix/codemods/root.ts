@@ -272,26 +272,21 @@ function captureErrorInBoundary(fn: FunctionNode): boolean {
   }
   const statements = fn.body.body;
 
+  const isRouteErrorRead = (
+    d: t.VariableDeclaration["declarations"][number],
+  ): d is t.VariableDeclarator =>
+    d.type === "VariableDeclarator" &&
+    d.id.type === "Identifier" &&
+    isUseRouteErrorCall(d.init);
   const hookIndex = statements.findIndex(
     (statement) =>
       statement.type === "VariableDeclaration" &&
-      statement.declarations.some(
-        (d) =>
-          d.type === "VariableDeclarator" &&
-          d.id.type === "Identifier" &&
-          d.init?.type === "CallExpression" &&
-          d.init.callee.type === "Identifier" &&
-          d.init.callee.name === "useRouteError",
-      ),
+      statement.declarations.some(isRouteErrorRead),
   );
   const hookStatement = statements[hookIndex];
   const hookDeclarator =
     hookStatement?.type === "VariableDeclaration"
-      ? hookStatement.declarations.find(
-          (d): d is t.VariableDeclarator =>
-            d.type === "VariableDeclarator" &&
-            d.init?.type === "CallExpression",
-        )
+      ? hookStatement.declarations.find(isRouteErrorRead)
       : undefined;
   const errorName =
     hookDeclarator?.id.type === "Identifier"
@@ -319,4 +314,28 @@ function captureErrorInBoundary(fn: FunctionNode): boolean {
     capture("error"),
   );
   return false;
+}
+
+/**
+ * `useRouteError()`, also behind TypeScript wrappers such as
+ * `useRouteError() as Error` or `useRouteError()!`.
+ */
+function isUseRouteErrorCall(node: unknown): boolean {
+  let expression = node as { type?: string; expression?: unknown } | null;
+  while (
+    expression &&
+    (expression.type === "TSAsExpression" ||
+      expression.type === "TSSatisfiesExpression" ||
+      expression.type === "TSNonNullExpression" ||
+      expression.type === "TSTypeAssertion" ||
+      expression.type === "ParenthesizedExpression")
+  ) {
+    expression = expression.expression as typeof expression;
+  }
+  const call = expression as t.CallExpression | null;
+  return (
+    call?.type === "CallExpression" &&
+    call.callee.type === "Identifier" &&
+    call.callee.name === "useRouteError"
+  );
 }
