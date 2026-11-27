@@ -106,7 +106,11 @@ describe("ZipWriter", () => {
       stdio: ["pipe", "pipe", "pipe"],
       maxBuffer: 2 * 1024 * 1024,
     });
-    expect(Buffer.from(proc.stdout)).toEqual(content);
+    // Compare natively: toEqual walks a 1 MiB buffer one element at a time
+    // and takes seconds.
+    const extracted = Buffer.from(proc.stdout);
+    expect(extracted.length).toBe(content.length);
+    expect(extracted.equals(content)).toBe(true);
   });
 });
 

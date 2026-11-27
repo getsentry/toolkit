@@ -26,6 +26,8 @@ token = sntrys_...
 | `[defaults]` | `url` | Sentry base URL (for self-hosted) |
 | `[auth]` | `token` | Auth token (mapped to `SENTRY_AUTH_TOKEN`) |
 
+A self-hosted `url` is used only when it matches the server your credentials are scoped to, such as the server named inside an organization auth token (`sntrys_...`) in `[auth] token`, or a server you logged in to with `sentry auth login --url`. Otherwise the CLI refuses to run, so changing the `url` alone can't send your token to another host.
+
 ### Monorepo Setup
 
 In monorepos, place a `.sentryclirc` at the repo root with your org, then add per-package configs with just the project:

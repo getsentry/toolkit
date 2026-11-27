@@ -24,6 +24,11 @@ const UNCHECKED = [
       "codemod input and expected-output fixtures, compared as text by `jssg test`",
   },
   {
+    pattern: /^packages\/http\/test\/package\/consumer\//,
+    reason:
+      "packed-package consumer, compiled against the tarball by test/package/check.sh",
+  },
+  {
     pattern: /^packages\/logger\/test\/package\/consumer\//,
     reason:
       "packed-package consumer, compiled against the tarball by test/package/check.sh",

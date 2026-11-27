@@ -15,6 +15,9 @@ import { execFileSync } from "node:child_process";
 
 import { sentry } from "./app-identity.js";
 import { ValidationError, validationError } from "./errors.js";
+import { logger } from "./logger.js";
+
+const log = logger.withTag("git");
 
 /** `execFileSync` failure shape when git exits non-zero. */
 type ExecFileSyncError = Error & {
@@ -320,6 +323,28 @@ export function getMergeBase(ref: string, cwd?: string): string | undefined {
     return git(["merge-base", "HEAD", ref], cwd) || undefined;
   } catch {
     return;
+  }
+}
+
+/**
+ * Whether the commit is HEAD or one of its ancestors in the local history.
+ *
+ * @param commit - Commit to look for
+ * @param cwd - Working directory
+ * @returns false when the commit is unknown (shallow clone, rewritten history,
+ *   another repository), is not an ancestor, or this is not a repository.
+ */
+export function isInHeadHistory(commit: string, cwd?: string): boolean {
+  // Reject option-like refs (a leading "-" would be parsed by git as a flag).
+  if (commit.startsWith("-")) {
+    return false;
+  }
+  try {
+    git(["merge-base", "--is-ancestor", commit, "HEAD"], cwd);
+    return true;
+  } catch (error) {
+    log.debug(`Commit '${commit}' is not in the history of HEAD`, error);
+    return false;
   }
 }
 

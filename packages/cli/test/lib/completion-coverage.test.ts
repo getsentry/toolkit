@@ -93,7 +93,14 @@ describe("shell completion coverage", () => {
   });
   const flags = commands.flatMap(({ path, command }) =>
     Object.entries(command.parameters.flags ?? {})
-      .filter(([, def]) => def.kind !== "boolean" && !def.hidden)
+      // An inline-only flag never takes the next word, so it has no value
+      // to complete.
+      .filter(
+        ([, def]) =>
+          def.kind !== "boolean" &&
+          !(def.kind === "parsed" && def.inlineOnly) &&
+          !def.hidden,
+      )
       .map(([name]) => ({ path, flag: `--${name}` })),
   );
 

@@ -36,7 +36,7 @@ import {
   MEMBER_PROJECT_CREATION_DISABLED_DETAIL,
 } from "../../api/projects.js";
 import { assertAutoLoginHostTrusted } from "../../auto-auth.js";
-import { getAuthConfig } from "../../db/auth.js";
+import { getAuthConfig, getCredentialContext } from "../../db/auth.js";
 import { getEnv } from "../../env.js";
 import { ApiError } from "../../errors.js";
 import { runInteractiveLogin } from "../../interactive-login.js";
@@ -47,7 +47,7 @@ import { resolveOrCreateTeam } from "../../resolve-team.js";
 import { ensureScopesForAction } from "../../scope-recovery.js";
 import { isSentrySaasUrl } from "../../sentry-urls.js";
 import { getApiBaseUrl } from "../../sentry-client.js";
-import { isRequestOriginTrusted } from "../../token-host.js";
+import { isRequestOriginTrustedForContext } from "../../token-host.js";
 import { slugify } from "../../utils.js";
 import { sentry } from "../../app-identity.js";
 import type {
@@ -187,7 +187,12 @@ async function ensureLoggedIn(): Promise<string | undefined> {
   }
 
   // A login for another instance than the selected one can't be used.
-  if (getAuthConfig() && isRequestOriginTrusted(getApiBaseUrl())) {
+  const credential = getCredentialContext();
+  if (
+    getAuthConfig() &&
+    (!credential ||
+      isRequestOriginTrustedForContext(getApiBaseUrl(), credential))
+  ) {
     Sentry.setTag("login-method", "stored");
     return;
   }

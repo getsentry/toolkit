@@ -214,8 +214,8 @@ catalogs:
       specifier: ^1.2.3
       version: 1.2.3
     '@sentry/api':
-      specifier: 2.15.0
-      version: 2.15.0
+      specifier: 3.2.0
+      version: 3.2.0
     '@sentry/cloudflare':
       specifier: 11.12.0
       version: 11.12.0
@@ -400,7 +400,7 @@ pnpmfileChecksum: sha256-Ov3KZHuKeE0QxRj4zRZgvSDmIYPKMRpTDJcVa6X3RPs=
 
 patchedDependencies:
   '@cloudflare/workers-oauth-provider@0.10.3': b344570966186aa3fd016da543e99aabf3abd9a7b1cb6ba1ad038239e4305efa
-  '@stricli/core@1.2.8': c1d70807ac8f612d2e942650da25753076478898ece26cbdef5af377bedcbadc
+  '@stricli/core@1.2.8': b64a03ef83403fddd06a0ea58fcd2259d1a0b24bded9b0d1a62c86d307b04e62
 
 importers:
 
@@ -701,10 +701,13 @@ importers:
         version: 2.1.7(hono@4.13.18)
       '@sentry/api':
         specifier: 'catalog:'
-        version: 2.15.0(valibot@1.4.2(typescript@7.0.2))(zod@4.6.7)
+        version: 3.2.0(valibot@1.4.2(typescript@7.0.2))(zod@4.6.7)
       '@sentry/core':
         specifier: 'catalog:'
         version: 11.12.0
+      '@sentry/http':
+        specifier: workspace:*
+        version: link:../http
       '@sentry/logger':
         specifier: workspace:*
         version: link:../logger
@@ -731,7 +734,7 @@ importers:
         version: 1.3.0
       '@stricli/core':
         specifier: 1.2.8
-        version: 1.2.8(patch_hash=c1d70807ac8f612d2e942650da25753076478898ece26cbdef5af377bedcbadc)
+        version: 1.2.8(patch_hash=b64a03ef83403fddd06a0ea58fcd2259d1a0b24bded9b0d1a62c86d307b04e62)
       '@types/http-cache-semantics':
         specifier: ^4.2.0
         version: 4.2.0
@@ -870,6 +873,31 @@ importers:
       typescript:
         specifier: 'catalog:'
         version: 7.0.2
+
+  packages/http:
+    dependencies:
+      http-cache-semantics:
+        specifier: ^4.2.0
+        version: 4.3.0
+    devDependencies:
+      '@types/http-cache-semantics':
+        specifier: ^4.2.0
+        version: 4.2.0
+      '@types/node':
+        specifier: 'catalog:'
+        version: 22.20.3
+      fast-check:
+        specifier: ^4.8.0
+        version: 4.10.1
+      tsdown:
+        specifier: 'catalog:'
+        version: 0.23.7(tsrs@7.1.0-beta.tsrs3)(tsx@4.23.13)(typescript@7.0.2)
+      typescript:
+        specifier: 'catalog:'
+        version: 7.0.2
+      vitest:
+        specifier: 'catalog:'
+        version: 5.0.5(@opentelemetry/api@1.9.1)(@types/node@22.20.3)(@vitest/coverage-v8@5.0.5)(jsdom@28.1.0(supports-color@10.1.0))(msw@2.15.0(@types/node@22.20.3)(typescript@7.0.2))(vite@8.3.8(@types/node@22.20.3)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.13)(yaml@2.9.1))
 
   packages/logger:
     devDependencies:
@@ -1047,10 +1075,13 @@ importers:
         version: 2.4.0
       '@sentry/api':
         specifier: 'catalog:'
-        version: 2.15.0(valibot@1.4.2(typescript@7.0.2))(zod@4.6.7)
+        version: 3.2.0(valibot@1.4.2(typescript@7.0.2))(zod@4.6.7)
       '@sentry/core':
         specifier: 'catalog:'
         version: 11.12.0
+      '@sentry/http':
+        specifier: workspace:*
+        version: link:../http
       '@sentry/search-syntax':
         specifier: 'catalog:'
         version: 1.0.0
@@ -1231,7 +1262,10 @@ importers:
     dependencies:
       '@sentry/api':
         specifier: 'catalog:'
-        version: 2.15.0(valibot@1.4.2(typescript@7.0.2))(zod@4.6.7)
+        version: 3.2.0(valibot@1.4.2(typescript@7.0.2))(zod@4.6.7)
+      '@sentry/http':
+        specifier: workspace:*
+        version: link:../http
       '@sentry/search-syntax':
         specifier: 'catalog:'
         version: 1.0.0
@@ -4428,8 +4462,8 @@ packages:
     cpu: [x64]
     os: [win32]
 
-  '@sentry/api@2.15.0':
-    resolution: {integrity: sha512-y/i2vNAYCFELvHC0n+c8BmCG3nId2UKWEA0w0VDc6iXJZCFDRu2eZ6M5a0/shUVOEvMo6ktan1wXrnJLZTcS8A==}
+  '@sentry/api@3.2.0':
+    resolution: {integrity: sha512-grOmtnfztzf/KDo1d+nq2NTjWznkudVTuOQk4Whbz+XYsNgl6p1pzho2DExXN+er9aQ0QO0/Cabb6KjHIPgZDA==}
     engines: {node: '>=22'}
     peerDependencies:
       valibot: '*'
@@ -11495,9 +11529,8 @@ snapshots:
   '@rollup/rollup-win32-x64-msvc@4.62.4':
     optional: true
 
-  '@sentry/api@2.15.0(valibot@1.4.2(typescript@7.0.2))(zod@4.6.7)':
+  '@sentry/api@3.2.0(valibot@1.4.2(typescript@7.0.2))(zod@4.6.7)':
     dependencies:
-      http-cache-semantics: 4.3.0
       p-limit: 7.3.3
       typescript: '@typescript/typescript6@6.0.2'
     optionalDependencies:
@@ -11781,7 +11814,7 @@ snapshots:
     dependencies:
       '@stricli/core': 1.3.0
 
-  '@stricli/core@1.2.8(patch_hash=c1d70807ac8f612d2e942650da25753076478898ece26cbdef5af377bedcbadc)': {}
+  '@stricli/core@1.2.8(patch_hash=b64a03ef83403fddd06a0ea58fcd2259d1a0b24bded9b0d1a62c86d307b04e62)': {}
 
   '@stricli/core@1.3.0': {}
 
@@ -13319,7 +13352,7 @@ snapshots:
   fossilize@0.10.1:
     dependencies:
       '@stricli/auto-complete': 1.3.0
-      '@stricli/core': 1.2.8(patch_hash=c1d70807ac8f612d2e942650da25753076478898ece26cbdef5af377bedcbadc)
+      '@stricli/core': 1.2.8(patch_hash=b64a03ef83403fddd06a0ea58fcd2259d1a0b24bded9b0d1a62c86d307b04e62)
       binpunch: 1.0.0
       esbuild: 0.25.12
       macho-unsign: 2.0.6

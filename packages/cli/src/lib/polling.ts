@@ -156,6 +156,38 @@ function startSpinner(initialMessage: string): {
   };
 }
 
+/** Controller for a spinner started with {@link startProgressLine}. */
+export type ProgressLine = {
+  /** Replace the displayed message. */
+  setMessage: (msg: string) => void;
+  /** Stop the animation and clear the line. */
+  stop: () => void;
+};
+
+/**
+ * Start a spinner for progress that does not map to one async callback, such
+ * as a phase that starts and ends between another call's progress events.
+ * Use {@link withProgress} when the work is one awaited call.
+ *
+ * Draws the same frames as {@link withProgress}. Like `withProgress` with
+ * `interactiveOnly`, it draws nothing for plain output or a stdout that is not
+ * a terminal: then it returns `null`, so callers can fall back to log lines.
+ * Callers in JSON mode should not start one.
+ */
+export function startProgressLine(message: string): ProgressLine | null {
+  if (isPlainOutput() || !process.stdout.isTTY) {
+    return null;
+  }
+  const spinner = startSpinner(message);
+  return {
+    setMessage: spinner.setMessage,
+    stop: () => {
+      spinner.stop();
+      process.stdout.write("\r\x1b[K");
+    },
+  };
+}
+
 /**
  * Options for {@link withProgress}.
  */
