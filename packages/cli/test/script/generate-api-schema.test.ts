@@ -1,6 +1,9 @@
 import { operations, type ApiOperation } from "@sentry/api/operations";
 import { describe, expect, test } from "vitest";
-import { projectApiOperations } from "../../script/lib/api-schema.js";
+import {
+  projectApiOperations,
+  selectProjectScopeOperations,
+} from "../../script/lib/api-schema.js";
 import { searchEndpoints } from "../../src/lib/api-schema.js";
 
 const events = {
@@ -103,5 +106,37 @@ describe("SDK catalog projection", () => {
         ]),
       );
     }
+  });
+});
+
+describe("project scope extraction", () => {
+  test("keeps declared scopes other than path, sorted", () => {
+    expect(
+      selectProjectScopeOperations([
+        {
+          ...events,
+          path: "/api/0/organizations/{org}/z/",
+          projectScope: "filter",
+        },
+        {
+          ...events,
+          path: "/api/0/projects/{org}/{project}/",
+          projectScope: "path",
+        },
+        {
+          ...events,
+          path: "/api/0/organizations/{org}/a/{id}/",
+          projectScope: "response:/project/id",
+        },
+        events,
+      ]),
+    ).toEqual([
+      {
+        method: "GET",
+        path: "/api/0/organizations/{org}/a/{id}/",
+        scope: "response:/project/id",
+      },
+      { method: "GET", path: "/api/0/organizations/{org}/z/", scope: "filter" },
+    ]);
   });
 });

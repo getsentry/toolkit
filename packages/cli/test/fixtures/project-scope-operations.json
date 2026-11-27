@@ -1,0 +1,257 @@
+[
+  {
+    "method": "GET",
+    "path": "/api/0/organizations/{organization_id_or_slug}/",
+    "scope": "org-metadata"
+  },
+  {
+    "method": "GET",
+    "path": "/api/0/organizations/{organization_id_or_slug}/agents/conversations/",
+    "scope": "filter"
+  },
+  {
+    "method": "GET",
+    "path": "/api/0/organizations/{organization_id_or_slug}/available-actions/",
+    "scope": "org-metadata"
+  },
+  {
+    "method": "GET",
+    "path": "/api/0/organizations/{organization_id_or_slug}/chunk-upload/",
+    "scope": "org-metadata"
+  },
+  {
+    "method": "GET",
+    "path": "/api/0/organizations/{organization_id_or_slug}/code-mappings/",
+    "scope": "org-metadata"
+  },
+  {
+    "method": "GET",
+    "path": "/api/0/organizations/{organization_id_or_slug}/config/integrations/",
+    "scope": "org-metadata"
+  },
+  {
+    "method": "GET",
+    "path": "/api/0/organizations/{organization_id_or_slug}/dashboards/",
+    "scope": "org-metadata"
+  },
+  {
+    "method": "GET",
+    "path": "/api/0/organizations/{organization_id_or_slug}/dashboards/{dashboard_id}/",
+    "scope": "org-metadata"
+  },
+  {
+    "method": "GET",
+    "path": "/api/0/organizations/{organization_id_or_slug}/dashboards/{dashboard_id}/revisions/",
+    "scope": "org-metadata"
+  },
+  {
+    "method": "GET",
+    "path": "/api/0/organizations/{organization_id_or_slug}/detectors/",
+    "scope": "filter"
+  },
+  {
+    "method": "GET",
+    "path": "/api/0/organizations/{organization_id_or_slug}/detectors/{detector_id}/",
+    "scope": "response:/projectId"
+  },
+  {
+    "method": "GET",
+    "path": "/api/0/organizations/{organization_id_or_slug}/discover/saved/",
+    "scope": "org-metadata"
+  },
+  {
+    "method": "GET",
+    "path": "/api/0/organizations/{organization_id_or_slug}/discover/saved/{query_id}/",
+    "scope": "org-metadata"
+  },
+  {
+    "method": "GET",
+    "path": "/api/0/organizations/{organization_id_or_slug}/dsn-lookup/",
+    "scope": "org-metadata"
+  },
+  {
+    "method": "GET",
+    "path": "/api/0/organizations/{organization_id_or_slug}/environments/",
+    "scope": "org-metadata"
+  },
+  {
+    "method": "GET",
+    "path": "/api/0/organizations/{organization_id_or_slug}/events-dropped/",
+    "scope": "filter"
+  },
+  {
+    "method": "GET",
+    "path": "/api/0/organizations/{organization_id_or_slug}/events-timeseries/",
+    "scope": "filter"
+  },
+  {
+    "method": "GET",
+    "path": "/api/0/organizations/{organization_id_or_slug}/events/",
+    "scope": "filter"
+  },
+  {
+    "method": "GET",
+    "path": "/api/0/organizations/{organization_id_or_slug}/group-search-views/",
+    "scope": "org-metadata"
+  },
+  {
+    "method": "GET",
+    "path": "/api/0/organizations/{organization_id_or_slug}/integrations/",
+    "scope": "org-metadata"
+  },
+  {
+    "method": "GET",
+    "path": "/api/0/organizations/{organization_id_or_slug}/integrations/{integration_id}/",
+    "scope": "org-metadata"
+  },
+  {
+    "method": "GET",
+    "path": "/api/0/organizations/{organization_id_or_slug}/integrations/{integration_id}/channel-validate/",
+    "scope": "org-metadata"
+  },
+  {
+    "method": "GET",
+    "path": "/api/0/organizations/{organization_id_or_slug}/integrations/{integration_id}/channels/",
+    "scope": "org-metadata"
+  },
+  {
+    "method": "GET",
+    "path": "/api/0/organizations/{organization_id_or_slug}/integrations/{integration_id}/repos/",
+    "scope": "org-metadata"
+  },
+  {
+    "method": "DELETE",
+    "path": "/api/0/organizations/{organization_id_or_slug}/issues/",
+    "scope": "filter"
+  },
+  {
+    "method": "GET",
+    "path": "/api/0/organizations/{organization_id_or_slug}/issues/",
+    "scope": "filter"
+  },
+  {
+    "method": "PUT",
+    "path": "/api/0/organizations/{organization_id_or_slug}/issues/",
+    "scope": "filter"
+  },
+  {
+    "method": "GET",
+    "path": "/api/0/organizations/{organization_id_or_slug}/issues/{issue_id}/",
+    "scope": "response:/project/id"
+  },
+  {
+    "method": "GET",
+    "path": "/api/0/organizations/{organization_id_or_slug}/members/",
+    "scope": "org-metadata"
+  },
+  {
+    "method": "GET",
+    "path": "/api/0/organizations/{organization_id_or_slug}/members/{member_id}/",
+    "scope": "org-metadata"
+  },
+  {
+    "method": "GET",
+    "path": "/api/0/organizations/{organization_id_or_slug}/monitors/",
+    "scope": "filter"
+  },
+  {
+    "method": "GET",
+    "path": "/api/0/organizations/{organization_id_or_slug}/monitors/{monitor_id_or_slug}/",
+    "scope": "response:/project/id"
+  },
+  {
+    "method": "GET",
+    "path": "/api/0/organizations/{organization_id_or_slug}/projects/",
+    "scope": "org-metadata"
+  },
+  {
+    "method": "GET",
+    "path": "/api/0/organizations/{organization_id_or_slug}/releases/",
+    "scope": "filter"
+  },
+  {
+    "method": "GET",
+    "path": "/api/0/organizations/{organization_id_or_slug}/releases/{version}/",
+    "scope": "response:/projects/*/id"
+  },
+  {
+    "method": "GET",
+    "path": "/api/0/organizations/{organization_id_or_slug}/replay-count/",
+    "scope": "filter"
+  },
+  {
+    "method": "GET",
+    "path": "/api/0/organizations/{organization_id_or_slug}/replays/",
+    "scope": "filter"
+  },
+  {
+    "method": "GET",
+    "path": "/api/0/organizations/{organization_id_or_slug}/replays/{replay_id}/",
+    "scope": "response:/data/project_id"
+  },
+  {
+    "method": "GET",
+    "path": "/api/0/organizations/{organization_id_or_slug}/repos/",
+    "scope": "org-metadata"
+  },
+  {
+    "method": "GET",
+    "path": "/api/0/organizations/{organization_id_or_slug}/repos/{repo_id}/commits/",
+    "scope": "org-metadata"
+  },
+  {
+    "method": "GET",
+    "path": "/api/0/organizations/{organization_id_or_slug}/sentry-app-components/",
+    "scope": "org-metadata"
+  },
+  {
+    "method": "GET",
+    "path": "/api/0/organizations/{organization_id_or_slug}/sentry-app-installations/",
+    "scope": "org-metadata"
+  },
+  {
+    "method": "GET",
+    "path": "/api/0/organizations/{organization_id_or_slug}/sentry-apps/",
+    "scope": "org-metadata"
+  },
+  {
+    "method": "GET",
+    "path": "/api/0/organizations/{organization_id_or_slug}/teams/",
+    "scope": "org-metadata"
+  },
+  {
+    "method": "GET",
+    "path": "/api/0/organizations/{organization_id_or_slug}/trace-items/attributes/",
+    "scope": "filter"
+  },
+  {
+    "method": "GET",
+    "path": "/api/0/organizations/{organization_id_or_slug}/user-teams/",
+    "scope": "org-metadata"
+  },
+  {
+    "method": "GET",
+    "path": "/api/0/organizations/{organization_id_or_slug}/workflows/",
+    "scope": "filter"
+  },
+  {
+    "method": "GET",
+    "path": "/api/0/organizations/{organization_id_or_slug}/workflows/{workflow_id}/",
+    "scope": "org-metadata"
+  },
+  {
+    "method": "GET",
+    "path": "/api/0/teams/{organization_id_or_slug}/{team_id_or_slug}/",
+    "scope": "org-metadata"
+  },
+  {
+    "method": "GET",
+    "path": "/api/0/teams/{organization_id_or_slug}/{team_id_or_slug}/members/",
+    "scope": "org-metadata"
+  },
+  {
+    "method": "GET",
+    "path": "/api/0/teams/{organization_id_or_slug}/{team_id_or_slug}/projects/",
+    "scope": "org-metadata"
+  }
+]

@@ -3,6 +3,7 @@
 import { API_BASE_PATH } from "@sentry/api/client";
 import type { ApiOperation } from "@sentry/api/operations";
 import type { ApiEndpoint } from "../../src/lib/api-schema.js";
+import type { ProjectScopeOperation } from "../../src/lib/target-scope-rules.js";
 
 /**
  * Keep CLI grouping, output names and legacy deprecation detection local.
@@ -44,4 +45,24 @@ function deriveResource(url: string): string {
     .split("/")
     .filter((s) => s.length > 0 && !s.startsWith("{"));
   return segments.at(-1) ?? "unknown";
+}
+
+/**
+ * The operations Sentry declares an `x-sentry-project-scope` for, other
+ * than `path` (the scope rules match project paths themselves), for
+ * `target-scope-rules.ts`. `@sentry/api` carries it as `projectScope`.
+ */
+export function selectProjectScopeOperations(
+  catalog: readonly { method: string; path: string; projectScope?: string }[],
+): ProjectScopeOperation[] {
+  return catalog
+    .flatMap(({ method, path, projectScope }) =>
+      projectScope && projectScope !== "path"
+        ? [{ method, path, scope: projectScope }]
+        : [],
+    )
+    .sort(
+      (a, b) =>
+        a.path.localeCompare(b.path) || a.method.localeCompare(b.method),
+    );
 }

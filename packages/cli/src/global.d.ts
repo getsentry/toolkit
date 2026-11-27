@@ -52,3 +52,8 @@ declare module "*/generated/idempotent-operations.json" {
   const operations: unknown;
   export default operations;
 }
+
+declare module "*/generated/project-scope-operations.json" {
+  const operations: unknown;
+  export default operations;
+}

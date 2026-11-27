@@ -4,11 +4,19 @@
  * The checks themselves are covered in `target-scope.test.ts`.
  */
 
-import { afterEach, beforeEach, describe, expect, test } from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import createSentrySDK from "../../src/index.js";
 import { __resetScopeLookupsForTests } from "../../src/lib/target-scope.js";
 import issueFixture from "../fixtures/issue.json";
 import { mockFetch, useTestConfigDir } from "../helpers.js";
+
+// The scope rules Sentry declares (`x-sentry-project-scope`), until the
+// installed `@sentry/api` carries them. `target-scope-catalog.test.ts`
+// checks the fixture against the generated catalog once it does.
+vi.mock("../../src/generated/project-scope-operations.json", async () => ({
+  default: (await import("../../test/fixtures/project-scope-operations.json"))
+    .default,
+}));
 
 /** Issue 200 is in `api`, outside the SDK's `acme/web`. */
 const API_ISSUE = {
@@ -23,6 +31,9 @@ function sentryApi(): typeof fetch {
     const path = new URL(new Request(input, init).url).pathname;
     if (path === "/api/0/organizations/acme/") {
       return Response.json({ id: "9", slug: "acme", name: "Acme" });
+    }
+    if (path === "/api/0/projects/acme/web/") {
+      return Response.json({ id: "1", slug: "web" });
     }
     if (path === "/api/0/organizations/acme/issues/200/") {
       return Response.json(API_ISSUE);
