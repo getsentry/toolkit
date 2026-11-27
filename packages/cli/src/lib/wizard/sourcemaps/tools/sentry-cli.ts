@@ -433,6 +433,7 @@ Current command: ${chalk.dim(oldCommand)}
 Would have injected: ${chalk.dim(newCommand)}`,
     );
 
+    addedToBuildCommand = true;
     return;
   }
 
