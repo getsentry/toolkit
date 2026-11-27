@@ -1028,6 +1028,57 @@ describe("search_events", () => {
     );
   });
 
+  it("reports the query's timestamp bounds as the time range on the structured (non-agent) path", async () => {
+    const hour = 3_600_000;
+    const toSeconds = (ms: number) =>
+      new Date(Math.floor(ms / 1000) * 1000).toISOString().replace(".000", "");
+    const start = toSeconds(Date.now() - 2 * hour);
+    const end = toSeconds(Date.now() - hour);
+    const query = `severity:warn timestamp:>=${start} timestamp:<${end}`;
+    const requests: URLSearchParams[] = [];
+    mswServer.use(
+      http.get(
+        "https://sentry.io/api/0/organizations/test-org/events/",
+        ({ request }) => {
+          requests.push(new URL(request.url).searchParams);
+          return HttpResponse.json({ data: [{ "count(message)": 3 }] });
+        },
+      ),
+    );
+
+    const result = await searchEvents.handler(
+      {
+        organizationSlug: "test-org",
+        regionUrl: null,
+        projectSlug: null,
+        query,
+        dataset: "logs",
+        fields: ["count(message)"],
+        sort: "-count(message)",
+        period: "7d",
+        limit: 10,
+        includeExplanation: false,
+      },
+      {
+        constraints: {
+          organizationSlug: null,
+          regionUrl: null,
+          projectSlug: null,
+        },
+        accessToken: "test-token",
+        userId: "1",
+      },
+    );
+
+    expect(mockGenerateText).not.toHaveBeenCalled();
+    expect(requests).toHaveLength(1);
+    expect(requests[0]!.get("query")).toBe(query);
+    expect(requests[0]!.get("statsPeriod")).toBeNull();
+    expect(requests[0]!.get("start")).toBe(start);
+    expect(requests[0]!.get("end")).toBe(end);
+    expect(result).toContain(`- Time range: ${start} to ${end}`);
+  });
+
   it("flags an unknown environment even on the structured (non-agent) path", async () => {
     const query = 'transaction:"checkout" environment:nonexistent-xyz';
     mswServer.use(
