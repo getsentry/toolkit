@@ -1215,6 +1215,6 @@ function shouldFetchTraceForEvent(event: Event): { traceId: string } | null {
   return { traceId };
 }
 
-function getReplayDataSource(issue: Issue): "discover" | "search_issues" {
-  return isErrorIssue(issue) ? "discover" : "search_issues";
+function getReplayDataSource(issue: Issue): "errors" | "search_issues" {
+  return isErrorIssue(issue) ? "errors" : "search_issues";
 }
