@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { generateServerInstrumentationFile } from "../../../../src/lib/wizard/remix/sdk-setup.js";
+import {
+  generateServerInstrumentationFile,
+  getInstrumentationImportPath,
+} from "../../../../src/lib/wizard/remix/sdk-setup.js";
 
 describe("generateServerInstrumentationFile", () => {
   it("should generate server instrumentation file", () => {
@@ -75,5 +78,18 @@ describe("generateServerInstrumentationFile", () => {
             },
         })"
       `);
+  });
+});
+
+describe("getInstrumentationImportPath", () => {
+  it.each([
+    ["server.ts", "./instrumentation.server.mjs"],
+    ["server/index.ts", "../instrumentation.server.mjs"],
+    ["app/server.ts", "../instrumentation.server.mjs"],
+    ["app/server/index.ts", "../../instrumentation.server.mjs"],
+  ])("points %s at the root instrumentation file", (serverFile, expected) => {
+    expect(
+      getInstrumentationImportPath(serverFile, "instrumentation.server.mjs"),
+    ).toBe(expected);
   });
 });

@@ -285,28 +285,19 @@ export async function updatePackageJsonScripts(): Promise<void> {
       return scriptCommand;
     }
 
-    const quotedMatch = scriptCommand.match(/NODE_OPTIONS=(['"])([^'"]*)\1/);
-    if (quotedMatch) {
-      const existingOptions = quotedMatch[2];
-      const mergedOptions =
-        `${existingOptions} --import ${instrumentPath}`.trim();
-      return scriptCommand.replace(
-        /NODE_OPTIONS=(['"])([^'"]*)\1/,
-        `NODE_OPTIONS='${mergedOptions}'`,
-      );
-    }
-
-    const unquotedMatch = scriptCommand.match(
-      /NODE_OPTIONS=([^\s]+(?:\s+[^\s]+)*?)(\s+(?:react-router-serve|react-router|node|npx|tsx))/,
+    // Shell semantics: an unquoted value ends at the first whitespace, so
+    // `NODE_OPTIONS=--a PORT=3000 node` keeps `PORT=3000` as its own variable.
+    const nodeOptions = /(^|\s)NODE_OPTIONS=(?:'([^']*)'|"([^"]*)"|(\S*))/.exec(
+      scriptCommand,
     );
-    if (unquotedMatch) {
-      const existingOptions = unquotedMatch[1];
-      const commandPart = unquotedMatch[2];
+    if (nodeOptions) {
+      const existingOptions =
+        nodeOptions[2] ?? nodeOptions[3] ?? nodeOptions[4] ?? "";
       const mergedOptions =
         `${existingOptions} --import ${instrumentPath}`.trim();
       return scriptCommand.replace(
-        /NODE_OPTIONS=([^\s]+(?:\s+[^\s]+)*?)(\s+(?:react-router-serve|react-router|node|npx|tsx))/,
-        `NODE_OPTIONS='${mergedOptions}'${commandPart}`,
+        nodeOptions[0],
+        () => `${nodeOptions[1] ?? ""}NODE_OPTIONS='${mergedOptions}'`,
       );
     }
 
@@ -317,16 +308,9 @@ export async function updatePackageJsonScripts(): Promise<void> {
     packageJson.scripts["dev"] = mergeNodeOptions(packageJson.scripts["dev"]);
   }
 
-  const startScript = packageJson.scripts["start"];
-  if (
-    !startScript.includes(INSTRUMENTATION_FILE) &&
-    !startScript.includes("NODE_OPTIONS")
-  ) {
-    packageJson.scripts["start"] =
-      `NODE_OPTIONS='--import ./${INSTRUMENTATION_FILE}' react-router-serve ./build/server/index.js`;
-  } else {
-    packageJson.scripts["start"] = mergeNodeOptions(startScript);
-  }
+  // Keep the project's own start command (custom server, port, flags) and
+  // only add the instrumentation import to it.
+  packageJson.scripts["start"] = mergeNodeOptions(packageJson.scripts["start"]);
 
   // Prevent React CJS dev/prod bundle mismatch when --import loads react
   // before react-router-serve sets NODE_ENV

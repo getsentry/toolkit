@@ -156,7 +156,7 @@ Feel free to delete this file and the entire sentry route.
   import { onMount } from 'svelte';
   
   let hasSentError = ${options.isUsingSvelte5 ? "$state(false)" : "false"};
-  let isConnected = true;
+  let isConnected = ${options.isUsingSvelte5 ? "$state(true)" : "true"};
 
   onMount(async () => {
     const result = await Sentry.diagnoseSdkConnectivity();

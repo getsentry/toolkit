@@ -277,11 +277,33 @@ Skipping adding instrumentation functionality to ${chalk.cyan(
     return true;
   }
 
-  originalExpressServerMod.$code = `import './${instrumentationFile}';\n${originalExpressServerMod.$code}`;
+  const importPath = getInstrumentationImportPath(
+    expressServerPath,
+    instrumentationFile,
+  );
+  originalExpressServerMod.$code = `import '${importPath}';\n${originalExpressServerMod.$code}`;
 
   writeFileSync(expressServerPath, originalExpressServerMod.$code);
 
   return true;
+}
+
+/**
+ * Import specifier for the instrumentation file (written to the project root)
+ * from the server file, which can live in `server/` or `app/server/`.
+ */
+export function getInstrumentationImportPath(
+  serverFilePath: string,
+  instrumentationFile: string,
+): string {
+  const relativePath = path
+    .relative(
+      path.dirname(path.resolve(serverFilePath)),
+      path.resolve(instrumentationFile),
+    )
+    .split(path.sep)
+    .join("/");
+  return relativePath.startsWith(".") ? relativePath : `./${relativePath}`;
 }
 
 export function isRemixV2(packageJson: PackageDotJson): boolean {

@@ -2,10 +2,12 @@ import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 import {
   existsSync,
   mkdirSync,
+  mkdtempSync,
   readFileSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import recast from "recast";
 import {
@@ -372,6 +374,62 @@ export const handleError = (error: unknown) => {
   });
 });
 
+describe("instrumentHandleError capture placement and bindings", () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = mkdtempSync(path.join(tmpdir(), "handle-error-bindings-"));
+  });
+
+  afterEach(() => {
+    rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  async function instrument(content: string): Promise<string> {
+    const file = path.join(tmpDir, "entry.server.tsx");
+    writeFileSync(file, content);
+    const mod = await loadFile(file);
+    instrumentHandleError(mod);
+    return generateCode(mod.$ast).code;
+  }
+
+  it("captures before an early return in a variable-declared handler", async () => {
+    const code = await instrument(`
+export const handleError = (error: unknown, { request }: { request: Request }) => {
+  if (request.method === "HEAD") {
+    return;
+  }
+  console.error(error);
+};
+`);
+    expect(code.indexOf("Sentry.captureException(error)")).toBeLessThan(
+      code.indexOf("return;"),
+    );
+  });
+
+  it("adds a request binding to an error-only function declaration", async () => {
+    const code = await instrument(`
+export function handleError(error: unknown) {
+  console.error(error);
+}
+`);
+    expect(code).toMatch(
+      /function handleError\(\s*error: unknown,\s*\{\s*request\s*\}\s*\)/,
+    );
+    expect(code).toContain("if (!request.signal.aborted)");
+  });
+
+  it("uses the existing parameter names", async () => {
+    const code = await instrument(`
+export function handleError(err: unknown, args: { request: Request }) {
+  console.error(err);
+}
+`);
+    expect(code).toContain("if (!args.request.signal.aborted)");
+    expect(code).toContain("Sentry.captureException(err)");
+  });
+});
+
 describe("instrumentHandleError AST manipulation edge cases", () => {
   let tmpDir: string;
 
@@ -436,7 +494,11 @@ export const handleError = (error: unknown, context: any) => {
 
     const modifiedCode = generateCode(mod.$ast).code;
     expect(modifiedCode).toContain("Sentry.captureException(error)");
-    expect(modifiedCode).toContain("if (!request.signal.aborted)");
+    expect(modifiedCode).toContain("if (!context.request.signal.aborted)");
+    // Capture runs before the handler's own `return`.
+    expect(modifiedCode.indexOf("captureException")).toBeLessThan(
+      modifiedCode.indexOf("return new Response"),
+    );
   });
 
   it("should demonstrate that the AST bug is now fixed - no longer throws TypeError", async () => {

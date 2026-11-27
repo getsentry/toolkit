@@ -75,30 +75,56 @@ export function instrumentHandleError(
       ))
   ) {
     return false;
-  } else if (handleErrorFunctionExport) {
-    const implementation = recast.parse(HANDLE_ERROR_TEMPLATE).program.body[0];
-
-    // If the current handleError function has a body, we need to merge the new implementation with the existing one
-    implementation.declarations[0].init.arguments[0].body.body.unshift(
-      // @ts-expect-error - declaration works here because the AST is proxified by magicast
-      ...handleErrorFunctionExport.declaration.body.body,
+  } else if (
+    handleErrorFunctionExport?.type === "ExportNamedDeclaration" &&
+    handleErrorFunctionExport.declaration?.type === "FunctionDeclaration"
+  ) {
+    // Wrap the whole function, so `async`, its parameters and its body stay
+    // as they are.
+    const fn = handleErrorFunctionExport.declaration;
+    const b = recast.types.builders;
+    const functionExpression = b.functionExpression(
+      null,
+      fn.params,
+      fn.body,
+      fn.generator,
     );
-
-    // @ts-expect-error - declaration works here because the AST is proxified by magicast
-    handleErrorFunctionExport.declaration = implementation;
-  } else if (handleErrorFunctionVariableDeclarationExport) {
-    const implementation = recast.parse(HANDLE_ERROR_TEMPLATE).program.body[0];
-
-    // If the current handleError function has a body, we need to merge the new implementation with the existing one
-    implementation.declarations[0].init.arguments[0].body.body.unshift(
-      // @ts-expect-error - declaration works here because the AST is proxified by magicast
-      ...handleErrorFunctionVariableDeclarationExport.declaration
-        .declarations[0].init.body.body,
-    );
-
-    // @ts-expect-error - declaration works here because the AST is proxified by magicast
-    handleErrorFunctionVariableDeclarationExport.declaration = implementation;
+    functionExpression.async = fn.async ?? false;
+    handleErrorFunctionExport.declaration = b.variableDeclaration("const", [
+      b.variableDeclarator(
+        b.identifier("handleError"),
+        wrapWithSentry(functionExpression),
+      ),
+    ]);
+  } else if (
+    handleErrorFunctionVariableDeclarationExport?.type ===
+      "ExportNamedDeclaration" &&
+    handleErrorFunctionVariableDeclarationExport.declaration?.type ===
+      "VariableDeclaration"
+  ) {
+    const declarator =
+      handleErrorFunctionVariableDeclarationExport.declaration.declarations[0];
+    if (declarator?.type !== "VariableDeclarator" || !declarator.init) {
+      return false;
+    }
+    // Any initializer works: an arrow or function expression, or a handler
+    // built elsewhere.
+    declarator.init = wrapWithSentry(declarator.init);
   }
 
   return true;
+}
+
+/** `Sentry.wrapHandleErrorWithSentry(<handler>)` */
+function wrapWithSentry(
+  handler: Parameters<typeof recast.types.builders.callExpression>[1][number],
+): ReturnType<typeof recast.types.builders.callExpression> {
+  const b = recast.types.builders;
+  return b.callExpression(
+    b.memberExpression(
+      b.identifier("Sentry"),
+      b.identifier("wrapHandleErrorWithSentry"),
+    ),
+    [handler],
+  );
 }

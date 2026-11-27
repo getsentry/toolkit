@@ -598,7 +598,7 @@ describe("updatePackageJsonScripts", () => {
     const mockPackageJson: { scripts: Record<string, string> } = {
       scripts: {
         dev: "react-router dev",
-        start: "react-router serve",
+        start: "react-router-serve ./build/server/index.js",
         build: "react-router build",
       },
     };
@@ -639,7 +639,7 @@ describe("updatePackageJsonScripts", () => {
   it("should handle package.json with only start script", async () => {
     const mockPackageJson: { scripts: Record<string, string> } = {
       scripts: {
-        start: "react-router serve",
+        start: "react-router-serve ./build/server/index.js",
       },
     };
 
@@ -682,8 +682,8 @@ describe("updatePackageJsonScripts", () => {
   it("should handle unquoted NODE_OPTIONS in dev script", async () => {
     const mockPackageJson: { scripts: Record<string, string> } = {
       scripts: {
-        dev: "NODE_OPTIONS=--loader ts-node/register react-router dev",
-        start: "react-router serve",
+        dev: "NODE_OPTIONS=--enable-source-maps react-router dev",
+        start: "react-router-serve ./build/server/index.js",
       },
     };
 
@@ -702,7 +702,7 @@ describe("updatePackageJsonScripts", () => {
 
     // Should merge unquoted NODE_OPTIONS and wrap result in single quotes
     expect(writtenContent.scripts["dev"]).toBe(
-      "NODE_OPTIONS='--loader ts-node/register --import ./instrument.server.mjs' react-router dev",
+      "NODE_OPTIONS='--enable-source-maps --import ./instrument.server.mjs' react-router dev",
     );
   });
 
@@ -710,7 +710,7 @@ describe("updatePackageJsonScripts", () => {
     const mockPackageJson: { scripts: Record<string, string> } = {
       scripts: {
         start:
-          "NODE_OPTIONS=--require ./dotenv-config.js react-router-serve ./build/server/index.js",
+          "NODE_OPTIONS=--require=./dotenv-config.js react-router-serve ./build/server/index.js",
       },
     };
 
@@ -729,7 +729,7 @@ describe("updatePackageJsonScripts", () => {
 
     // Should merge unquoted NODE_OPTIONS and prepend NODE_ENV
     expect(writtenContent.scripts["start"]).toBe(
-      "NODE_ENV=production NODE_OPTIONS='--require ./dotenv-config.js --import ./instrument.server.mjs' react-router-serve ./build/server/index.js",
+      "NODE_ENV=production NODE_OPTIONS='--require=./dotenv-config.js --import ./instrument.server.mjs' react-router-serve ./build/server/index.js",
     );
   });
 
@@ -761,6 +761,60 @@ describe("updatePackageJsonScripts", () => {
     // Should prepend NODE_ENV=production to start script
     expect(writtenContent.scripts["start"]).toBe(
       "NODE_ENV=production NODE_OPTIONS='--enable-source-maps --import ./instrument.server.mjs' react-router serve",
+    );
+  });
+});
+
+describe("updatePackageJsonScripts keeps the project's commands", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  async function updatedScripts(
+    scripts: Record<string, string>,
+  ): Promise<Record<string, string>> {
+    getPackageDotJsonMock.mockResolvedValue({ scripts });
+    const fsPromises = await import("node:fs");
+    const writeFileMock = vi
+      .spyOn(fsPromises.promises, "writeFile")
+      .mockResolvedValue();
+    await updatePackageJsonScripts();
+    return (
+      JSON.parse(writeFileMock.mock.calls[0]?.[1] as string) as {
+        scripts: Record<string, string>;
+      }
+    ).scripts;
+  }
+
+  it.each([
+    [
+      "react-router-serve ./build/server/index.js --port 3000",
+      "NODE_ENV=production NODE_OPTIONS='--import ./instrument.server.mjs' react-router-serve ./build/server/index.js --port 3000",
+    ],
+    [
+      "node ./server.js",
+      "NODE_ENV=production NODE_OPTIONS='--import ./instrument.server.mjs' node ./server.js",
+    ],
+  ])("prepends the import to the start script %s", async (start, expected) => {
+    expect((await updatedScripts({ start }))["start"]).toBe(expected);
+  });
+
+  it("merges into an unquoted NODE_OPTIONS before any command", async () => {
+    const scripts = await updatedScripts({
+      start: "NODE_OPTIONS=--max-old-space-size=4096 pm2 start ./server.js",
+    });
+    expect(scripts["start"]).toBe(
+      "NODE_ENV=production NODE_OPTIONS='--max-old-space-size=4096 --import ./instrument.server.mjs' pm2 start ./server.js",
+    );
+  });
+
+  it("keeps a sibling environment variable after an unquoted NODE_OPTIONS", async () => {
+    const scripts = await updatedScripts({
+      start:
+        "NODE_OPTIONS=--max-old-space-size=4096 PORT=3000 node ./server.js",
+    });
+    expect(scripts["start"]).toBe(
+      "NODE_ENV=production NODE_OPTIONS='--max-old-space-size=4096 --import ./instrument.server.mjs' PORT=3000 node ./server.js",
     );
   });
 });

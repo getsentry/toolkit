@@ -9,6 +9,7 @@ import {
   rmdirSync,
   statSync,
   unlinkSync,
+  writeFileSync,
 } from "node:fs";
 import path from "node:path";
 import {
@@ -307,5 +308,61 @@ describe("instrumentRoot", () => {
       'import { captureRemixErrorBoundaryError, withSentry } from "@sentry/remix";',
     );
     expect(modifiedContent).toContain("withSentry(App)");
+    // The existing boundary is instrumented, not duplicated.
+    expect(modifiedContent.match(/const ErrorBoundary/g)).toHaveLength(1);
+    expect(modifiedContent).toMatch(
+      /const ErrorBoundary = \(\) => \{\s*const error = useRouteError\(\);\s*captureRemixErrorBoundaryError\(error\);/,
+    );
+  });
+
+  async function instrumentRootSource(source: string): Promise<string> {
+    const appDir = path.join(tmpDir, "app");
+    mkdirSync(appDir, { recursive: true });
+    writeFileSync(path.join(appDir, "root.tsx"), source);
+    vi.spyOn(process, "cwd").mockReturnValue(tmpDir);
+    await instrumentRoot("root.tsx");
+    return readFileSync(path.join(appDir, "root.tsx"), "utf8");
+  }
+
+  it("instruments an exported const ErrorBoundary", async () => {
+    const result =
+      await instrumentRootSource(`import { Outlet } from '@remix-run/react';
+
+export const ErrorBoundary = () => <div>Error occurred</div>;
+
+export default function App() {
+  return <Outlet />;
+}
+`);
+
+    expect(result).toMatch(
+      /export const ErrorBoundary = \(\) => \{\s*const error = useRouteError\(\);\s*captureRemixErrorBoundaryError\(error\);\s*return <div>Error occurred<\/div>;/,
+    );
+    expect(result).toMatch(
+      /import \{[^}]*useRouteError[^}]*\} from ["']@remix-run\/react["']/,
+    );
+  });
+
+  it("captures the error under the name the boundary already uses", async () => {
+    const result =
+      await instrumentRootSource(`import { Outlet, useRouteError } from '@remix-run/react';
+
+export function ErrorBoundary() {
+  const routeError = useRouteError();
+  if (!routeError) {
+    return null;
+  }
+  return <div>Error occurred</div>;
+}
+
+export default function App() {
+  return <Outlet />;
+}
+`);
+
+    expect(result).toMatch(
+      /const routeError = useRouteError\(\);\s*captureRemixErrorBoundaryError\(routeError\);/,
+    );
+    expect(result).not.toContain("captureRemixErrorBoundaryError(error)");
   });
 });

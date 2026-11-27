@@ -65,11 +65,14 @@ function extractFromFunctionBody(
  *
  * @param orgSlug - Sentry organization slug
  * @param projectSlug - Sentry project slug
+ * @param configEnvName - The `defineConfig` callback parameter that holds
+ *   Vite's config env
  * @returns CallExpression node for the Sentry Vite plugin
  */
 function createSentryPluginCall(
   orgSlug: string,
   projectSlug: string,
+  configEnvName: string,
 ): t.CallExpression {
   const b = recast.types.builders;
   return b.callExpression(b.identifier("sentryReactRouter"), [
@@ -84,8 +87,40 @@ function createSentryPluginCall(
         ),
       ),
     ]),
-    b.identifier("config"),
+    b.identifier(configEnvName),
   ]);
+}
+
+/**
+ * Name of the `defineConfig` callback parameter that holds Vite's config
+ * env, so `sentryReactRouter` can receive it. A missing parameter is added
+ * as `config`; a destructured one (`({ mode }) => ...`) is renamed to
+ * `config` and destructured again at the start of the body.
+ */
+function ensureConfigEnvParam(
+  fn: t.ArrowFunctionExpression | t.FunctionExpression,
+): string {
+  const b = recast.types.builders;
+  const [firstParam] = fn.params;
+  if (firstParam?.type === "Identifier") {
+    return firstParam.name;
+  }
+  const configEnv = b.identifier("config");
+  if (!firstParam) {
+    fn.params.push(configEnv);
+    return configEnv.name;
+  }
+
+  fn.params[0] = configEnv;
+  const destructure = b.variableDeclaration("const", [
+    b.variableDeclarator(firstParam, configEnv),
+  ]);
+  if (fn.body.type === "BlockStatement") {
+    fn.body.body.unshift(destructure);
+  } else {
+    fn.body = b.blockStatement([destructure, b.returnStatement(fn.body)]);
+  }
+  return configEnv.name;
 }
 
 /** Adds @sentry/react-router to optimizeDeps.exclude to prevent 504 errors during dev. */
@@ -160,6 +195,7 @@ export function addReactRouterPluginToViteConfig(
   }
 
   let configObj: t.ObjectExpression | undefined;
+  let configEnvName = "config";
   let defineConfigCall: t.CallExpression | undefined;
 
   if (
@@ -190,6 +226,9 @@ export function addReactRouterPluginToViteConfig(
       arg.type === "FunctionExpression"
     ) {
       configObj = extractFromFunctionBody(arg.body);
+      if (configObj) {
+        configEnvName = ensureConfigEnvParam(arg);
+      }
     }
   }
 
@@ -198,7 +237,11 @@ export function addReactRouterPluginToViteConfig(
   }
 
   const pluginsProp = findProperty(configObj, "plugins");
-  const sentryPluginCall = createSentryPluginCall(orgSlug, projectSlug);
+  const sentryPluginCall = createSentryPluginCall(
+    orgSlug,
+    projectSlug,
+    configEnvName,
+  );
 
   if (!pluginsProp) {
     configObj.properties.push(

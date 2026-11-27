@@ -730,7 +730,7 @@ describe("getSentryExampleSveltePage", () => {
         import { onMount } from 'svelte';
         
         let hasSentError = $state(false);
-        let isConnected = true;
+        let isConnected = $state(true);
 
         onMount(async () => {
           const result = await Sentry.diagnoseSdkConnectivity();
