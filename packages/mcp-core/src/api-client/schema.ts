@@ -714,7 +714,7 @@ export const UptimeCheckListSchema = z.array(UptimeCheckSchema);
 export const ReleaseDetailsSchema = ReleaseSchema.extend({
   adoptionStages: z.unknown().optional(),
   authors: z.array(ApiActorSchema).optional(),
-  commitCount: z.number().optional(),
+  commitCount: z.number().nullish(),
   currentProjectMeta: z.record(z.string(), z.unknown()).optional(),
   deployCount: z.number().optional(),
   lastDeploy: ReleaseSchema.shape.lastDeploy.optional(),

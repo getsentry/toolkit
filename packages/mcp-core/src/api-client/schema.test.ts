@@ -21,6 +21,7 @@ import {
   ProfileChunkSampleSchema,
   ProfileChunkSchema,
   ProfileFrameSchema,
+  ReleaseDetailsSchema,
   ReleaseSchema,
   ReplayDetailsSchema,
   TagSchema,
@@ -635,6 +636,18 @@ describe("ReleaseSchema", () => {
     expect(release.lastCommit?.author).toEqual({});
     expect(release.lastDeploy?.environment).toBeNull();
     expect(release.projects[0]?.slug).toBeNull();
+  });
+});
+
+describe("ReleaseDetailsSchema", () => {
+  it("accepts a null commitCount for releases without associated commits", () => {
+    const release = ReleaseDetailsSchema.parse({
+      id: "1",
+      version: "247",
+      commitCount: null,
+    });
+
+    expect(release.commitCount).toBeNull();
   });
 });
 
