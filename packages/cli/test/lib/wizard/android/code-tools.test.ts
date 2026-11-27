@@ -16,6 +16,14 @@ describe("code-tools", () => {
       );
     });
 
+    it("returns the line after the package declaration when there are no imports", () => {
+      const code =
+        `package com.example\n` + `//<insert-location>\n` + `class X {}`;
+      expect(getLastImportLineLocation(code)).toBe(
+        code.indexOf("//<insert-location>"),
+      );
+    });
+
     it("returns proper line index when static import is used", () => {
       const code =
         `import static a.b.c;\n` + `//<insert-location>\n` + `class X {}`;

@@ -11,7 +11,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { runFlutterWizard } from "../../../../src/lib/wizard/flutter/flutter-wizard.js";
 import { reportCliError } from "../../../../src/lib/error-reporting.js";
 import { WizardExitError } from "../../../../src/lib/errors.js";
-import { showCopyPasteInstructions } from "../../../../src/lib/wizard/utils/clack/index.js";
+import {
+  featureSelectionPrompt,
+  showCopyPasteInstructions,
+} from "../../../../src/lib/wizard/utils/clack/index.js";
 import type { WizardOptions } from "../../../../src/lib/wizard/utils/types.js";
 
 vi.mock("../../../../src/lib/error-reporting.js", () => ({
@@ -98,6 +101,24 @@ describe("runFlutterWizard", () => {
     await runFlutterWizard(OPTIONS);
 
     expect(copyPasteFiles()).toEqual(["main.dart"]);
+    expect(reportCliError).not.toHaveBeenCalled();
+  });
+
+  it("exits when the feature prompt is cancelled", async () => {
+    writeFileSync(path.join(projectDir, "pubspec.yaml"), PUBSPEC);
+    mkdirSync(path.join(projectDir, "lib"));
+    writeFileSync(
+      path.join(projectDir, "lib", "main.dart"),
+      "void main() {\n  runApp(const MyApp());\n}\n",
+    );
+    vi.mocked(featureSelectionPrompt).mockRejectedValueOnce(
+      new WizardExitError(0),
+    );
+
+    await expect(runFlutterWizard(OPTIONS)).rejects.toBeInstanceOf(
+      WizardExitError,
+    );
+    expect(copyPasteFiles()).toEqual([]);
     expect(reportCliError).not.toHaveBeenCalled();
   });
 

@@ -138,6 +138,20 @@ ${main} {
       ).toBe(patched("Future<void> main() async", args));
     });
 
+    it("leaves a commented-out runApp call alone", () => {
+      const source = (call: string) =>
+        `import 'package:flutter/widgets.dart';\n\nvoid main() {\n  // runApp(const OldApp());\n  ${call}\n}\n`;
+      expect(
+        patchMainContent(
+          "dsn",
+          source("runApp(const MyApp());"),
+          selectedFeaturesMap,
+        ),
+      ).toBe(
+        `import 'package:flutter/widgets.dart';\nimport 'package:sentry_flutter/sentry_flutter.dart';\n\nFuture<void> main() async {\n  // runApp(const OldApp());\n  ${initSnippet("dsn", selectedFeaturesMap, "const MyApp()")}\n}\n`,
+      );
+    });
+
     it("turns an expression-bodied main into an async block", () => {
       expect(
         patchMainContent(

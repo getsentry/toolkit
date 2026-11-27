@@ -15,6 +15,7 @@ import {
 } from "node:fs";
 import path from "node:path";
 import { reportCliError } from "../../error-reporting.js";
+import { WizardExitError } from "../../errors.js";
 import { clack } from "../utils/clack/prompts.js";
 import chalk from "chalk";
 import {
@@ -114,7 +115,7 @@ export function patchPubspec(
       );
     }
 
-    if (!pubspecContent.includes("sentry:")) {
+    if (!/^sentry:/m.test(pubspecContent)) {
       pubspecContent += "\n";
       pubspecContent += pubspecOptions(project, org);
 
@@ -241,6 +242,9 @@ export async function patchMain(
 
     return true;
   } catch (error) {
+    if (error instanceof WizardExitError) {
+      throw error;
+    }
     clack.log.warn(`Failed to read/write ${chalk.cyan("main.dart")} file.`);
     reportCliError(error);
     return false;
@@ -316,6 +320,9 @@ function replaceRunAppCalls(
     match;
     match = runAppCall.exec(source)
   ) {
+    if (!isCode(source, match.index)) {
+      continue;
+    }
     const open = match.index + match[0].length - 1;
     const close = scanCode(
       source,
@@ -338,15 +345,20 @@ function replaceRunAppCalls(
   return result + source.slice(cursor);
 }
 
+/** Whether `index` is outside every comment and string in `source`. */
+function isCode(source: string, index: number): boolean {
+  return scanCode(source, 0, (_char, _depth, i) => i >= index) === index;
+}
+
 /**
- * Index of the first character from `start` where `stop(char, depth)` holds,
+ * Index of the first character from `start` where `stop(char, depth, index)` holds,
  * where `depth` counts open brackets after `char`. Skips strings and comments.
  * Returns -1 when there is none, or when a bracket closes below `start`'s level.
  */
 function scanCode(
   source: string,
   start: number,
-  stop: (char: string, depth: number) => boolean,
+  stop: (char: string, depth: number, index: number) => boolean,
 ): number {
   let depth = 0;
   for (let i = start; i < source.length; i++) {
@@ -375,7 +387,7 @@ function scanCode(
     } else if (")]}".includes(char)) {
       depth--;
     }
-    if (stop(char, depth)) {
+    if (stop(char, depth, i)) {
       return i;
     }
     if (depth < 0) {

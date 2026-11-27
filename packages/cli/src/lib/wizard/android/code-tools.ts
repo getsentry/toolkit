@@ -171,5 +171,12 @@ export function getLastImportLineLocation(sourceCode: string): number {
     importIndex = importsMatch.index + importsMatch[0].length + 1;
     importsMatch = importRegex.exec(sourceCode);
   }
+  if (importIndex === 0) {
+    // No imports: an import must still come after the package declaration.
+    const packageMatch = /^package\s+[\w.]+;?[ \t]*$/m.exec(sourceCode);
+    if (packageMatch) {
+      importIndex = packageMatch.index + packageMatch[0].length + 1;
+    }
+  }
   return importIndex;
 }

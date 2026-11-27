@@ -144,7 +144,7 @@ export async function addGradlePlugin(
   let newGradleScript;
   if (!pluginsBlockMatch) {
     // no "plugins {}" block, we can just add our own after imports
-    const regex = /import\s+[\w.]+/gm;
+    const regex = /^import\s.*$/gm;
     let importsMatch = regex.exec(gradleScript);
     let insertIndex = 0;
     while (importsMatch) {

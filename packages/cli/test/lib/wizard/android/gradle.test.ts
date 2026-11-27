@@ -117,6 +117,28 @@ apply plugin: 'com.android.application'
       );
     });
 
+    it.each([
+      "import static org.gradle.api.JavaVersion.VERSION_17",
+      "import java.util.*",
+      "import com.foo.Bar as Baz",
+    ])(
+      "adds the plugins block after the whole `%s` line",
+      async (importLine) => {
+        const original = `${importLine}\n\napply plugin: 'com.android.application'\n`;
+        const file = writeGradle("build.gradle", original);
+
+        await addGradlePlugin(file, "my-org", "my-app");
+
+        const insertAt = original.indexOf("\n") + 1;
+        expect(readFileSync(file, "utf8")).toBe(
+          original.slice(0, insertAt) +
+            pluginsBlock("5.0.0") +
+            original.slice(insertAt) +
+            sourceContext("my-org", "my-app"),
+        );
+      },
+    );
+
     it("keeps an existing sentry block when the plugin is already there", async () => {
       const original = `plugins {
     id 'io.sentry.android.gradle' version '4.0.0'

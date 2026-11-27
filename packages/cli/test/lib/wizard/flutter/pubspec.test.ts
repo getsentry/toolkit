@@ -119,6 +119,21 @@ sentry:
       );
     });
 
+    it("adds the plugin options when a dependency is named sentry", () => {
+      writeFileSync(
+        pubspecFile,
+        "name: flutter_example\n\ndependencies:\n  sentry: ^9.0.0\n\ndev_dependencies:\n  flutter_lints: ^2.0.0\n",
+      );
+
+      expect(
+        patchPubspec(pubspecFile, "^9.0.0", "^3.0.0", "my-app", "my-org"),
+      ).toBe(true);
+
+      expect(readFileSync(pubspecFile, "utf8")).toContain(
+        pubspecOptions("my-app", "my-org"),
+      );
+    });
+
     it("fails without a pubspec.yaml", () => {
       expect(patchPubspec(null, "any", "any", "my-app", "my-org")).toBe(false);
       expect(reportCliError).toHaveBeenCalled();
