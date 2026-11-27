@@ -1,5 +1,11 @@
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { getLastImportLineLocation } from "../../../../src/lib/wizard/android/code-tools.js";
+import {
+  findActivitySourceFile,
+  getLastImportLineLocation,
+} from "../../../../src/lib/wizard/android/code-tools.js";
 
 describe("code-tools", () => {
   describe("getLastImportLineLocation", () => {
@@ -44,6 +50,27 @@ describe("code-tools", () => {
       expect(getLastImportLineLocation(code)).toBe(
         code.indexOf("//<insert-location>"),
       );
+    });
+  });
+
+  describe("findActivitySourceFile", () => {
+    it.each([
+      ["a relative name", ".MainActivity"],
+      ["a name without a dot", "MainActivity"],
+      ["a fully qualified name", "com.example.MainActivity"],
+    ])("finds the activity from %s", async (_label, activityName) => {
+      const appDir = mkdtempSync(path.join(tmpdir(), "android-activity-test-"));
+      try {
+        const dir = path.join(appDir, "src", "main", "java", "com", "example");
+        mkdirSync(dir, { recursive: true });
+        writeFileSync(path.join(dir, "MainActivity.kt"), "");
+
+        await expect(
+          findActivitySourceFile(appDir, "com.example", activityName),
+        ).resolves.toBe(path.join(dir, "MainActivity.kt"));
+      } finally {
+        rmSync(appDir, { recursive: true });
+      }
     });
   });
 });

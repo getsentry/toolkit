@@ -41,11 +41,12 @@ export async function findActivitySourceFile(
 ): Promise<string | undefined> {
   const javaSrcDir = path.join(appDir, "src", "main", "java");
   let possibleActivityPath;
-  // if activity name starts with a dot, this means we need to concat packagename with it, otherwise
-  // the package name is already specified in the activity name itself
-  const packageNameParts = activityName.startsWith(".")
-    ? packageName.split(".")
-    : [];
+  // A name that starts with a dot or has no dot is relative to the package
+  // (Android prefixes the package name); otherwise it is fully qualified.
+  const packageNameParts =
+    activityName.startsWith(".") || !activityName.includes(".")
+      ? packageName.split(".")
+      : [];
   const activityNameParts = activityName.split(".");
 
   if (existsSync(javaSrcDir)) {
