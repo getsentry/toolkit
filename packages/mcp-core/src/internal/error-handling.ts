@@ -80,12 +80,26 @@ export function isApiServerError(error: unknown): error is ApiServerError {
 export function findInsufficientScopeError(
   error: unknown,
 ): ApiPermissionError | undefined {
+  return findPermissionError(error, (e) => e.isInsufficientScopeError());
+}
+
+/**
+ * A 403 that carries no scope challenge (the account lacks the role or project
+ * access), found on `error` or within the first few levels of its `cause`.
+ */
+export function findPermissionDeniedError(
+  error: unknown,
+): ApiPermissionError | undefined {
+  return findPermissionError(error, (e) => !e.isInsufficientScopeError());
+}
+
+function findPermissionError(
+  error: unknown,
+  matches: (error: ApiPermissionError) => boolean,
+): ApiPermissionError | undefined {
   let current = error;
   for (let depth = 0; depth < 5 && current instanceof Error; depth++) {
-    if (
-      current instanceof ApiPermissionError &&
-      current.isInsufficientScopeError()
-    ) {
+    if (current instanceof ApiPermissionError && matches(current)) {
       return current;
     }
     current = current.cause;
@@ -233,6 +247,18 @@ export async function formatErrorForUser(
       "**Missing Permission**",
       insufficientScopeError.toUserMessage(),
       "Reconnect Sentry with a token or authorization that includes one of these scopes, then try again.",
+    ].join("\n\n");
+  }
+
+  // A 403 without a scope challenge comes from the account's role or project
+  // access, not from the input, so the "try again" advice below would only
+  // trigger retries that cannot succeed.
+  const permissionDeniedError = findPermissionDeniedError(error);
+  if (permissionDeniedError) {
+    return [
+      "**Permission Denied**",
+      permissionDeniedError.toUserMessage(),
+      "This account does not have access to the requested resource. Retrying the same call will not help; ask an organization Owner or Manager for access, or use a different organization or project.",
     ].join("\n\n");
   }
 
