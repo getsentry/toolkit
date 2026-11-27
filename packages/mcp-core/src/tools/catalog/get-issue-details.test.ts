@@ -381,6 +381,15 @@ describe("get_issue_details", () => {
         "suggestedActions": [
           {
             "arguments": {
+              "issueId": "CLOUDFLARE-MCP-41",
+              "organizationSlug": "sentry-mcp-evals",
+            },
+            "reason": "Chart this issue's events and affected users over time.",
+            "toolName": "render_issue_chart",
+            "type": "tool_call",
+          },
+          {
+            "arguments": {
               "organizationSlug": "sentry-mcp-evals",
               "traceId": "3032af8bcdfe4423b937fc5c041d5d82",
             },
@@ -2034,6 +2043,9 @@ describe("structuredContent", () => {
         (action) => action.toolName !== "find_related_issues",
       ),
     });
+    expect(
+      parsePayload(result).suggestedActions.map((action) => action.toolName),
+    ).toContain("render_issue_chart");
   });
 
   describe("related issues", () => {
@@ -2061,10 +2073,12 @@ describe("structuredContent", () => {
       const payload = parsePayload(result);
 
       expect(requests).toHaveLength(1);
+      // Not same_title: its issue search would add to every call.
       expect(requests[0]?.searchParams.getAll("type")).toEqual([
         "similar_stacktrace",
         "same_trace",
         "contributing",
+        "same_supergroup",
       ]);
       expect(requests[0]?.searchParams.get("limit")).toBe("5");
       // the latest event is the endpoint's default
@@ -2237,6 +2251,36 @@ describe("structuredContent", () => {
         "similar_stacktrace",
         "same_trace",
         "contributing",
+        "same_supergroup",
+      ]);
+    });
+
+    it("lists same-supergroup issues", async () => {
+      mockLatestEvent();
+      captureRelatedRequest(() =>
+        HttpResponse.json({
+          data: [
+            {
+              issue: relatedIssuesFixture.data[0]?.issue,
+              relations: [{ type: "same_supergroup" }],
+            },
+          ],
+          meta: {
+            types: [
+              {
+                type: "same_supergroup",
+                status: "ok",
+                supergroup: { id: "17", title: "Payment client times out" },
+              },
+            ],
+          },
+        }),
+      );
+
+      const result = await getIssueDetails.handler(params, experimentalContext);
+
+      expect(parsePayload(result).relatedIssues?.issues).toMatchObject([
+        { shortId: "CLOUDFLARE-MCP-42", relations: ["same_supergroup"] },
       ]);
     });
   });
@@ -3025,6 +3069,15 @@ describe("selected event package versions", () => {
           },
         ],
         "suggestedActions": [
+          {
+            "arguments": {
+              "issueId": "CLOUDFLARE-MCP-41",
+              "organizationSlug": "sentry-mcp-evals",
+            },
+            "reason": "Chart this issue's events and affected users over time.",
+            "toolName": "render_issue_chart",
+            "type": "tool_call",
+          },
           {
             "arguments": {
               "issueUrl": "https://sentry-mcp-evals.sentry.io/issues/CLOUDFLARE-MCP-41",

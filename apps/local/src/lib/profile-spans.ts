@@ -220,7 +220,7 @@ function traceIntervals(trace: TraceGroup): Interval[] {
     }
     for (
       let event = events[index];
-      event && event.time === time;
+      event?.time === time;
       event = events[index]
     ) {
       index++;

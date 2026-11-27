@@ -16,8 +16,9 @@ import {
   _resetCustomHeadersCache,
   applyCustomHeaders,
 } from "../../../src/lib/custom-headers.js";
+import { setAuthToken } from "../../../src/lib/db/auth.js";
 import { resetEnvTokenHostForTesting } from "../../../src/lib/env-token-host.js";
-import { useEnvSandbox } from "../../helpers.js";
+import { useEnvSandbox, useTestConfigDir } from "../../helpers.js";
 
 const ENV_KEYS = [
   "SENTRY_HOST",
@@ -26,6 +27,7 @@ const ENV_KEYS = [
 ] as const;
 
 describe("CVE defense-in-depth: fetch layer refuses mismatched hosts", () => {
+  useTestConfigDir("fetch-layer-guard-");
   useEnvSandbox(ENV_KEYS);
 
   beforeEach(() => {
@@ -61,9 +63,12 @@ describe("CVE defense-in-depth: fetch layer refuses mismatched hosts", () => {
     expect([...headers.keys()]).toHaveLength(0);
   });
 
-  test("applyCustomHeaders: IAP token attaches to trusted URL", () => {
+  test("applyCustomHeaders: IAP token attaches to a stored login's URL", () => {
     process.env["SENTRY_CUSTOM_HEADERS"] = "X-IAP-Token: sensitive-iap-value";
     process.env["SENTRY_HOST"] = "https://sentry.example.com";
+    setAuthToken("stored-token", undefined, undefined, {
+      host: "https://sentry.example.com",
+    });
 
     const headers = new Headers();
     applyCustomHeaders(

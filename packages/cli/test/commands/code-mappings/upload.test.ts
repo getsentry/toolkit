@@ -135,8 +135,8 @@ describe("extractRepoName", () => {
 
     // The command will pass validation but fail at org/project resolution
     // since we don't have real credentials. That's expected.
-    let func: TestCommandFunction<SentryContext>;
-    func = await loadCommand(uploadCommand);
+    const func: TestCommandFunction<SentryContext> =
+      await loadCommand(uploadCommand);
     const ctx = makeContext();
 
     // Should fail at org/project resolution, NOT at validation

@@ -254,7 +254,7 @@ const validatedHost = validateRegionUrl(regionUrl, baseHost);
 
 ### State Parameter Protection
 
-The OAuth `state` is a compact HMAC-signed payload with a 10‑minute expiry:
+The OAuth `state` sent to Sentry is a compact HMAC-signed payload with a 30‑minute expiry, long enough for a new user to sign in, sign up, and approve consent on Sentry:
 
 ```typescript
 // Payload contains only what's needed on callback

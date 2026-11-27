@@ -153,11 +153,6 @@ Policy (encoded in `packages/mcp-core/src/internal/tool-helpers/results.ts`):
   markdown and omit `structuredContent` until they have a real structured
   payload. Do not attach sparse structured side-channels such as
   `suggestedActions` alone on top of markdown.
-- A tool whose structured payload is still behind experimental mode declares
-  `experimentalOutputSchema` instead. The server advertises it to experimental
-  sessions only, and tsc cannot check the handler against it. The test guard
-  checks every `structuredContent` result against it, and the tool's tests
-  must cover every structured path.
 - If a tool declares `outputSchema`, every successful `structuredContent` result
   must conform to that schema. `defineTool` enforces this at compile time: the
   handler must return `structuredResult(...)` typed as the schema's `z.output`,
@@ -225,12 +220,43 @@ reason:
 - `OUTPUT_SCHEMA_PENDING` for tools whose `outputSchema` has not landed, with
   the PR, for example `"pending getsentry/toolkit#2004"`.
 
-An `OUTPUT_SCHEMA_EXEMPT` entry fails once any session lists its tool with an
-`outputSchema`. An `OUTPUT_SCHEMA_PENDING` entry fails once every session that
-lists the tool has one, so a tool whose `experimentalOutputSchema` reaches
-experimental sessions first stays pending until it graduates. The PR that
-makes an entry stale also deletes it. To add a `_meta` key, add it to `ALLOWED_TOOL_META`
+An entry fails once its tool has an `outputSchema`, so the PR that adds one
+also deletes the entry. To add a `_meta` key, add it to `ALLOWED_TOOL_META`
 with a comment that says which client reads it.
+
+## MCP Apps Views
+
+A tool can name an inline view for hosts that support
+[MCP Apps](https://github.com/modelcontextprotocol/ext-apps/blob/main/specification/2026-01-26/apps.mdx).
+The rules a view follows are in
+[design/mcp-apps.md](../../design/mcp-apps.md). `render_sentry_chart` and
+`render_issue_chart` share the chart view:
+
+- The view is a `UiResource` in `packages/mcp-core/src/ui-resources.ts`: a
+  versioned `ui://` URI, the `htmlSha256` of its HTML, and a `loadHtml()` that
+  imports the generated module on the first `resources/read`.
+- The tool sets `_meta: uiToolMeta(resource)`, which writes
+  `_meta.ui.resourceUri` for MCP Apps hosts and `openai/outputTemplate` for
+  ChatGPT. Add both keys to `ALLOWED_TOOL_META`. Hosts mount the view on every
+  call of a tool that names it, so a view belongs to a tool that always
+  returns its shape, not to a general tool such as `get_issue_details`.
+- Several tools can share a view. Each returns the same output schema
+  (`tools/support/chart/schema.ts` for the chart), and its `tool` field names
+  the tool that the view calls back for a new range. Shared result building
+  lives in `tools/support/chart/series.ts`.
+- The view source lives in `packages/mcp-core/chart-app/`. `bridge.ts` is the
+  MCP Apps protocol over `postMessage`, and `parse.ts` parses
+  `structuredContent` into the chart type (`parse.test.ts` keeps it in step
+  with the tool's output schema). Do not import `@modelcontextprotocol/ext-apps`
+  or zod there; Oxlint rejects the first, and the budget rejects the second.
+- Run `pnpm --filter @sentry/mcp-core generate-chart-app` after changing the
+  view. It and `ci:policy` fail when the view is over its budget or loads
+  anything from the network, and `ci:policy` fails when the generated file is
+  stale. `src/ui-resources.test.ts` then fails until you bump the URI version
+  and set the new `htmlSha256` it prints.
+- Prove a view with `.agents/skills/verify-toolkit/map/mcp-apps.md`, which
+  mounts it through the ext-apps `AppBridge` in headless Chromium. That run is
+  also the conformance check for `bridge.ts`.
 
 ## Suggested Actions
 

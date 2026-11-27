@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import { test } from "node:test";
+import { fileURLToPath } from "node:url";
 
 function readRootJson(path) {
   return JSON.parse(
@@ -118,4 +121,26 @@ test("mcp-core and toolkit-core cannot import the CLI", () => {
     );
   }
   assert.match(scripts.lint, /pnpm run lint:deps/);
+});
+
+test("mcp-core cannot import the ext-apps SDK at runtime", () => {
+  const root = fileURLToPath(new URL("..", import.meta.url));
+  const dir = mkdtempSync(join(root, "packages/mcp-core/.lint-fixture-"));
+  try {
+    for (const specifier of [
+      "@modelcontextprotocol/ext-apps",
+      "@modelcontextprotocol/ext-apps/server",
+    ]) {
+      const file = join(dir, "view.ts");
+      writeFileSync(file, `export * from "${specifier}";\n`);
+      const lint = spawnSync("pnpm", ["exec", "oxlint", file], {
+        cwd: root,
+        encoding: "utf8",
+      });
+      assert.notEqual(lint.status, 0, specifier);
+      assert.match(lint.stdout, /no-restricted-imports/, specifier);
+    }
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });

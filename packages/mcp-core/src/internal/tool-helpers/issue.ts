@@ -8,11 +8,6 @@ import { assertScopedProjectSlug } from "../url-scope";
 
 export { parseIssueParams } from "../../internal/issue-helpers";
 
-/**
- * Re-export of issue formatting utilities for tool modules.
- */
-export { formatIssueOutput } from "../../internal/formatting";
-
 export function assertIssueWithinProjectConstraint({
   issue,
   projectSlug,
@@ -56,4 +51,15 @@ export async function ensureIssueWithinProjectConstraint({
     projectSlug,
     resourceLabel,
   });
+}
+
+/**
+ * Whether an issue's events live in the errors dataset. Every other issue
+ * type, such as performance, cron, uptime, or metric issues, lives in the
+ * issue platform, as in Sentry's issue type config (`usesIssuePlatform`).
+ */
+export function isErrorIssue(
+  issue: Pick<Issue, "issueCategory" | "type">,
+): boolean {
+  return issue.issueCategory === "error" || issue.type === "error";
 }

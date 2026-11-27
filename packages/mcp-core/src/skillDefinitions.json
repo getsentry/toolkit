@@ -5,7 +5,7 @@
     "description": "Read-only access to core Sentry data: issues, events, traces, replays, releases, cron monitors, uptime monitors, metric monitors, profiles, documentation, and project metadata",
     "defaultEnabled": true,
     "order": 1,
-    "toolCount": 49,
+    "toolCount": 50,
     "tools": [
       {
         "name": "find_alert_rules",
@@ -44,7 +44,7 @@
       },
       {
         "name": "find_related_issues",
-        "description": "Find Sentry issues related to an issue: likely duplicates with a similar stack trace in the same project, other errors in the same trace, and the error issues behind a metric alert. Returns each related issue with its status and why it's related. Use it before resolving or ignoring an issue. It doesn't compare titles or error messages.",
+        "description": "Find Sentry issues related to an issue: likely duplicates with a similar stack trace or the same title in the same project, other errors in the same trace, issues Seer found to share a root cause, and the error issues behind a metric alert. Returns each related issue with its status and why it's related. Use it before resolving or ignoring an issue.",
         "requiredScopes": ["event:read"]
       },
       {
@@ -198,6 +198,11 @@
         "requiredScopes": ["event:read", "project:read"]
       },
       {
+        "name": "search_attributes",
+        "description": "Find span, log, or metric attribute keys in Sentry by meaning or partial name, with their types, descriptions, examples, and deprecation status. Alternatively, list the spans, logs, or metric attributes available. Use it to get information about attributes or find the exact key before searching traces, logs, or metrics. For attribute values, use search_traces, search_logs, or search_metrics; for issue tag values, use get_issue_tag_values.",
+        "requiredScopes": ["event:read"]
+      },
+      {
         "name": "search_docs",
         "description": "Search Sentry documentation for SDK setup, framework integrations, instrumentation, and configuration such as sampling, data scrubbing, and source maps. Returns matching page paths and snippets only. Use the Sentry tool `get_doc` to read a full page.",
         "requiredScopes": []
@@ -279,7 +284,7 @@
       },
       {
         "name": "find_related_issues",
-        "description": "Find Sentry issues related to an issue: likely duplicates with a similar stack trace in the same project, other errors in the same trace, and the error issues behind a metric alert. Returns each related issue with its status and why it's related. Use it before resolving or ignoring an issue. It doesn't compare titles or error messages.",
+        "description": "Find Sentry issues related to an issue: likely duplicates with a similar stack trace or the same title in the same project, other errors in the same trace, issues Seer found to share a root cause, and the error issues behind a metric alert. Returns each related issue with its status and why it's related. Use it before resolving or ignoring an issue.",
         "requiredScopes": ["event:read"]
       },
       {
@@ -430,7 +435,7 @@
       },
       {
         "name": "find_related_issues",
-        "description": "Find Sentry issues related to an issue: likely duplicates with a similar stack trace in the same project, other errors in the same trace, and the error issues behind a metric alert. Returns each related issue with its status and why it's related. Use it before resolving or ignoring an issue. It doesn't compare titles or error messages.",
+        "description": "Find Sentry issues related to an issue: likely duplicates with a similar stack trace or the same title in the same project, other errors in the same trace, issues Seer found to share a root cause, and the error issues behind a metric alert. Returns each related issue with its status and why it's related. Use it before resolving or ignoring an issue.",
         "requiredScopes": ["event:read"]
       },
       {

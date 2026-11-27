@@ -85,6 +85,7 @@ class XorShift32 {
 
   constructor(seed: number) {
     // Ensure seed is non-zero (xorshift degenerates at 0).
+    // oxlint-disable-next-line unicorn/prefer-math-trunc -- `| 0` wraps to int32, which Math.trunc does not
     const coerced = seed | 0;
     this.state = coerced === 0 ? 1 : coerced;
   }
@@ -94,6 +95,7 @@ class XorShift32 {
     x ^= x << 13;
     x ^= x >>> 17;
     x ^= x << 5;
+    // oxlint-disable-next-line unicorn/prefer-math-trunc -- `| 0` keeps state an int32 for V8's small-integer fast path
     this.state = x | 0;
     // Convert to [0, 1) by dividing by 2^32.
     return (x >>> 0) / 4_294_967_296;

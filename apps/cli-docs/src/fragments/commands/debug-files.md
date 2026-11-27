@@ -47,6 +47,11 @@
   `--symbol-maps` flag) is intentionally unsupported — it only applies to Apple
   Bitcode, which Apple has deprecated and the App Store no longer accepts. Use
   the legacy Rust `sentry-cli` if you still need it.
+- `upload` shows its progress while it runs. On a terminal, the chunk upload
+  draws an in-place byte bar and `--wait` an in-place count of processed files,
+  and a line on stderr records each finished step. Elsewhere, such as in CI,
+  stderr gets plain lines instead, with the bytes uploaded at each 10% step.
+  `--json` turns progress off, and `SENTRY_LOG_LEVEL=warn` hides the lines.
 - Managed .NET PE assemblies that embed a Portable PDB have it extracted and
   uploaded automatically as a separate `<name>.pdb` debug file (no flag needed).
 - `--il2cpp-mapping` computes Unity IL2CPP C++→C# line mappings from each file's

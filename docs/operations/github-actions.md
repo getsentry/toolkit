@@ -11,12 +11,14 @@ and docs when `SENTRY_CLIENT_ID` is available.
 
 ### test.yml
 
-Runs on pushes to `main`, pull requests, and merge queue entries. Discovery
+Runs on pushes to `main` and release branches, pull requests, and merge queue
+entries. Discovery
 reads pnpm workspace projects and their package scripts. Pull requests check
 changed projects, their workspace consumers, and semantic dependencies (the CLI
-docs depend on `sentry`). Root-level changes and non-PR events check every
-enabled project. Each project has its own build, lint, typecheck, test, policy,
-and E2E steps when those scripts exist. The always-present `test` job checks
+docs depend on `sentry`). Root-level changes and pushes check every enabled
+project. Merge queue entries select no projects; the quality job typechecks,
+builds, and policy-checks the whole workspace instead. Each project has its own
+build, lint, typecheck, test, policy, and E2E steps when those scripts exist. The always-present `test` job checks
 discovery, installation, repository quality, and every selected project.
 It is the required status check for `main` and `release/**`, so no other
 job may use the check name `test`: GitHub would accept that check in its place.
@@ -154,6 +156,27 @@ token pushes the branch and opens the PR, so `test.yml` runs on it.
   branch by hand are lost.
 - The PR is never merged automatically.
 
+### release.yml and merge-jobs.yml
+
+`release.yml` prepares a release of one package with Craft. Its `product`
+choice is a directory under `packages/`, such as `cli`, `http`, or `logger`.
+GitHub cannot fill a choice from `.craft.yml`, so
+`scripts/workflow-policy.test.mjs` fails when the options and the `packages/`
+workspaces in `.craft.yml` differ.
+
+`merge-jobs.yml` runs on `main` and on every release branch. It lists the
+Craft workspaces that use the default artifact provider with
+`scripts/npm-library-workspaces.mjs`, packs each one in a parallel matrix job,
+and merges the tarballs into the artifact named after the commit, where Craft
+reads them. `test.yml` runs the tests on the same commits. The CLI sets its own
+artifact provider: it ships platform binaries, a Homebrew formula, the docs
+site, and `@sentry/mcp-server` along with its npm package, all built by
+`cli-build.yml`.
+
+To publish another package from `packages/`, add its directory name to the
+`packages/{...}` workspace key in `.craft.yml` and to `release.yml`'s
+`product` options.
+
 ## Package CI checks
 
 Add a check for one workspace package to that package's `package.json`, not to
@@ -246,6 +269,16 @@ deploy job is skipped, not failed; the newer commit's `Test` run deploys it.
 If `main` advances after that check, the deploy job's own revision checks fail it.
 Failure to identify the prior active version, verify deployment ownership, or
 confirm the restored version fails the job rather than guessing a recovery.
+
+Every traffic change goes through `deployVersions()` in
+`scripts/cloudflare-deployment.mjs`. Cloudflare can answer 404 (code 100146)
+for a version for a few seconds after `wrangler versions upload`, and
+`wrangler versions deploy` fails on that read. `deployVersions()` waits until
+Cloudflare serves each version by ID on three reads in a row, then deploys. It
+gives up after 60 seconds, before any traffic moves, so a version that never
+appears fails the job instead of holding the deploy queue.
+`scripts/deploy-workflow.test.mjs` fails any workflow that calls
+`wrangler versions deploy` directly.
 
 ## Manual Deployment
 

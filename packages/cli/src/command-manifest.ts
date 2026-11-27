@@ -139,6 +139,7 @@ export const COMMAND_MANIFEST: Readonly<Record<string, ManifestEntry>> = {
   trace: route(() => import("./commands/trace/index.js"), "traceRoute"),
   trial: route(() => import("./commands/trial/index.js"), "trialRoute"),
   init: route(() => import("./commands/init.js"), "initCommand"),
+  wizard: route(() => import("./commands/wizard.js"), "wizardCommand"),
   info: route(() => import("./commands/info.js"), "infoCommand"),
   local: route(() => import("./commands/local/index.js"), "localRoute"),
   api: route(() => import("./commands/api.js"), "apiCommand"),

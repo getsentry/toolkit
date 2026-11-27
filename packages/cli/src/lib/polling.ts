@@ -156,6 +156,38 @@ function startSpinner(initialMessage: string): {
   };
 }
 
+/** Controller for a spinner started with {@link startProgressLine}. */
+export type ProgressLine = {
+  /** Replace the displayed message. */
+  setMessage: (msg: string) => void;
+  /** Stop the animation and clear the line. */
+  stop: () => void;
+};
+
+/**
+ * Start a spinner for progress that does not map to one async callback, such
+ * as a phase that starts and ends between another call's progress events.
+ * Use {@link withProgress} when the work is one awaited call.
+ *
+ * Draws the same frames as {@link withProgress}. Like `withProgress` with
+ * `interactiveOnly`, it draws nothing for plain output or a stdout that is not
+ * a terminal: then it returns `null`, so callers can fall back to log lines.
+ * Callers in JSON mode should not start one.
+ */
+export function startProgressLine(message: string): ProgressLine | null {
+  if (isPlainOutput() || !process.stdout.isTTY) {
+    return null;
+  }
+  const spinner = startSpinner(message);
+  return {
+    setMessage: spinner.setMessage,
+    stop: () => {
+      spinner.stop();
+      process.stdout.write("\r\x1b[K");
+    },
+  };
+}
+
 /**
  * Options for {@link withProgress}.
  */
@@ -261,4 +293,48 @@ export async function withProgress<T>(
     spinner.stop();
     process.stdout.write("\r\x1b[K");
   }
+}
+
+/**
+ * Parse a poll-interval flag value: a whole number of seconds, at least `min`.
+ * Shared by the commands that stream until Ctrl+C (`log tail --interval`,
+ * `dashboard view --refresh`).
+ *
+ * @param flag - Flag spelling for the error message, e.g. `"--interval"`
+ * @throws Error when the value is not a whole number of seconds `>= min`
+ */
+export function parsePollInterval(
+  value: string,
+  options: { flag: string; min?: number },
+): number {
+  const min = options.min ?? 1;
+  const seconds = Number(value);
+  if (!Number.isInteger(seconds) || seconds < min) {
+    throw new Error(
+      `${options.flag} must be a whole number of seconds, at least ${min}`,
+    );
+  }
+  return seconds;
+}
+
+/**
+ * Sleep that resolves early when an AbortSignal fires.
+ * Resolves (not rejects) on abort for clean generator shutdown.
+ */
+export function abortableSleep(ms: number, signal: AbortSignal): Promise<void> {
+  return new Promise<void>((resolve) => {
+    if (signal.aborted) {
+      resolve();
+      return;
+    }
+    const onAbort = () => {
+      clearTimeout(timer);
+      resolve();
+    };
+    const timer = setTimeout(() => {
+      signal.removeEventListener("abort", onAbort);
+      resolve();
+    }, ms);
+    signal.addEventListener("abort", onAbort, { once: true });
+  });
 }

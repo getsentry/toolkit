@@ -3116,7 +3116,7 @@
   {
     "name": "find_related_issues",
     "title": "Find Related Issues",
-    "description": "Find Sentry issues related to an issue: likely duplicates with a similar stack trace in the same project, other errors in the same trace, and the error issues behind a metric alert. Returns each related issue with its status and why it's related. Use it before resolving or ignoring an issue. It doesn't compare titles or error messages.",
+    "description": "Find Sentry issues related to an issue: likely duplicates with a similar stack trace or the same title in the same project, other errors in the same trace, issues Seer found to share a root cause, and the error issues behind a metric alert. Returns each related issue with its status and why it's related. Use it before resolving or ignoring an issue.",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -3147,13 +3147,19 @@
         },
         "types": {
           "default": null,
-          "description": "Relation types to return; all when omitted. similar_stacktrace: likely duplicates. same_trace: errors in the same trace, often the other side of a request. contributing: for a metric issue, the error issues behind it.",
+          "description": "Relation types; all when omitted. similar_stacktrace: likely duplicates. same_trace: errors in the same trace. contributing: errors behind a metric issue. same_title: errors with the same title, last 14 days. same_supergroup: same root cause per Seer.",
           "anyOf": [
             {
               "type": "array",
               "items": {
                 "type": "string",
-                "enum": ["similar_stacktrace", "same_trace", "contributing"]
+                "enum": [
+                  "similar_stacktrace",
+                  "same_trace",
+                  "contributing",
+                  "same_title",
+                  "same_supergroup"
+                ]
               }
             },
             {
@@ -3264,7 +3270,9 @@
                       "enum": [
                         "similar_stacktrace",
                         "same_trace",
-                        "contributing"
+                        "contributing",
+                        "same_title",
+                        "same_supergroup"
                       ]
                     },
                     "score": {
@@ -3308,7 +3316,13 @@
             "properties": {
               "type": {
                 "type": "string",
-                "enum": ["similar_stacktrace", "same_trace", "contributing"]
+                "enum": [
+                  "similar_stacktrace",
+                  "same_trace",
+                  "contributing",
+                  "same_title",
+                  "same_supergroup"
+                ]
               },
               "status": {
                 "type": "string",
@@ -3321,9 +3335,24 @@
               "traceId": {
                 "description": "same_trace only: the trace that was searched.",
                 "type": ["string", "null"]
+              },
+              "title": {
+                "description": "same_title only: the title that was searched.",
+                "type": ["string", "null"]
+              },
+              "supergroup": {
+                "description": "same_supergroup only: what the issues in this issue's supergroup have in common, from Seer.",
+                "type": ["string", "null"]
               }
             },
-            "required": ["type", "status", "detail", "traceId"],
+            "required": [
+              "type",
+              "status",
+              "detail",
+              "traceId",
+              "title",
+              "supergroup"
+            ],
             "additionalProperties": false
           },
           "description": "Whether each requested relation type ran."
@@ -7430,7 +7459,7 @@
           "additionalProperties": false
         },
         "relatedIssues": {
-          "description": "Up to 5 other issues related to this one, most relations first: similar_stacktrace (likely duplicate), same_trace (same request), contributing (behind a metric alert). Check them before resolving or ignoring this issue.",
+          "description": "Up to 5 other issues related to this one, most relations first: similar_stacktrace (likely duplicate), same_trace (same request), contributing (behind a metric alert), same_supergroup (same root cause per Seer). Check them before resolving or ignoring this issue.",
           "type": "object",
           "properties": {
             "issues": {
@@ -7472,7 +7501,9 @@
                       "enum": [
                         "similar_stacktrace",
                         "same_trace",
-                        "contributing"
+                        "contributing",
+                        "same_title",
+                        "same_supergroup"
                       ]
                     }
                   }
@@ -7491,7 +7522,13 @@
               "type": "array",
               "items": {
                 "type": "string",
-                "enum": ["similar_stacktrace", "same_trace", "contributing"]
+                "enum": [
+                  "similar_stacktrace",
+                  "same_trace",
+                  "contributing",
+                  "same_title",
+                  "same_supergroup"
+                ]
               },
               "description": "Relation types that failed, so some may be missing."
             }
@@ -8358,7 +8395,7 @@
                   "type": ["string", "null"]
                 },
                 "failureReason": {
-                  "description": "Why the Seer run failed, when Sentry can explain it. \"out_of_credits\": the organization ran out of Seer credits, so someone with billing access must adjust Seer spend and auto-reload in Sentry before the run can continue.",
+                  "description": "Why the Seer run failed, when Sentry can explain it. \"out_of_credits\": the organization does not have enough Seer credits, so someone with billing access must adjust Seer spend and auto-reload in Sentry before the run can continue.",
                   "type": ["string", "null"]
                 }
               },
@@ -12315,6 +12352,552 @@
     "surface": "direct"
   },
   {
+    "name": "render_issue_chart",
+    "title": "Render Issue Chart",
+    "description": "Chart a Sentry issue's events and affected users over time, like the graph on the issue page. Returns every bucket of both series, and MCP Apps hosts show it as an interactive chart.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "organizationSlug": {
+          "type": "string",
+          "description": "The organization slug, from `find_organizations`. In `org/project` notation, the part before the slash."
+        },
+        "regionUrl": {
+          "default": null,
+          "anyOf": [
+            {
+              "type": "string",
+              "description": "The organization's region URL from `find_organizations`, e.g. `https://us.sentry.io`. Omit for self-hosted Sentry."
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "issueId": {
+          "type": "string",
+          "description": "The issue short ID, e.g. `PROJECT-1Z43`."
+        },
+        "issueUrl": {
+          "type": "string",
+          "format": "uri",
+          "description": "The issue URL, e.g. https://my-org.sentry.io/issues/PROJECT-1Z43"
+        },
+        "period": {
+          "default": null,
+          "description": "Relative time window, e.g. `24h`, `7d`; defaults to 14d.",
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^\\d+[mhdw]$",
+              "description": "Relative time window, e.g. `30m`, `24h`, `7d`, `90d`."
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "start": {
+          "default": null,
+          "description": "Absolute start, ISO 8601; requires end.",
+          "type": ["string", "null"]
+        },
+        "end": {
+          "default": null,
+          "description": "Absolute end, ISO 8601; requires start.",
+          "type": ["string", "null"]
+        },
+        "fresh": {
+          "description": "Bypass cached reads.",
+          "type": "boolean"
+        }
+      }
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "tool": {
+          "type": "string",
+          "enum": ["render_sentry_chart", "render_issue_chart"],
+          "description": "Tool that drew this chart; changing the range calls it again."
+        },
+        "title": {
+          "type": "string"
+        },
+        "dataset": {
+          "type": "string"
+        },
+        "query": {
+          "type": "string"
+        },
+        "yAxis": {
+          "type": "string"
+        },
+        "groupBy": {
+          "type": ["string", "null"]
+        },
+        "valueType": {
+          "description": "Such as integer, number, duration, percentage, or size.",
+          "type": ["string", "null"]
+        },
+        "valueUnit": {
+          "description": "Such as millisecond or byte.",
+          "type": ["string", "null"]
+        },
+        "interval": {
+          "type": "string",
+          "description": "Bucket size, such as 5m or 1h."
+        },
+        "timeRange": {
+          "type": "object",
+          "properties": {
+            "statsPeriod": {
+              "type": ["string", "null"]
+            },
+            "start": {
+              "type": ["string", "null"]
+            },
+            "end": {
+              "type": ["string", "null"]
+            }
+          },
+          "required": ["statsPeriod", "start", "end"],
+          "additionalProperties": false
+        },
+        "url": {
+          "type": "string"
+        },
+        "times": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Start of each bucket, oldest first; shared by every series."
+        },
+        "incomplete": {
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "description": "Indexes into `times` of buckets still receiving data, whose values may rise."
+        },
+        "outsideRetention": {
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "description": "Indexes into `times` of buckets that start before the retention window, so older data is missing and the value will not change."
+        },
+        "series": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "label": {
+                "type": "string",
+                "description": "The group's value, or what the series measures."
+              },
+              "count": {
+                "description": "Events behind this series; null when not measured. A small count means a noisy series.",
+                "type": ["number", "null"]
+              },
+              "total": {
+                "description": "Sum of all buckets; null for non-additive aggregates.",
+                "type": ["number", "null"]
+              },
+              "values": {
+                "type": "array",
+                "items": {
+                  "type": ["number", "null"]
+                },
+                "description": "One value per entry of `times`; null where the bucket has no data."
+              }
+            },
+            "required": ["label", "count", "total", "values"],
+            "additionalProperties": false
+          },
+          "description": "One series per measure or top group, most events first."
+        },
+        "peak": {
+          "anyOf": [
+            {
+              "type": "object",
+              "properties": {
+                "series": {
+                  "type": "string"
+                },
+                "time": {
+                  "type": "string"
+                },
+                "value": {
+                  "type": "number"
+                }
+              },
+              "required": ["series", "time", "value"],
+              "additionalProperties": false
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Highest bucket that is no longer receiving data; null for grouped charts."
+        },
+        "ingestion": {
+          "anyOf": [
+            {
+              "type": "object",
+              "properties": {
+                "status": {
+                  "type": "string"
+                },
+                "delaySeconds": {
+                  "type": ["number", "null"]
+                },
+                "completeThrough": {
+                  "type": ["string", "null"]
+                }
+              },
+              "required": ["status", "delaySeconds", "completeThrough"],
+              "additionalProperties": false
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "tool",
+        "title",
+        "dataset",
+        "query",
+        "yAxis",
+        "groupBy",
+        "valueType",
+        "valueUnit",
+        "interval",
+        "timeRange",
+        "url",
+        "times",
+        "incomplete",
+        "outsideRetention",
+        "series",
+        "peak",
+        "ingestion"
+      ],
+      "additionalProperties": false
+    },
+    "requiredScopes": ["event:read"],
+    "skills": ["inspect", "triage", "seer"],
+    "surface": "direct"
+  },
+  {
+    "name": "render_sentry_chart",
+    "title": "Render Sentry Chart",
+    "description": "Chart a count, rate, duration, or other aggregate of Sentry errors, logs, spans, metrics, or profiles over time, optionally split by one attribute into the 5 values with the most events. Returns every bucket of each series, with each group's event count when split, and MCP Apps hosts show it as an interactive chart. To find individual events, use the dataset search tools.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "organizationSlug": {
+          "type": "string",
+          "description": "The organization slug, from `find_organizations`. In `org/project` notation, the part before the slash."
+        },
+        "regionUrl": {
+          "default": null,
+          "anyOf": [
+            {
+              "type": "string",
+              "description": "The organization's region URL from `find_organizations`, e.g. `https://us.sentry.io`. Omit for self-hosted Sentry."
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "dataset": {
+          "type": "string",
+          "enum": ["spans", "errors", "logs", "metrics", "profiles"],
+          "description": "Data to chart."
+        },
+        "query": {
+          "default": "",
+          "description": "Sentry search syntax filter, such as `level:error environment:production`. Empty matches everything.",
+          "type": "string"
+        },
+        "yAxis": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Aggregate to plot, such as `count()`, `p95(span.duration)`, or `count_unique(user)`."
+        },
+        "groupBy": {
+          "default": null,
+          "description": "Attribute to split by, such as `release` or `transaction`; plots its 5 values with the most events. Not supported for profiles.",
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "projectSlug": {
+          "default": null,
+          "anyOf": [
+            {
+              "type": "string",
+              "description": "The project slug. In `org/project` notation, the part after the slash."
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "period": {
+          "default": null,
+          "description": "Relative time window, e.g. `1h`, `24h`, `7d`; defaults to 24h. Do not combine with start and end.",
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^\\d+[mhdw]$",
+              "description": "Relative time window, e.g. `30m`, `24h`, `7d`, `90d`."
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "start": {
+          "default": null,
+          "description": "Absolute start, ISO 8601; requires end.",
+          "type": ["string", "null"]
+        },
+        "end": {
+          "default": null,
+          "description": "Absolute end, ISO 8601; requires start.",
+          "type": ["string", "null"]
+        },
+        "interval": {
+          "default": null,
+          "description": "Bucket size such as 5m or 1h. Omit to let Sentry pick.",
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^\\d+[mhd]$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "title": {
+          "default": null,
+          "description": "Chart heading, such as `Checkout errors`; defaults to the aggregate. Leave out the time range: the chart shows it, and the user can change it.",
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "fresh": {
+          "description": "Bypass cached reads.",
+          "type": "boolean"
+        }
+      },
+      "required": ["organizationSlug", "dataset", "yAxis"]
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "tool": {
+          "type": "string",
+          "enum": ["render_sentry_chart", "render_issue_chart"],
+          "description": "Tool that drew this chart; changing the range calls it again."
+        },
+        "title": {
+          "type": "string"
+        },
+        "dataset": {
+          "type": "string"
+        },
+        "query": {
+          "type": "string"
+        },
+        "yAxis": {
+          "type": "string"
+        },
+        "groupBy": {
+          "type": ["string", "null"]
+        },
+        "valueType": {
+          "description": "Such as integer, number, duration, percentage, or size.",
+          "type": ["string", "null"]
+        },
+        "valueUnit": {
+          "description": "Such as millisecond or byte.",
+          "type": ["string", "null"]
+        },
+        "interval": {
+          "type": "string",
+          "description": "Bucket size, such as 5m or 1h."
+        },
+        "timeRange": {
+          "type": "object",
+          "properties": {
+            "statsPeriod": {
+              "type": ["string", "null"]
+            },
+            "start": {
+              "type": ["string", "null"]
+            },
+            "end": {
+              "type": ["string", "null"]
+            }
+          },
+          "required": ["statsPeriod", "start", "end"],
+          "additionalProperties": false
+        },
+        "url": {
+          "type": "string"
+        },
+        "times": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Start of each bucket, oldest first; shared by every series."
+        },
+        "incomplete": {
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "description": "Indexes into `times` of buckets still receiving data, whose values may rise."
+        },
+        "outsideRetention": {
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "description": "Indexes into `times` of buckets that start before the retention window, so older data is missing and the value will not change."
+        },
+        "series": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "label": {
+                "type": "string",
+                "description": "The group's value, or what the series measures."
+              },
+              "count": {
+                "description": "Events behind this series; null when not measured. A small count means a noisy series.",
+                "type": ["number", "null"]
+              },
+              "total": {
+                "description": "Sum of all buckets; null for non-additive aggregates.",
+                "type": ["number", "null"]
+              },
+              "values": {
+                "type": "array",
+                "items": {
+                  "type": ["number", "null"]
+                },
+                "description": "One value per entry of `times`; null where the bucket has no data."
+              }
+            },
+            "required": ["label", "count", "total", "values"],
+            "additionalProperties": false
+          },
+          "description": "One series per measure or top group, most events first."
+        },
+        "peak": {
+          "anyOf": [
+            {
+              "type": "object",
+              "properties": {
+                "series": {
+                  "type": "string"
+                },
+                "time": {
+                  "type": "string"
+                },
+                "value": {
+                  "type": "number"
+                }
+              },
+              "required": ["series", "time", "value"],
+              "additionalProperties": false
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Highest bucket that is no longer receiving data; null for grouped charts."
+        },
+        "ingestion": {
+          "anyOf": [
+            {
+              "type": "object",
+              "properties": {
+                "status": {
+                  "type": "string"
+                },
+                "delaySeconds": {
+                  "type": ["number", "null"]
+                },
+                "completeThrough": {
+                  "type": ["string", "null"]
+                }
+              },
+              "required": ["status", "delaySeconds", "completeThrough"],
+              "additionalProperties": false
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "tool",
+        "title",
+        "dataset",
+        "query",
+        "yAxis",
+        "groupBy",
+        "valueType",
+        "valueUnit",
+        "interval",
+        "timeRange",
+        "url",
+        "times",
+        "incomplete",
+        "outsideRetention",
+        "series",
+        "peak",
+        "ingestion"
+      ],
+      "additionalProperties": false
+    },
+    "requiredScopes": ["event:read"],
+    "skills": ["inspect", "triage", "seer"],
+    "surface": "direct"
+  },
+  {
     "name": "search_agent_conversations",
     "title": "Search Agent Conversations",
     "description": "Search Sentry agent conversations (formerly AI conversations): one summary row per LLM agent conversation with title, cost, tokens, call counts, and previews. For one conversation's transcript, use get_agent_conversation_details.",
@@ -12772,6 +13355,230 @@
     "deprecated": {
       "replacedBy": ["search_agent_conversations"]
     }
+  },
+  {
+    "name": "search_attributes",
+    "title": "Search Attributes",
+    "description": "Find span, log, or metric attribute keys in Sentry by meaning or partial name, with their types, descriptions, examples, and deprecation status. Alternatively, list the spans, logs, or metric attributes available. Use it to get information about attributes or find the exact key before searching traces, logs, or metrics. For attribute values, use search_traces, search_logs, or search_metrics; for issue tag values, use get_issue_tag_values.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "organizationSlug": {
+          "type": "string",
+          "description": "The organization slug, from `find_organizations`. In `org/project` notation, the part before the slash."
+        },
+        "projectSlug": {
+          "default": null,
+          "anyOf": [
+            {
+              "type": "string",
+              "description": "The project slug. In `org/project` notation, the part after the slash."
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "query": {
+          "description": "What attribute to find, in plain English or as part of a key. Omit to list the dataset's attributes.",
+          "type": "string"
+        },
+        "period": {
+          "type": "string",
+          "pattern": "^\\d+[mhdw]$",
+          "description": "Relative time window, e.g. `30m`, `24h`, `7d`, `90d`."
+        },
+        "regionUrl": {
+          "default": null,
+          "anyOf": [
+            {
+              "type": "string",
+              "description": "The organization's region URL from `find_organizations`, e.g. `https://us.sentry.io`. Omit for self-hosted Sentry."
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "limit": {
+          "description": "Maximum attributes to return. Defaults to 10 with a query and 50 when listing.",
+          "type": "number",
+          "minimum": 1,
+          "maximum": 100
+        },
+        "dataset": {
+          "type": "string",
+          "enum": ["spans", "logs", "metrics"],
+          "description": "Dataset to search: spans for requests, latency, DB, or AI calls; logs for log lines; metrics for counters, gauges, and distributions."
+        },
+        "fresh": {
+          "description": "Bypass cached reads.",
+          "type": "boolean"
+        }
+      },
+      "required": ["organizationSlug", "dataset"]
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "dataset": {
+          "type": "string",
+          "enum": ["spans", "logs", "metrics"]
+        },
+        "period": {
+          "type": "string"
+        },
+        "query": {
+          "type": ["string", "null"]
+        },
+        "resultType": {
+          "type": "string",
+          "enum": ["list", "matches"],
+          "description": "list: the dataset's attributes. matches: the attributes that answer query."
+        },
+        "best": {
+          "anyOf": [
+            {
+              "type": "object",
+              "properties": {
+                "key": {
+                  "type": "string",
+                  "description": "The exact key to use with search_traces, search_logs, or search_metrics."
+                },
+                "type": {
+                  "type": "string",
+                  "enum": ["string", "number", "boolean", "array"]
+                },
+                "addedBySentry": {
+                  "type": "boolean"
+                },
+                "description": {
+                  "type": ["string", "null"]
+                },
+                "examples": {
+                  "type": "array",
+                  "items": {
+                    "type": ["string", "number", "boolean"]
+                  }
+                },
+                "aliases": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "deprecated": {
+                  "type": "boolean"
+                },
+                "replacementKey": {
+                  "description": "The key that replaces this one, when it's deprecated.",
+                  "type": ["string", "null"]
+                }
+              },
+              "required": [
+                "key",
+                "type",
+                "addedBySentry",
+                "description",
+                "examples",
+                "aliases",
+                "deprecated",
+                "replacementKey"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "With matches, the one key that clearly answers query, if any."
+        },
+        "attributes": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "key": {
+                "type": "string",
+                "description": "The exact key to use with search_traces, search_logs, or search_metrics."
+              },
+              "type": {
+                "type": "string",
+                "enum": ["string", "number", "boolean", "array"]
+              },
+              "addedBySentry": {
+                "type": "boolean"
+              },
+              "description": {
+                "type": ["string", "null"]
+              },
+              "examples": {
+                "type": "array",
+                "items": {
+                  "type": ["string", "number", "boolean"]
+                }
+              },
+              "aliases": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "deprecated": {
+                "type": "boolean"
+              },
+              "replacementKey": {
+                "description": "The key that replaces this one, when it's deprecated.",
+                "type": ["string", "null"]
+              }
+            },
+            "required": [
+              "key",
+              "type",
+              "addedBySentry",
+              "description",
+              "examples",
+              "aliases",
+              "deprecated",
+              "replacementKey"
+            ],
+            "additionalProperties": false
+          },
+          "description": "With list, the attributes shown. With matches, the other candidates, most relevant first."
+        },
+        "totalAttributes": {
+          "type": "integer",
+          "minimum": -9007199254740991,
+          "maximum": 9007199254740991,
+          "description": "How many attributes this result was picked from, before limit."
+        },
+        "presentationHint": {
+          "description": "How best to present this data.",
+          "type": ["string", "null"]
+        },
+        "notes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "dataset",
+        "period",
+        "query",
+        "resultType",
+        "best",
+        "attributes",
+        "totalAttributes",
+        "presentationHint",
+        "notes"
+      ],
+      "additionalProperties": false
+    },
+    "requiredScopes": ["event:read"],
+    "skills": ["inspect"],
+    "surface": "direct"
   },
   {
     "name": "search_docs",

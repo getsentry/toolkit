@@ -11,6 +11,7 @@ import type {
   ExternalIssueList,
   Issue,
   RelatedIssues,
+  RelatedIssueType,
   SourceMapDebug,
   Trace,
 } from "../../api-client/types";
@@ -38,6 +39,7 @@ import { defineTool } from "../../internal/tool-helpers/define";
 import { enhanceNotFoundError } from "../../internal/tool-helpers/enhance-error";
 import {
   assertIssueWithinProjectConstraint,
+  isErrorIssue,
   parseIssueParams,
 } from "../../internal/tool-helpers/issue";
 import { structuredResult } from "../../internal/tool-helpers/results";
@@ -83,6 +85,16 @@ const AI_CONVERSATION_LOOKUP_WINDOW_MS = 24 * 60 * 60 * 1000;
 const TRACE_ID_PATTERN = /^[0-9a-fA-F]{32}$/;
 // also the per-type limit sent to /related/, so the top few are the endpoint's own top few
 const MAX_RELATED_ISSUES = 5;
+/**
+ * Because this is a high-volume tool, it asks only for the relation types that are quick to
+ * compute and light on rate limits.
+ */
+const ISSUE_DETAILS_RELATED_TYPES = [
+  "similar_stacktrace",
+  "same_trace",
+  "contributing",
+  "same_supergroup",
+] as const satisfies readonly RelatedIssueType[];
 
 /**
  * The issue payload as `structuredContent`.
@@ -129,7 +141,7 @@ export const getIssueDetailsOutputSchema = z.object({
     })
     .optional()
     .describe(
-      `Up to ${MAX_RELATED_ISSUES} other issues related to this one, most relations first: similar_stacktrace (likely duplicate), same_trace (same request), contributing (behind a metric alert). Check them before resolving or ignoring this issue.`,
+      `Up to ${MAX_RELATED_ISSUES} other issues related to this one, most relations first: similar_stacktrace (likely duplicate), same_trace (same request), contributing (behind a metric alert), same_supergroup (same root cause per Seer). Check them before resolving or ignoring this issue.`,
     ),
   event: issueEventSchema,
   seer: z
@@ -141,7 +153,7 @@ export const getIssueDetailsOutputSchema = z.object({
         .string()
         .nullable()
         .describe(
-          'Why the Seer run failed, when Sentry can explain it. "out_of_credits": the organization ran out of Seer credits, so someone with billing access must adjust Seer spend and auto-reload in Sentry before the run can continue.',
+          'Why the Seer run failed, when Sentry can explain it. "out_of_credits": the organization does not have enough Seer credits, so someone with billing access must adjust Seer spend and auto-reload in Sentry before the run can continue.',
         ),
     })
     .nullable(),
@@ -247,8 +259,9 @@ function toIssueStatus(
 }
 
 /**
- * The endpoint's top few related issues. Same-trace issues can be in any project, so a
- * project-scoped session drops the ones outside its project, as find_related_issues does.
+ * The endpoint's top few related issues. Same-trace and same-supergroup issues can be in any
+ * project, so a project-scoped session drops the ones outside its project, as
+ * find_related_issues does.
  */
 function buildRelatedIssues(
   related: RelatedIssues,
@@ -450,8 +463,8 @@ function toCount(value: unknown): number | null {
 
 /**
  * Follow-up calls, most specific first: a metric issue's monitor and query, the related
- * issues, the agent conversations in the trace, the trace itself, another thread's
- * stacktrace, and the breadcrumbs.
+ * issues, the issue's chart, the agent conversations in the trace, the trace itself,
+ * another thread's stacktrace, and the breadcrumbs.
  */
 function buildIssueSuggestedActions({
   organizationSlug,
@@ -515,6 +528,15 @@ function buildIssueSuggestedActions({
       }),
     );
   }
+
+  candidates.push(
+    buildSuggestedToolAction({
+      toolName: "render_issue_chart",
+      arguments: { organizationSlug, issueId: issue.shortId },
+      reason: "Chart this issue's events and affected users over time.",
+      ...session,
+    }),
+  );
 
   if (aiConversations?.length) {
     candidates.push(
@@ -982,6 +1004,7 @@ async function maybeFetchRelatedIssues({
     return await apiService.getRelatedIssues({
       organizationSlug,
       issueId,
+      types: ISSUE_DETAILS_RELATED_TYPES,
       eventId,
       limit: MAX_RELATED_ISSUES,
     });
@@ -1193,7 +1216,5 @@ function shouldFetchTraceForEvent(event: Event): { traceId: string } | null {
 }
 
 function getReplayDataSource(issue: Issue): "discover" | "search_issues" {
-  return issue.issueCategory === "error" || issue.type === "error"
-    ? "discover"
-    : "search_issues";
+  return isErrorIssue(issue) ? "discover" : "search_issues";
 }

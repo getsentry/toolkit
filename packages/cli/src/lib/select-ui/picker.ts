@@ -450,14 +450,14 @@ function renderPicker(
 
   const accent = chalk.hex(ACCENT);
   const lines = [""];
-  titleLines.forEach((line, index) => {
+  for (const [index, line] of titleLines.entries()) {
     const icon = padIcon(index === 0 ? ICONS.diamondOpen : "");
     const counter =
       index === 0 && isWindowed
         ? chalk.hex(MUTED_DIM)(` (${highlighted + 1}/${filtered.length})`)
         : "";
     lines.push(`${accent.bold(icon)}${chalk.bold(line)}${counter}`);
-  });
+  }
   lines.push("");
 
   const optionLines =

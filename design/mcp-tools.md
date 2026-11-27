@@ -32,6 +32,9 @@ harness the user already works in, such as Claude Code, Codex, or Cursor.
   that are not stable yet.
 - `search_sentry_tools` and `execute_sentry_tool`, only on the fallback
   gateway surface.
+- MCP Apps views, which follow [MCP Apps views](./mcp-apps.md).
+  `render_sentry_chart` and `render_issue_chart` are the tools with a
+  view.
 
 ## Rules
 

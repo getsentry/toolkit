@@ -65,6 +65,16 @@ export const findRelatedIssuesOutputSchema = z.object({
           .string()
           .nullable()
           .describe("same_trace only: the trace that was searched."),
+        title: z
+          .string()
+          .nullable()
+          .describe("same_title only: the title that was searched."),
+        supergroup: z
+          .string()
+          .nullable()
+          .describe(
+            "same_supergroup only: what the issues in this issue's supergroup have in common, from Seer.",
+          ),
       }),
     )
     .describe("Whether each requested relation type ran."),
@@ -93,7 +103,7 @@ export default defineTool({
   skills: ["inspect", "triage", "seer"],
   requiredScopes: ["event:read"],
   description:
-    "Find Sentry issues related to an issue: likely duplicates with a similar stack trace in the same project, other errors in the same trace, and the error issues behind a metric alert. Returns each related issue with its status and why it's related. Use it before resolving or ignoring an issue. It doesn't compare titles or error messages.",
+    "Find Sentry issues related to an issue: likely duplicates with a similar stack trace or the same title in the same project, other errors in the same trace, issues Seer found to share a root cause, and the error issues behind a metric alert. Returns each related issue with its status and why it's related. Use it before resolving or ignoring an issue.",
   inputSchema: {
     organizationSlug: ParamOrganizationSlug.optional(),
     regionUrl: ParamRegionUrl.nullable().default(null),
@@ -104,7 +114,7 @@ export default defineTool({
       .nullable()
       .default(null)
       .describe(
-        "Relation types to return; all when omitted. similar_stacktrace: likely duplicates. same_trace: errors in the same trace, often the other side of a request. contributing: for a metric issue, the error issues behind it.",
+        "Relation types; all when omitted. similar_stacktrace: likely duplicates. same_trace: errors in the same trace. contributing: errors behind a metric issue. same_title: errors with the same title, last 14 days. same_supergroup: same root cause per Seer.",
       ),
     limit: z
       .number()
@@ -151,8 +161,8 @@ export default defineTool({
       limit: params.limit,
     });
 
-    // Same-trace issues can be in any project, so a project-scoped session
-    // drops the ones outside its project.
+    // Same-trace and same-supergroup issues can be in any project, so a
+    // project-scoped session drops the ones outside its project.
     const inScope = projectSlug
       ? related.data.filter(({ issue }) => issue.project.slug === projectSlug)
       : related.data;
@@ -205,6 +215,8 @@ export default defineTool({
         status: meta.status,
         detail: meta.detail ?? null,
         traceId: meta.traceId ?? null,
+        title: meta.title ?? null,
+        supergroup: meta.supergroup?.title ?? null,
       })),
       notes,
       suggestedActions: inspectFirst ? [inspectFirst] : [],

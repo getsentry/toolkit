@@ -15,13 +15,17 @@
  * test-only hooks, and vars inherited from the SDK are listed (with a reason) in
  * INTERNAL_ENV_VARS so their exclusion is explicit and reviewable.
  *
+ * It also fails when any file under src/ names a prefix in
+ * RETIRED_ENV_PREFIXES, such as the `SENTRY_WIZARD_*` vars of `@sentry/wizard`.
+ *
  * Usage:
  *   pnpm ts script/check-env-coverage.ts
  *
  * Exit codes:
  *   0 - Every user-facing env var read by the CLI or an installer is documented
  *       or explicitly internal
- *   1 - Coverage gap, redundant allowlist entry, or stale allowlist entry
+ *   1 - Coverage gap, redundant allowlist entry, stale allowlist entry, or a
+ *       retired env var prefix (RETIRED_ENV_PREFIXES) under src/
  */
 
 import { readFile } from "node:fs/promises";
@@ -52,10 +56,6 @@ const INTERNAL_ENV_VARS = new Map<string, string>([
     "bash-hook traceback template only; inherited SDK convention",
   ],
   [
-    "SENTRY_SPOTLIGHT",
-    "set by `local run` for the child app; the CLI only names it in Worker setup hints",
-  ],
-  [
     "SENTRY_TRACES_SAMPLE_RATE",
     "inherited from the SDK when spawning subprocesses, not a CLI config knob",
   ],
@@ -77,6 +77,17 @@ const INTERNAL_ENV_VARS = new Map<string, string>([
   ["SENTRY_RN_REAL_HERMES_CLI_PATH", "internal react-native wrapper plumbing"],
   ["SENTRY_RN_REAL_NODE_BINARY", "internal react-native wrapper plumbing"],
   ["SENTRY_RN_SOURCEMAP_REPORT", "internal react-native wrapper plumbing"],
+]);
+
+/**
+ * Env var prefixes the CLI dropped on purpose. No file under src/ may name
+ * one, read or not, so none comes back as a hidden alias. Each has a reason.
+ */
+const RETIRED_ENV_PREFIXES = new Map<string, string>([
+  [
+    "SENTRY_WIZARD_",
+    "`sentry wizard` takes `<org>/<project>` and the integration as positionals, and reads only the CLI's own env vars (SENTRY_URL, SENTRY_SPOTLIGHT, SENTRY_LOG_LEVEL)",
+  ],
 ]);
 
 const registryNames = new Set(ENV_VAR_REGISTRY.map((entry) => entry.name));
@@ -227,6 +238,22 @@ for (const name of INTERNAL_ENV_VARS.keys()) {
     errors.push(
       `Stale INTERNAL_ENV_VARS entry: ${name} is no longer read in src/. Remove it.`,
     );
+  }
+}
+
+// Every file type under src/, generated files included, not just the env
+// reads above: a retired name in a string or a comment fails too.
+for (const file of await glob("src/**/*")) {
+  const content = await readFile(file, "utf-8");
+  for (const [prefix, reason] of RETIRED_ENV_PREFIXES) {
+    const index = content.indexOf(prefix);
+    if (index !== -1) {
+      const line = content.slice(0, index).split("\n").length;
+      errors.push(
+        `Retired env var prefix: ${prefix} (at ${file}:${line})\n` +
+          `    Remove it: ${reason}.`,
+      );
+    }
   }
 }
 

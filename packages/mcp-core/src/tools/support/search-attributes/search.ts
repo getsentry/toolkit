@@ -1,3 +1,4 @@
+import { getActiveSpan } from "@sentry/core";
 import { ApiClientError, type TraceItemAttribute } from "../../../api-client";
 import { ConfigurationError, UserInputError } from "../../../errors";
 import { hasAgentProvider } from "../../../internal/agents/provider-factory";
@@ -12,16 +13,13 @@ import {
   generateKeyHintsAgent,
   shortlistAttributesAgent,
 } from "./agent";
+import type { SearchAttributesDataset } from "./config";
 import {
-  formatFindResult,
-  formatListResult,
+  buildFindResult,
+  buildListResult,
   getRecommendedKeysByDataset,
+  type SearchAttributesOutput,
 } from "./format";
-
-export const SEARCH_ATTRIBUTES_DATASETS = ["spans", "logs", "metrics"] as const;
-
-export type SearchAttributesDataset =
-  (typeof SEARCH_ATTRIBUTES_DATASETS)[number];
 
 export interface SearchAttributesParams {
   organizationSlug: string;
@@ -30,7 +28,7 @@ export interface SearchAttributesParams {
   period?: string | undefined;
   regionUrl: string | null;
   limit?: number | undefined;
-  dataset?: SearchAttributesDataset | undefined;
+  dataset: SearchAttributesDataset;
 }
 
 const DEFAULT_PERIOD = "14d";
@@ -49,19 +47,13 @@ const CUT_OFF_THRESHOLD = 900;
 export async function runSearchAttributes(
   params: SearchAttributesParams,
   context: ServerContext,
-): Promise<string> {
+): Promise<SearchAttributesOutput> {
   const apiService = apiServiceFromContext(context, {
     regionUrl: params.regionUrl ?? undefined,
   });
   const organizationSlug = params.organizationSlug;
 
   setTargetTagsAndAttributes(params);
-
-  if (!params.dataset) {
-    throw new UserInputError(
-      "Choose a dataset: `spans` (requests, latency, database and AI calls), `logs` (log lines), or `metrics` (counters, gauges, distributions).",
-    );
-  }
 
   // The attributes API filters by numeric project ID, not slug.
   let projectId: string | undefined;
@@ -90,47 +82,59 @@ export async function runSearchAttributes(
   };
 
   let rows = await fetchRows();
-  const totalFetchedAttributes = rows.length;
   // Set once the hint searches replace rows with a smaller set related to the
   // query, so the list fallback can say what it's showing.
   let narrowedByHints = false;
+  // Set once hint searches ran without failing or reaching the limit. They
+  // look through every key, so a match past the cut would have turned up.
+  let allSearchHintCallsSuccessful = false;
 
-  const listAttributes = (importantInfo?: string[], notes?: string[]) =>
-    formatListResult({
-      organizationSlug,
+  const rowsReachesLimit = mayBeCutOff(rows);
+
+  const listAttributes = (fallbackNote?: string) =>
+    buildListResult({
       dataset,
       period,
+      query: query ?? null,
       attributes: rows,
       limit: params.limit ?? LIST_LIMIT,
-      notes,
-      importantInfo,
+      fallbackNote,
+      mayBeIncomplete: rowsReachesLimit,
     });
 
-  if (!query) return listAttributes();
+  if (!query) {
+    return recordResult(listAttributes(), { keyCapReached: rowsReachesLimit });
+  }
 
   if (!hasAgentProvider()) {
-    return listAttributes(
-      [
+    return recordResult(
+      listAttributes(
         "Matching by `query` needs an AI provider, so these are the dataset's attributes instead.",
-      ],
-      [],
+      ),
+      { keyCapReached: rowsReachesLimit, fallback: "no_ai_provider" },
     );
   }
 
   // The endpoint sorts keys by name and stops at about 1000 per type, so in a
   // large org the right key can be past the cut. A substring search looks
   // through every key, so search again with hints made from the query.
-  if (mayBeCutOff(rows)) {
+  if (rowsReachesLimit) {
     const keyHints = await withAgentFallback<string[]>({
       operation: "search_attributes.key_hints",
       fallback: () => [],
-      run: () => generateKeyHintsAgent({ query, dataset }),
+      run: () =>
+        generateKeyHintsAgent({
+          query,
+          dataset,
+          abortSignal: apiService.signal,
+        }),
     });
     // A hint search only adds keys, so a failed one is skipped rather than
-    // failing the call. 4xx and config errors aren't ours to report.
+    // failing the call. 4xx, config errors and aborted calls aren't ours to report.
     const searchHint = (hint: string) =>
       fetchRows(hint).catch((error: unknown) => {
         if (
+          !apiService.signal?.aborted &&
           !(error instanceof ApiClientError) &&
           !(error instanceof ConfigurationError)
         ) {
@@ -141,26 +145,32 @@ export async function runSearchAttributes(
             },
           });
         }
-        return [];
+        // Null, not [], so a failed search isn't mistaken for no match.
+        return null;
       });
 
     // If there are results from the hints, use that + recommended keys
     // otherwise it defaults to the original exhaustive list
     const hintRows = await Promise.all(keyHints.map(searchHint));
-    // as long as one of the hint calls have values we should use that
-    if (hintRows.some((r) => r.length > 0)) {
+    const searchedRows = hintRows.filter((r) => r !== null);
+    allSearchHintCallsSuccessful =
+      hintRows.length > 0 &&
+      searchedRows.length === hintRows.length &&
+      // it's not fully successful if there were some that were potentially cut off
+      !searchedRows.some((r) => mayBeCutOff(r));
+    if (searchedRows.some((r) => r.length > 0)) {
       const recommendedKeys = getRecommendedKeysByDataset(dataset);
       const recommendedRows = rows.filter((attribute) =>
         recommendedKeys.has(attribute.key),
       );
-      rows = mergeByKey([recommendedRows, ...hintRows]);
+      rows = mergeByKey([recommendedRows, ...searchedRows]);
       narrowedByHints = true;
     }
   }
 
   const matches =
     rows.length === 0
-      ? { candidates: [] }
+      ? { candidates: [], reason: null }
       : await withAgentFallback<AttributeMatches | null>({
           operation: "search_attributes.shortlist",
           fallback: () => null,
@@ -170,25 +180,62 @@ export async function runSearchAttributes(
               dataset,
               attributes: rows,
               limit: params.limit ?? FIND_LIMIT,
+              abortSignal: apiService.signal,
             }),
         });
 
   if (!matches) {
-    return listAttributes([
-      narrowedByHints
-        ? "The AI provider couldn't match `query` right now, so these are the attributes with names related to it, plus Sentry's common search fields."
-        : "The AI provider couldn't match `query` right now, so these are the dataset's attributes instead.",
-    ]);
+    return recordResult(
+      listAttributes(
+        narrowedByHints
+          ? "The AI provider couldn't match `query` right now, so these are the attributes with names related to it, plus Sentry's common search fields."
+          : "The AI provider couldn't match `query` right now, so these are the dataset's attributes instead.",
+      ),
+      { keyCapReached: rowsReachesLimit, fallback: "ai_unavailable" },
+    );
   }
 
-  return formatFindResult({
-    organizationSlug,
-    dataset,
-    period,
-    query,
-    matches,
-    totalAttributes: totalFetchedAttributes,
+  return recordResult(
+    buildFindResult({
+      dataset,
+      period,
+      query,
+      matches,
+      totalAttributes: rows.length,
+      mayBeIncomplete: !allSearchHintCallsSuccessful && rowsReachesLimit,
+    }),
+    { keyCapReached: rowsReachesLimit },
+  );
+}
+
+/**
+ * Records how the call ended on the tool span
+ */
+function recordResult(
+  output: SearchAttributesOutput,
+  {
+    keyCapReached,
+    fallback,
+  }: {
+    keyCapReached: boolean;
+    fallback?: "no_ai_provider" | "ai_unavailable";
+  },
+): SearchAttributesOutput {
+  let outcome: string;
+  if (fallback) outcome = fallback;
+  else if (output.totalAttributes === 0) outcome = "none_seen";
+  else if (output.resultType === "list") outcome = "list";
+  else if (output.best) outcome = "best_match";
+  else if (output.attributes.length > 0) outcome = "candidates";
+  else outcome = "no_match";
+
+  getActiveSpan()?.setAttributes({
+    "gen_ai.tool.call.result.count":
+      output.attributes.length + (output.best ? 1 : 0),
+    "app.search_attributes.outcome": outcome,
+    "app.search_attributes.key_cap_reached": keyCapReached,
   });
+  return output;
 }
 
 /**
@@ -234,9 +281,10 @@ function mayBeCutOff(attributes: TraceItemAttribute[]): boolean {
 
 /** Merge attribute lists by key, keeping the first copy of each. */
 function mergeByKey(lists: TraceItemAttribute[][]): TraceItemAttribute[] {
-  const byKey = new Map<string, TraceItemAttribute>();
+  const attributesByKey = new Map<string, TraceItemAttribute>();
   for (const attribute of lists.flat()) {
-    if (!byKey.has(attribute.key)) byKey.set(attribute.key, attribute);
+    if (!attributesByKey.has(attribute.key))
+      attributesByKey.set(attribute.key, attribute);
   }
-  return [...byKey.values()];
+  return [...attributesByKey.values()];
 }

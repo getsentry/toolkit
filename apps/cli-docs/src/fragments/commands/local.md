@@ -14,7 +14,9 @@ If nothing is listening on the port, a server is started in the background and s
 
 The Local daemon behind `--session` is the exception: it only takes session traffic. When it holds port 8969, a plain `local run` captures on a free port and says so. An SDK that hard-codes 8969 won't reach that port, so make sure it reads `SENTRY_SPOTLIGHT`. Add `--session <name>` to capture into the daemon instead. With an explicit `--port` that the daemon holds, the command stops with an error.
 
-The same goes for a port held by another process that isn't a Local or Spotlight server, such as `python -m http.server 8969`: a plain `local run` captures on a free port and says so, and with an explicit `--port`, or with `local serve`, the command stops with an error that names the port.
+The same goes for a port held by another process that isn't a Local or Spotlight server, such as `python -m http.server 8969` or a listener that doesn't answer HTTP: a plain `local run` captures on a free port and says so, and with an explicit `--port`, or with `local serve`, the command stops with an error that names the port.
+
+A `local serve` from Sentry CLI 0.35 to 0.40 doesn't identify itself as a Local server, so newer versions treat it as another process. Upgrade it to attach to it.
 
 With no command, `local run` picks one from the project, in this order:
 
@@ -77,7 +79,7 @@ On Laravel, uncomment this line in `config/sentry.php`:
 'spotlight' => env('SENTRY_SPOTLIGHT', false),
 ```
 
-**Go and Rust.** Their SDKs have no Spotlight support. Point the DSN at the local server's regular Sentry ingest path, and pin the port so the two match: set `SENTRY_DSN=http://key@localhost:8970/0` and run `sentry local run --port 8970`. Without `--port`, a run moves to a free port when the Local daemon holds 8969, and the daemon drops DSN-style posts, so events would vanish without an error. Everything the SDK sends then goes to the local server, so leave your real DSN out while you do this.
+**Go and Rust.** Their SDKs have no Spotlight support. With `--session`, `local run` hands them the session's DSN; see [Daemon-owned sessions](#daemon-owned-sessions). Without it, point the DSN at the local server's regular Sentry ingest path, and pin the port so the two match: set `SENTRY_DSN=http://key@localhost:8970/0` and run `sentry local run --port 8970`. Without `--port`, a run moves to a free port when the Local daemon holds 8969, and the daemon drops DSN-style posts, so events would vanish without an error. Everything the SDK sends then goes to the local server, so leave your real DSN out while you do this.
 
 **Browser apps** (Next.js, Vite, and other bundlers). Pass the prefixed variable to the Spotlight integration in your client config:
 
@@ -119,6 +121,8 @@ Sentry.init({
   tunnel: spotlight,
 });
 ```
+
+If an SDK sends to both Spotlight and a DSN on the same receiver, Local keeps the first copy of each error, transaction, and feedback, matched by event ID. Logs and spans carry no event ID, so they still show twice.
 
 If your backend runs on a different origin than the page, even just another port, also add it to `tracePropagationTargets`. By default the browser SDK adds trace headers only to same-origin requests, so without it browser and server traces still do not link. The backend's CORS settings must allow the `sentry-trace` and `baggage` headers:
 
@@ -165,7 +169,7 @@ Events and logs use the same labels: a warning is `[WARNING]` whether the SDK se
 
 The source tag comes from the event's platform and runtime, so a Next.js or SvelteKit app shows `[BROWSER]` for client events and `[SERVER]` for server events. Logs and spans don't carry that, so they're tagged from the SDK name. Server-only SDKs such as Node, Bun, or Cloudflare always show `[SERVER]`. SDKs that run on both sides, such as Next.js, SvelteKit, Nuxt, Remix, or Astro, show `[BROWSER]` when the item has signs of the browser SDK (a `pageload`, `navigation`, `ui.*` or `resource.*` span, a browser instrumentation origin, `browser.*` attributes, or a session replay ID) and `[SERVER]` otherwise. A browser log sent while no replay is recording, or a custom browser span outside a pageload or navigation, has none of these, so it shows `[SERVER]`.
 
-A session replay prints one line the first time the tail sees it, with its short ID and page, such as `[REPLAY]  [BROWSER] replay 4d1c5b0e http://localhost:3000/`. The segments it sends every few seconds after that don't print anything. A replay the tail first sees partway through prints without a page, since later segments only list the pages visited during them, which is often none.
+A session replay prints one line the first time the tail sees it, with its short ID, page, and the segment the tail first saw, such as `[REPLAY]  [BROWSER] replay 4d1c5b0e http://localhost:3000/ [from segment 0]`. The segments it sends every few seconds after that don't print anything, so they don't bury errors and logs; `local event list` lists every segment, and `--format json` has a record for each one. A replay the tail first sees partway through prints without a page, since later segments only list the pages visited during them, which is often none.
 
 Use `--filter` / `-f` to narrow the output to specific event types. The flag is
 repeatable, so `-f error -f log` shows only errors and logs. The `error` filter
@@ -221,10 +225,12 @@ In JSON mode, event records are versioned NDJSON on standard output. Startup,
 connection, and shutdown messages stay on standard error, so an agent can pipe
 the evidence stream without parsing terminal status text. Records include
 `schema_version`, `trace_id`, and, when supplied by the SDK, `event_id` and
-`envelope_id` for exact correlation. `timestamp` is always epoch seconds, even
-when the SDK sends ISO 8601 strings. Strings never contain ANSI color codes, so
-colored log output from tools like werkzeug or uvicorn comes through as plain
-text. Log records list only custom attributes, like the tail; add `-a` to also
+`envelope_id` for exact correlation. Replay records (`replay_event` and
+`replay_recording`) also carry `replay_id` and `segment_id`, since every
+segment of a replay has the replay ID as its `event_id`. `timestamp` is always
+epoch seconds, even when the SDK sends ISO 8601 strings. Strings never contain
+ANSI color codes, so colored log output from tools like werkzeug or uvicorn
+comes through as plain text. Log records list only custom attributes, like the tail; add `-a` to also
 get the attributes the SDK adds (except `sentry.*`). `level` is the value the
 SDK sent, so logs use `warn` and events use `warning`. In `local run --format
 json`, the wrapped app's standard output is also forwarded to standard error,
@@ -282,16 +288,34 @@ capture, inspect sessions, events, and envelopes, then reset, close, and stop
 the daemon. `sentry local serve --session worker` captures into a session the
 same way without wrapping a command.
 
+The **View events at** link that `run --session`, `serve --session`, and
+`session create` or `view` print opens that session in the viewer, for
+example
+`https://local.sentry.dev/?url=http%3A%2F%2Flocalhost%3A8969%2Fstream&session=<id>`.
+The link holds only the daemon address and the session ID, never a capability.
+The viewer's host can see the session ID, but the ID is not a credential and
+cannot read the session on its own. If the session is gone, the viewer says so
+and opens the first session instead.
+
 `sentry local session create <name> --json` returns separate SDK ingest and
 viewer read capability URLs. Keep these URLs private. `--clientId <key>` makes
 retried session creation idempotent.
 
-Each `local run --session` creates a new session, so names repeat. Commands
-that read, such as `event list` and `session view`, use the name's newest open
-session, or its newest session when none is open. When several open sessions
-share the name, they use the newest and note the others on stderr. `session
-close` and other commands that change a session refuse a name that several open
-sessions share and list them, so pass the session ID instead.
+`local run --session <name>` joins the open session with that name, and
+creates one only when none is open, so two runs at the same time capture into
+the same session. `local serve --session <name>` joins the same way. A session
+the runs created closes when the last of them exits, even one that was killed
+or whose terminal closed. A session you made with `session create` stays open
+until you close it. If the app can't start, the run drops the empty session it
+created.
+
+Once a session closes, the next run with that name creates a new one, so names
+can repeat. Commands that read, such as `event list` and `session view`, use the
+name's newest open session, or its newest session when none is open. When
+several open sessions share the name, they use the newest and note the others
+on stderr. `session close` and other commands that change a session refuse a
+name that several open sessions share and list them, so pass the session ID
+instead.
 
 How an SDK reaches a session depends on its Spotlight support:
 
@@ -299,16 +323,23 @@ How an SDK reaches a session depends on its Spotlight support:
   `local run --session` needs no setup.
 - **PHP**: set the `spotlight` option to the ingest URL. PHP adds `/stream` to
   it, which the session accepts.
-- **Go, Rust, and Ruby** (and PHP, if you prefer) send through a DSN, which
-  `local run --session` doesn't set. It also creates a new session on every
-  run, so create one session and run the app yourself:
+- **Go, Rust, Elixir, and Ruby** send through a DSN. When you haven't set
+  `SENTRY_DSN`, `local run --session` sets it to the session's DSN for:
+  - Ruby, Go, and Rust apps that `local run` detects, such as a Rails `bin/dev`
+  - `go`, `cargo`, `mix`, `iex`, `elixir`, `ruby`, `bundle`, `rails`, `rake`,
+    `rackup`, `puma`, `sidekiq`, and `rspec`
+  - `foreman`, `overmind`, and `bin/` scripts in a project with a `Gemfile`
 
-  1. Run `sentry local session create <name> --json` and take its `ingestUrl`.
-  2. Add `local@` after `http://` and `/0` at the end to get
-     `SENTRY_DSN=http://local@127.0.0.1:<port>/_local/v1/sessions/<id>/ingest/<cap>/0`.
-  3. Start the app directly with that `SENTRY_DSN`, not under
-     `local run --session`.
-  4. Read what it sent with `sentry local event list <id>`.
+  If a `.env` file also sets `SENTRY_DSN`, the run warns you: a dotenv loader
+  that keeps existing variables will use the session DSN. For anything else,
+  such as a compiled Go or Rust binary, take `dsn` from
+  `sentry local session create <name> --json` and start the app with it as
+  `SENTRY_DSN`, either on its own or under `local run --session <name>`, which
+  joins that session. `local run --session` leaves `SENTRY_DSN` alone for
+  Node.js and Python, which would otherwise send every event twice.
+- **Deno**: `@sentry/deno` doesn't read `SENTRY_DSN`, so pass it the `dsn`
+  from `sentry local session view <name> --json`. An app that uses
+  `npm:@sentry/node` reads `SENTRY_SPOTLIGHT` like Node.js.
 
   Ruby uses only the host and port from `SENTRY_SPOTLIGHT` and posts to
   `/stream`, so the session path and its key are lost. Set

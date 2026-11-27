@@ -13,6 +13,7 @@
     "**/worker-configuration.d.ts",
     "**/tsconfig*.json",
     "packages/mcp-server-mocks/src/fixtures/**",
+    "packages/mcp-core/src/ui/chart-app.generated.ts",
     "packages/codemod-cli3to4/tests/**"
   ],
   "rules": {
@@ -46,14 +47,29 @@
       }
     ],
     "typescript/no-unnecessary-type-constraint": "error",
+    "prefer-const": "error",
+    "no-else-return": ["error", { "allowElseIf": false }],
+    "no-new-wrappers": "error",
+    "no-new": "error",
+    "typescript/no-inferrable-types": "error",
+    "typescript/no-empty-object-type": [
+      "error",
+      { "allowInterfaces": "always" }
+    ],
+    "typescript/consistent-indexed-object-style": "error",
+    "unicorn/prefer-math-trunc": "error",
+    "unicorn/prefer-modern-math-apis": "error",
+    "unicorn/prefer-default-parameters": "error",
     "typescript/no-unnecessary-type-arguments": "error",
     "typescript/no-unnecessary-boolean-literal-compare": "error",
     "typescript/no-unnecessary-template-expression": "error",
+    "typescript/prefer-optional-chain": "error",
     "typescript/no-unnecessary-type-assertion": "error",
     "typescript/no-unnecessary-type-parameters": "error",
     "typescript/no-useless-default-assignment": "error",
     "jsx-a11y/interactive-supports-focus": "off",
     "unicorn/prefer-spread": "error",
+    "unicorn/no-array-for-each": "error",
     "typescript/no-misused-promises": "error",
     "typescript/switch-exhaustiveness-check": [
       "error",
@@ -130,12 +146,20 @@
               {
                 "name": "sentry",
                 "message": "mcp-core and toolkit-core must not import the Sentry CLI. Inject CLI-only capabilities through interfaces defined in mcp-core or toolkit-core (see docs/architecture/overview.md#package-dependency-direction)."
+              },
+              {
+                "name": "@modelcontextprotocol/ext-apps",
+                "message": "mcp-core and its MCP Apps views speak MCP Apps directly (src/ui-resources.ts, chart-app/bridge.ts), so the server bundle and the views stay small. ext-apps is a dev dependency for the verify-toolkit host only (see design/mcp-apps.md)."
               }
             ],
             "patterns": [
               {
                 "group": ["sentry/**", "**/cli/src/**", "**/packages/cli/**"],
                 "message": "mcp-core and toolkit-core must not import the Sentry CLI. Inject CLI-only capabilities through interfaces defined in mcp-core or toolkit-core (see docs/architecture/overview.md#package-dependency-direction)."
+              },
+              {
+                "group": ["@modelcontextprotocol/ext-apps/**"],
+                "message": "mcp-core and its MCP Apps views speak MCP Apps directly (src/ui-resources.ts, chart-app/bridge.ts), so the server bundle and the views stay small. ext-apps is a dev dependency for the verify-toolkit host only (see design/mcp-apps.md)."
               }
             ]
           }
@@ -161,6 +185,7 @@
         "sentry-cli/no-raw-capture-exception": "error",
         "sentry-cli/no-process-exit": "error",
         "sentry-cli/no-stdout-write-in-commands": "error",
+        "sentry-cli/no-help-argument-checks-in-commands": "error",
         "sentry-cli/no-process-stdout-in-commands": "error",
         "sentry-cli/no-stderr-write-in-commands": "error",
         "sentry-cli/no-raw-metadata-queries": "error",
@@ -236,6 +261,24 @@
       ],
       "rules": {
         "no-restricted-imports": "off"
+      }
+    },
+    {
+      "files": [
+        "packages/codemod-cli3to4/**/*.{ts,tsx,js,mjs,cjs}",
+        "packages/logger/**/*.{ts,tsx,js,mjs,cjs,cts}",
+        "packages/mcp-server/**/*.{ts,tsx,js,mjs,cjs}",
+        "packages/mcp-server-evals/**/*.{ts,tsx,js,mjs,cjs}",
+        "packages/mcp-server-mocks/**/*.{ts,tsx,js,mjs,cjs}",
+        "packages/smoke-tests/**/*.{ts,tsx,js,mjs,cjs}",
+        "packages/toolkit-core/**/*.{ts,tsx,js,mjs,cjs}",
+        "apps/games-api/**/*.{ts,tsx,js,mjs,cjs}",
+        "scripts/**/*.{ts,js,mjs,cjs}",
+        ".github/**/*.{ts,js,mjs,cjs}",
+        "vitest.workspace.ts"
+      ],
+      "rules": {
+        "typescript/no-unnecessary-condition": "error"
       }
     },
     {
@@ -397,6 +440,10 @@
               {
                 "group": ["sentry/**", "**/cli/src/**", "**/packages/cli/**"],
                 "message": "mcp-core and toolkit-core must not import the Sentry CLI. Inject CLI-only capabilities through interfaces defined in mcp-core or toolkit-core (see docs/architecture/overview.md#package-dependency-direction)."
+              },
+              {
+                "group": ["@modelcontextprotocol/ext-apps/**"],
+                "message": "mcp-core and its MCP Apps views speak MCP Apps directly (src/ui-resources.ts, chart-app/bridge.ts), so the server bundle and the views stay small. ext-apps is a dev dependency for the verify-toolkit host only (see design/mcp-apps.md)."
               },
               {
                 "group": ["node:*"],

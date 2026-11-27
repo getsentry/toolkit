@@ -1,8 +1,11 @@
 import { z } from "zod";
 import type { TraceItemAttribute } from "../../../api-client";
 import { callEmbeddedAgent } from "../../../internal/agents/callEmbeddedAgent";
-import type { SearchAttributesDataset } from "./search";
-import { keyHintsSystemPrompt, shortlistSystemPrompt } from "./config";
+import {
+  keyHintsSystemPrompt,
+  type SearchAttributesDataset,
+  shortlistSystemPrompt,
+} from "./config";
 import { flatten } from "./format";
 
 const MAX_KEY_HINTS = 5;
@@ -23,15 +26,18 @@ type KeyHintsAgentOutput = z.output<typeof keyHintsAgentOutputSchema>;
 export async function generateKeyHintsAgent({
   query,
   dataset,
+  abortSignal,
 }: {
   query: string;
   dataset: SearchAttributesDataset;
+  abortSignal?: AbortSignal | undefined;
 }): Promise<string[]> {
   const { result } = await callEmbeddedAgent<KeyHintsAgentOutput>({
     system: keyHintsSystemPrompt,
     prompt: `Dataset: ${dataset}\nQuestion: ${query}`,
     tools: {},
     schema: keyHintsAgentOutputSchema,
+    abortSignal,
   });
   return cleanKeyHints(result.hints);
 }
@@ -51,6 +57,7 @@ export const shortlistAttributesAgentOutputSchema = z.object({
   best: z
     .string()
     .nullable()
+    .default(null)
     .describe(
       "The one key that clearly answers the question, or null when no single key clearly wins",
     ),
@@ -59,6 +66,11 @@ export const shortlistAttributesAgentOutputSchema = z.object({
     .describe(
       "Other plausible keys, most relevant first. Empty when nothing is relevant.",
     ),
+  reason: z
+    .string()
+    .nullable()
+    .default(null)
+    .describe("One sentence on why you picked these keys, or why none fit."),
 });
 
 type ShortlistAttributesAgentOutput = z.output<
@@ -69,6 +81,7 @@ type ShortlistAttributesAgentOutput = z.output<
 export interface AttributeMatches {
   best?: TraceItemAttribute | undefined;
   candidates: TraceItemAttribute[];
+  reason: string | null;
 }
 
 export interface ShortlistAttributesAgentOptions {
@@ -76,6 +89,7 @@ export interface ShortlistAttributesAgentOptions {
   dataset: SearchAttributesDataset;
   attributes: TraceItemAttribute[];
   limit: number;
+  abortSignal?: AbortSignal | undefined;
 }
 
 /**
@@ -90,6 +104,7 @@ export async function shortlistAttributesAgent(
     prompt: buildShortlistPrompt(options),
     tools: {},
     schema: shortlistAttributesAgentOutputSchema,
+    abortSignal: options.abortSignal,
   });
   return toAttributeMatches(result, options.attributes, options.limit);
 }
@@ -144,17 +159,21 @@ export function toAttributeMatches(
   attributes: TraceItemAttribute[],
   limit: number,
 ): AttributeMatches {
-  const byKey = new Map(
+  const attributesByKey = new Map(
     attributes.map((attribute) => [attribute.key, attribute]),
   );
-  const best = result.best ? byKey.get(result.best) : undefined;
+  const best = result.best ? attributesByKey.get(result.best) : undefined;
   const seen = new Set(best ? [best.key] : []);
   const candidates: TraceItemAttribute[] = [];
   for (const key of result.candidates) {
-    const attribute = byKey.get(key);
+    const attribute = attributesByKey.get(key);
     if (!attribute || seen.has(key)) continue;
     seen.add(key);
     candidates.push(attribute);
   }
-  return { best, candidates: candidates.slice(0, best ? limit - 1 : limit) };
+  return {
+    best,
+    candidates: candidates.slice(0, best ? limit - 1 : limit),
+    reason: result.reason,
+  };
 }

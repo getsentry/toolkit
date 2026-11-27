@@ -1,6 +1,6 @@
 ---
 name: sentry-cli-sourcemap
-version: 0.51.0-dev.0
+version: 0.52.0-dev.0
 description: Manage sourcemaps
 requires:
   bins: ["sentry"]
@@ -65,6 +65,8 @@ Upload sourcemaps to Sentry
 - `--strip-common-prefix - Automatically strip the longest common path prefix from all files`
 - `--no-rewrite - Upload files as-is without injecting debug IDs`
 - `--allow-empty - Exit successfully when no JS + sourcemap pairs are found (default: error out to catch silent build misconfigurations)`
+- `--wait[=<value>] - Wait for the server to fully process the uploaded files, up to the given seconds (default: 300, 0 = no limit; on in CI)`
+- `--no-wait - Exit once Sentry accepts the upload, even in CI`
 
 **Examples:**
 
@@ -92,6 +94,12 @@ sentry sourcemap upload ./dist --no-rewrite
 
 # Only upload some extensions
 sentry sourcemap upload ./dist --ext .js,.mjs
+
+# Wait for Sentry to process the upload outside CI
+sentry sourcemap upload ./dist --wait
+
+# Wait up to ten minutes for processing
+sentry sourcemap upload ./dist --wait=600
 ```
 
 ### `sentry sourcemap resolve <directory>`

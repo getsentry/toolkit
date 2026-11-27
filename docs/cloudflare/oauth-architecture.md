@@ -109,7 +109,7 @@ The MCP OAuth Provider is built with `@cloudflare/workers-oauth-provider` and pr
 1. **Dynamic client registration** - MCP clients can register on-demand
 2. **PKCE support** - Secure authorization code flow
 3. **Token management** - Issues and validates MCP tokens
-4. **Consent UI** - Custom approval screen for permissions. Cancel redirects the MCP client to its registered `redirect_uri` with `error=access_denied` (RFC 6749 §4.1.2.1). When the client sends OIDC `prompt=select_account`, `consent`, or `login`, the Sentry redirect carries `force_prompt=1`, so Sentry shows the signed-in user and **Switch account** instead of silently reusing the browser session. Metadata advertises `prompt_values_supported: ["consent", "select_account"]`. Without `prompt`, the flow is unchanged.
+4. **Consent UI** - Custom approval screen for permissions. Cancel redirects the MCP client to its registered `redirect_uri` with `error=access_denied` (RFC 6749 §4.1.2.1). When the client sends OIDC `prompt=select_account`, `consent`, or `login`, the Sentry redirect carries `force_prompt=1`, so Sentry shows the signed-in user and **Switch account** instead of silently reusing the browser session. Metadata advertises `prompt_values_supported: ["consent", "select_account"]`. Without `prompt`, the flow is unchanged. A single well-formed `idp_hint` (an identity provider name) is kept in the signed consent state and forwarded to Sentry after approval, together with `force_prompt=1`; Sentry decides what the hint does. A missing, repeated (RFC 6749 §3.1), or malformed hint is dropped. `idp_hint` is not advertised in metadata.
 5. **Token encryption** - Stores Sentry tokens encrypted in MCP token props
 
 ### Sentry OAuth Integration
@@ -176,6 +176,24 @@ const oAuthProvider = new OAuthProvider({
   scopesSupported: Object.keys(SCOPES),
 });
 ```
+
+#### Client metadata fetch failures
+
+When `/oauth/authorize` cannot resolve a URL-based client's metadata document,
+the provider throws `CimdFetchError`. The redirect URI cannot be validated
+without that document, so the route renders the error locally and never
+redirects, following CIMD §6.1:
+
+- Transient failures (upstream `408`, `429`, `5xx`, or a timeout) return `503`.
+- Terminal failures (other HTTP statuses, oversized or non-JSON responses, and
+  metadata or client ID validation errors) return `400`.
+
+Both are logged with `logWarn` (`clientIdHost`, `failureClass`,
+`failureReason`, `metadataStatus`) and do not create Sentry issues: the client's
+metadata host, not this server, failed. Unrecognized failures, such as fetch
+runtime errors, are re-thrown and still reported. The classification in
+[`client-metadata-failure.ts`](../../packages/mcp-cloudflare/src/server/oauth/client-metadata-failure.ts)
+matches provider error messages, so check it when upgrading the provider.
 
 #### Operator-managed client metadata
 

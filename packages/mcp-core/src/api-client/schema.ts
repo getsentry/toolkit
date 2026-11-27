@@ -907,6 +907,8 @@ export const RELATED_ISSUE_TYPES = [
   "similar_stacktrace",
   "same_trace",
   "contributing",
+  "same_title",
+  "same_supergroup",
 ] as const;
 
 /** Outcome of each requested relation type (`RelationTypeStatus`). */
@@ -948,6 +950,10 @@ export const RelatedIssuesResponseSchema = z.object({
           status: z.enum(RELATED_ISSUE_TYPE_STATUSES),
           detail: z.string().optional(),
           traceId: z.string().optional(),
+          title: z.string().optional(),
+          supergroup: z
+            .object({ id: z.string(), title: z.string() })
+            .optional(),
         })
         .passthrough(),
     ),
@@ -2667,8 +2673,9 @@ export const EventsTimeSeriesValueSchema = z
   .passthrough();
 
 /**
- * Response from the events-timeseries endpoint. The MCP always requests a
- * single yAxis without topEvents, so `timeSeries` holds exactly one series.
+ * Response from the events-timeseries endpoint. `timeSeries` holds one series
+ * per yAxis, or with `topEvents` one per group and yAxis, each naming its
+ * group in `groupBy` and its aggregate in `yAxis`.
  */
 export const EventsTimeSeriesResponseSchema = z
   .object({
@@ -2677,6 +2684,14 @@ export const EventsTimeSeriesResponseSchema = z
         .object({
           yAxis: z.string(),
           values: z.array(EventsTimeSeriesValueSchema),
+          groupBy: z
+            .array(
+              z.object({
+                key: z.string(),
+                value: z.union([z.string(), z.number()]).nullable(),
+              }),
+            )
+            .optional(),
           meta: z
             .object({
               // Bucket width in milliseconds

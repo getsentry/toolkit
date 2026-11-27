@@ -221,7 +221,7 @@ export default defineTool({
 
     output += `Found ${attachments.length} attachment(s):\n\n`;
 
-    attachments.forEach((attachment, index) => {
+    for (const [index, attachment] of attachments.entries()) {
       output += `## Attachment ${index + 1}\n\n`;
       output += `**ID:** ${attachment.id}\n`;
       output += `**Name:** ${attachment.name}\n`;
@@ -242,7 +242,7 @@ export default defineTool({
         availableToolNames: context.availableToolNames,
         directToolNames: context.directToolNames,
       })}\n\n`;
-    });
+    }
 
     return output;
   },

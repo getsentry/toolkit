@@ -229,6 +229,35 @@ export function mintSntrysToken(payload: Record<string, unknown>): string {
   return `sntrys_${b64}_test-secret-tail`;
 }
 
+const LOOPBACK_HOSTNAMES = new Set(["127.0.0.1", "localhost", "[::1]"]);
+
+/**
+ * Make loopback `/health` probes fail the way Node's fetch does when nothing
+ * listens there, so Sentry Local's port probe sees a free port. Every other
+ * fetch still reaches the preload mock, which rejects unmocked calls loudly.
+ */
+export function refuseLocalHealthProbes(): void {
+  let saved: typeof fetch;
+  beforeEach(() => {
+    saved = globalThis.fetch;
+    const fallback = saved;
+    globalThis.fetch = async (input: FetchInput, init?: RequestInit) => {
+      const url = new URL(extractFetchUrl(input));
+      if (url.pathname === "/health" && LOOPBACK_HOSTNAMES.has(url.hostname)) {
+        throw new TypeError("fetch failed", {
+          cause: Object.assign(new Error(`connect ECONNREFUSED ${url.host}`), {
+            code: "ECONNREFUSED",
+          }),
+        });
+      }
+      return await fallback(input, init);
+    };
+  });
+  afterEach(() => {
+    globalThis.fetch = saved;
+  });
+}
+
 /**
  * Extract the URL string from a fetch input (`string | URL | Request`).
  * Used by tests that intercept `globalThis.fetch` and assert on the

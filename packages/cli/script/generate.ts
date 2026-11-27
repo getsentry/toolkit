@@ -195,6 +195,10 @@ const TREE_STEPS: readonly Step[] = [
     name: "top-level-routes",
     load: () => import("./generate-top-level-routes.js"),
   },
+  {
+    name: "streaming-commands",
+    load: () => import("./generate-streaming-commands.js"),
+  },
   { name: "command-docs", load: () => import("./generate-command-docs.js") },
   { name: "docs-sections", load: () => import("./generate-docs-sections.js") },
   { name: "skill", load: () => import("./generate-skill.js") },

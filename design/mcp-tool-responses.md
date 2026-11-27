@@ -26,6 +26,8 @@ question, in Sentry's own terms, without reading upstream API payloads.
 - Response notes and side quests: short tips at the end of a result, such as
   a pagination cursor or source maps that failed to apply.
 - Feedback suggestions that point at `submit_feedback_to_sentry_team`.
+- MCP Apps views, which render a tool's structured content inline in hosts
+  that support them. They follow [MCP Apps views](./mcp-apps.md).
 
 ## Rules
 
@@ -51,8 +53,3 @@ question, in Sentry's own terms, without reading upstream API payloads.
 - A feedback suggestion appears only when the result likely shows a Sentry
   MCP bug or gap. Input, permission, auth, rate limit, and configuration
   errors, and empty results that are expected, never get one.
-
-## Gaps
-
-- `search_attributes` returns no structured content yet. This breaks "a typed
-  result is one answer" for the one listed tool that has no output schema.

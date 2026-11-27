@@ -72,7 +72,7 @@ toolkit/
 │       │   │   ├── integration/ # delete, list
 │       │   │   ├── issue/       # archive, events, explain, link, list, merge, plan, resolve, tags, unlink, unresolve, view
 │       │   │   ├── local/       # close, create, list, reset, restart, retention, run, serve, start, status, stop, view
-│       │   │   ├── log/         # list, view
+│       │   │   ├── log/         # list, tail, view
 │       │   │   ├── monitor/     # list, run
 │       │   │   ├── org/         # list, view
 │       │   │   ├── platform/    # list
@@ -97,7 +97,8 @@ toolkit/
 │       │   │   ├── init.ts      # Print instructions for a coding agent to set up Sentry
 │       │   │   ├── mcp.ts       # Start a local Sentry MCP server
 │       │   │   ├── schema.ts    # Browse the Sentry API schema
-│       │   │   └── wasm-split.ts# Add build ids to WebAssembly modules and split out debug data
+│       │   │   ├── wasm-split.ts# Add build ids to WebAssembly modules and split out debug data
+│       │   │   └── wizard.ts    # Set up the Sentry SDK in your project interactively
 │       │   ├── lib/            # Shared utilities
 │       │   └── types/          # TypeScript types and Valibot schemas
 │       ├── test/               # Test files (mirrors src/ structure)

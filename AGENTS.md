@@ -16,6 +16,12 @@ Toolkit contains the Sentry CLI, the Sentry MCP server, and shared code. Product
 - **Lint rules**: Write new lint rules for Oxlint: a built-in rule in `.oxlintrc.json`, or a custom rule in `packages/cli/lint-rules/cli-oxlint-plugin.js`. Do not add ast-grep rules. See docs/contributing/coding-guidelines.md#formatting-and-linting.
 - **Package CI**: Put checks for one workspace package in its `package.json` scripts and `sentryCi`, which `test.yml` runs per project. Do not add a workflow for them. See docs/operations/github-actions.md#package-ci-checks.
 
+## Enforced Rules
+
+| Rule                                                                                                                                            | Enforced by                                                      |
+| ----------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------- |
+| Move Cloudflare traffic only with `deployVersions()`, never `wrangler versions deploy`; Cloudflare 404s (100146) on a fresh version for seconds | `scripts/deploy-workflow.test.mjs` (`pnpm run test:ci-projects`) |
+
 ## Repository Structure
 
 ```
@@ -28,6 +34,7 @@ toolkit/
 ├── packages/
 │   ├── cli/                 # Sentry CLI (see packages/cli/AGENTS.md)
 │   ├── codemod-cli3to4/     # @getsentry/cli3to4 codemod: CLI v3 → v4 (Codemod Registry)
+│   ├── http/                # HTTP response cache, body codec, and retries (@sentry/http on npm)
 │   ├── logger/              # Structured logger (@sentry/logger on npm)
 │   ├── toolkit-core/        # Shared CLI/MCP primitives
 │   ├── mcp-core/            # Core MCP implementation (private)
@@ -139,7 +146,7 @@ Use `/dex` skill to coordinate complex work. Create tasks with full context, bre
 ## Workflow
 
 1. Check neighboring files for existing patterns before writing new code.
-2. When adding or modifying Sentry API endpoint usage, ALWAYS validate the endpoint behavior against the Sentry source code in `~/src/sentry` instead of assuming docs or client parameters are authoritative.
+2. When adding or modifying Sentry API endpoint usage, ALWAYS validate the endpoint behavior against the getsentry/sentry source instead of assuming docs or client parameters are authoritative.
 3. Update relevant docs when changing functionality.
 4. Follow docs/contributing/error-handling.md for MCP error types and
    packages/cli/src/lib/errors.ts for CLI error classes.

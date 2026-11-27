@@ -78,6 +78,8 @@ export type InteractiveLoginOptions = {
    * token is checked here too: a mismatching token is discarded, not stored.
    */
   expectedEmail?: string | undefined;
+  /** Ask the agent to relay the approval URL and code to the user. */
+  relayDeviceCode?: boolean;
   /**
    * Re-authorize this stored account in place instead of the active one
    * (scope recovery for the account an invocation picked for its target
@@ -226,11 +228,16 @@ export async function runInteractiveLogin(
           verificationUriComplete,
         ) => {
           urlToCopy = verificationUriComplete;
+          const relay = options?.relayDeviceCode;
+          const isTTY = !relay && process.stdin.isTTY;
+          const browserOpened =
+            !relay && (await openBrowser(verificationUriComplete));
 
-          // Try to open browser (best effort)
-          const browserOpened = await openBrowser(verificationUriComplete);
-
-          if (browserOpened) {
+          if (relay) {
+            log.info(
+              "To finish signing in to the Sentry CLI, ask the user to open the URL below and approve the request. Keep this command running while they approve.",
+            );
+          } else if (browserOpened) {
             log.info("Opening in browser...");
           } else {
             // Show QR code as fallback when browser can't open
@@ -250,7 +257,7 @@ export async function runInteractiveLogin(
             userCode,
             verificationUriComplete,
             browserOpened,
-            process.stdin.isTTY,
+            isTTY,
           );
           for (const line of displayLines) {
             log.log(line);
@@ -260,7 +267,7 @@ export async function runInteractiveLogin(
           log.start("Waiting for authorization...");
 
           // Setup keyboard listener for 'c' to copy URL
-          if (process.stdin.isTTY) {
+          if (isTTY) {
             keyListener.cleanup = setupCopyKeyListener(
               process.stdin,
               () => urlToCopy,

@@ -16,6 +16,7 @@ import { Hono } from "hono";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import {
   CLIENT_SPOTLIGHT_PREFIXES,
+  needsSessionDsn,
   runCommand,
   shutdownServer,
 } from "../../../src/commands/local/run.js";
@@ -46,12 +47,14 @@ import * as windowsSpawn from "../../../src/lib/windows-spawn.js";
 import * as daemon from "../../../src/commands/local/daemon.js";
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn
 import * as serverModule from "../../../src/commands/local/server.js";
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn
+import * as wranglerModule from "../../../src/lib/wrangler.js";
 import {
   wranglerInjectedMessage,
   wranglerSetupHint,
 } from "../../../src/lib/wrangler.js";
 import { TEST_TMP_DIR } from "../../constants.js";
-import { useTestConfigDir } from "../../helpers.js";
+import { refuseLocalHealthProbes, useTestConfigDir } from "../../helpers.js";
 import type { Writer } from "../../../src/types/index.js";
 
 /**
@@ -113,6 +116,8 @@ type RunFunc = (
 ) => Promise<void>;
 
 let tmpDir: string;
+
+refuseLocalHealthProbes();
 
 beforeEach(async () => {
   tmpDir = await mkdtemp(join(TEST_TMP_DIR, "run-test-"));
@@ -376,8 +381,8 @@ describe("sentry local run", () => {
         ingestUrl: `${base}/ingest/ingest-secret`,
         streamUrl: `${base}/stream?cap=stream-secret`,
       });
-    const retain = vi
-      .spyOn(daemon, "retainLocalDaemonSession")
+    const release = vi
+      .spyOn(daemon, "releaseLocalDaemonSession")
       .mockResolvedValue(undefined);
     const info = vi.spyOn(logger, "info").mockImplementation(() => {});
     const warn = vi.spyOn(logger, "warn").mockImplementation(() => {});
@@ -401,16 +406,194 @@ describe("sentry local run", () => {
       expect(logged).toContain("Starting:");
       expect(logged).toContain("/ingest/[REDACTED]");
       expect(logged).not.toContain("secret");
+      // The viewer link names this run's session so it opens that one.
+      const hint = logged.match(/View events at (\S+)/)?.[1];
+      expect(hint).toBeTruthy();
+      const viewer = new URL(hint!);
+      expect(viewer.searchParams.get("url")).toBe("http://127.0.0.1:1/stream");
+      expect(viewer.searchParams.get("session")).toBe("session-1");
       // The wrapped app still gets the working capability.
       expect(spawnCapture.args).toContain(
         `SENTRY_SPOTLIGHT:${base}/ingest/ingest-secret`,
       );
     } finally {
       create.mockRestore();
-      retain.mockRestore();
+      release.mockRestore();
       info.mockRestore();
       warn.mockRestore();
     }
+  });
+
+  describe("with --session", () => {
+    const base = "http://127.0.0.1:1/_local/v1/sessions/session-1";
+    const dsn = `http://key@127.0.0.1:1/_local/v1/sessions/session-1/ingest/ingest-secret/0`;
+    let originalDsn: string | undefined;
+
+    beforeEach(() => {
+      originalDsn = process.env["SENTRY_DSN"];
+      delete process.env["SENTRY_DSN"];
+    });
+
+    afterEach(() => {
+      if (originalDsn === undefined) delete process.env["SENTRY_DSN"];
+      else process.env["SENTRY_DSN"] = originalDsn;
+      vi.restoreAllMocks();
+    });
+
+    /** Run `args` with a mocked daemon session; returns the daemon spies. */
+    async function runInSession(
+      args: string[],
+      reused = false,
+      flags: Record<string, unknown> = {},
+    ) {
+      const create = vi
+        .spyOn(daemon, "createLocalDaemonSession")
+        .mockResolvedValue({
+          cwd: tmpDir,
+          id: "session-1",
+          label: "web",
+          ingestUrl: `${base}/ingest/ingest-secret`,
+          streamUrl: `${base}/stream?cap=stream-secret`,
+          dsn,
+          reused,
+          leaseId: "lease-1",
+        });
+      const release = vi
+        .spyOn(daemon, "releaseLocalDaemonSession")
+        .mockResolvedValue(undefined);
+      const info = vi.spyOn(logger, "info").mockImplementation(() => {});
+      const warn = vi.spyOn(logger, "warn").mockImplementation(() => {});
+      const func = (await runCommand.loader()) as unknown as RunFunc;
+      const result = func.call(
+        makeContext(),
+        {
+          host: "127.0.0.1",
+          verify: false,
+          timeout: 0,
+          session: "web",
+          ...flags,
+        },
+        ...args,
+      );
+      const warnings = () => warn.mock.calls.map((c) => String(c[0]));
+      return { create, release, info, warnings, result };
+    }
+
+    /** The session the mocked daemon hands out, as release receives it. */
+    const session = expect.objectContaining({
+      id: "session-1",
+      leaseId: "lease-1",
+    });
+
+    async function fakeProgram(name: string): Promise<string> {
+      const path = join(tmpDir, name);
+      await writeFile(path, "#!/bin/sh\nexit 0\n");
+      await chmod(path, 0o755);
+      return path;
+    }
+
+    test("joins the open session with that name and releases it on exit", async () => {
+      const { create, release, info, result } = await runInSession(
+        [process.execPath, "-e", ""],
+        true,
+      );
+      await result;
+      expect(create).toHaveBeenCalledWith(
+        expect.objectContaining({ label: "web", reuse: true }),
+      );
+      expect(release).toHaveBeenCalledWith(session, {
+        discardIfEmpty: false,
+      });
+      expect(info.mock.calls.map((c) => String(c[0]))).toContainEqual(
+        expect.stringContaining("Joining open session"),
+      );
+    });
+
+    test("gives an app without Spotlight support the session DSN", async () => {
+      const { result } = await runInSession([await fakeProgram("go"), "run"]);
+      await result;
+      expect(spawnCapture.env?.["SENTRY_DSN"]).toBe(dsn);
+      expect(spawnCapture.env?.["SENTRY_SPOTLIGHT"]).toBe(
+        `${base}/ingest/ingest-secret`,
+      );
+    });
+
+    test("keeps SENTRY_DSN unset for Spotlight SDKs, which would send twice", async () => {
+      const { result } = await runInSession([process.execPath, "-e", ""]);
+      await result;
+      expect(spawnCapture.env?.["SENTRY_DSN"]).toBeUndefined();
+    });
+
+    test("keeps a SENTRY_DSN the user set", async () => {
+      process.env["SENTRY_DSN"] = "https://public@example.invalid/1";
+      const { result } = await runInSession([await fakeProgram("cargo")]);
+      await result;
+      expect(spawnCapture.env?.["SENTRY_DSN"]).toBe(
+        "https://public@example.invalid/1",
+      );
+    });
+
+    test("gives the session back when setup fails before the app starts", async () => {
+      vi.spyOn(
+        wranglerModule,
+        "injectWranglerSpotlightBinding",
+      ).mockRejectedValue(new Error("unreadable package.json"));
+      const { release, result } = await runInSession([
+        process.execPath,
+        "-e",
+        "",
+      ]);
+      await expect(result).rejects.toThrow("unreadable package.json");
+      expect(release).toHaveBeenCalledWith(session, {
+        discardIfEmpty: true,
+      });
+    });
+
+    test("notes that --max-envelopes leaves a joined session's limit alone", async () => {
+      const { result, warnings } = await runInSession(
+        [process.execPath, "-e", ""],
+        true,
+        { "max-envelopes": 50 },
+      );
+      await result;
+      expect(warnings()).toContainEqual(
+        expect.stringContaining("--max-envelopes doesn't change"),
+      );
+    });
+
+    test("warns when a dotenv file also sets SENTRY_DSN", async () => {
+      await writeFile(
+        join(tmpDir, ".env"),
+        "SENTRY_DSN=https://k@example.invalid/1\n",
+      );
+      const { result, warnings } = await runInSession([
+        await fakeProgram("go"),
+        "run",
+      ]);
+      await result;
+      expect(spawnCapture.env?.["SENTRY_DSN"]).toBe(dsn);
+      expect(warnings()).toContainEqual(
+        expect.stringContaining(".env also sets SENTRY_DSN"),
+      );
+    });
+
+    test("keeps the start error when the session cannot be released", async () => {
+      const { release, result } = await runInSession([
+        join(tmpDir, "missing-program"),
+      ]);
+      release.mockRejectedValue(new Error("daemon went away"));
+      await expect(result).rejects.toBeInstanceOf(CliError);
+    });
+
+    test("discards the empty session when the app cannot start", async () => {
+      const { release, result } = await runInSession([
+        join(tmpDir, "missing-program"),
+      ]);
+      await expect(result).rejects.toBeInstanceOf(CliError);
+      expect(release).toHaveBeenCalledWith(session, {
+        discardIfEmpty: true,
+      });
+    });
   });
 
   test("prints the Worker setup hint in --verify mode too", async () => {
@@ -1151,6 +1334,56 @@ setInterval(() => {}, 1000);
     expect(output).not.toContain("Could not attach to the event stream");
   });
 
+  test("attaches to a Spotlight sidecar whose /health answers with a 5xx", async () => {
+    // Spotlight's sidecar sets X-Powered-By in middleware, so even an
+    // unhealthy /health identifies it as a receiver to attach to.
+    const buffer = createLocalRetentionBuffer(10).buffer;
+    const sidecar = new Hono();
+    sidecar.get("/health", (c) => {
+      c.header("X-Powered-By", serverModule.SERVER_IDENTIFIER);
+      return c.text("Internal Server Error", 500);
+    });
+    sidecar.route("/", buildApp(buffer));
+    const { server, port } = await tryListen(sidecar, 0, "127.0.0.1");
+    const savedFetch = globalThis.fetch;
+    const realFetch = (globalThis as { __originalFetch?: typeof fetch })
+      .__originalFetch;
+    if (realFetch) {
+      globalThis.fetch = realFetch;
+    }
+    const writes: string[] = [];
+    const spy = vi
+      .spyOn(process.stderr, "write")
+      .mockImplementation((chunk: string | Uint8Array) => {
+        writes.push(chunk.toString());
+        return true;
+      });
+
+    try {
+      await fetch(`http://127.0.0.1:${port}/stream`, {
+        method: "POST",
+        headers: { "Content-Type": SENTRY_CONTENT_TYPE },
+        body: '{"sdk":{"name":"sentry.javascript.node"}}\n{"type":"log","item_count":1,"content_type":"application/vnd.sentry.items.log+json"}\n{"items":[{"timestamp":1750000000,"level":"info","body":"Hello from the sidecar!","attributes":{}}]}',
+      });
+      const func = (await runCommand.loader()) as unknown as RunFunc;
+      await func.call(
+        makeContext(),
+        { port, host: "127.0.0.1", verify: false, timeout: 0 },
+        "sleep",
+        "1",
+      );
+    } finally {
+      spy.mockRestore();
+      globalThis.fetch = savedFetch;
+      await shutdownServer(server);
+    }
+
+    const output = writes.join("");
+    expect(output).toContain("Connected to existing server");
+    expect(output).toContain("Hello from the sidecar!");
+    expect(output).not.toContain("Could not attach to the event stream");
+  });
+
   test("writes normalized NDJSON to stdout when following an existing server", async () => {
     // A one-command agent workflow uses `local run --format json`, including
     // when another process already owns the local receiver.
@@ -1626,7 +1859,7 @@ describe("sentry local run --verify receiver", () => {
       );
       expect(context.process.exitCode).toBe(EXIT.VERIFY_FAILED);
       const port = new URL(spawnCapture.env?.["SENTRY_SPOTLIGHT"] ?? "").port;
-      const notice = `Port ${DEFAULT_PORT} is in use, so this run listens on port ${port} instead. SDKs that hard-code ${DEFAULT_PORT} won't reach it; make sure they read SENTRY_SPOTLIGHT.`;
+      const notice = `Port ${DEFAULT_PORT} is held by another process, so this run listens on port ${port} instead. SDKs that hard-code ${DEFAULT_PORT} won't reach it; make sure they read SENTRY_SPOTLIGHT.`;
       // Once when it binds, and again when nothing arrived.
       expect(info).toHaveBeenCalledWith(notice);
       expect(warn).toHaveBeenCalledWith(notice);
@@ -1806,6 +2039,59 @@ describe("sentry local run messages", () => {
     }
   });
 
+  test("plain run probes again when another process takes the port before the bind", async () => {
+    // Nothing answered the first probe, but by the bind something that is not
+    // a receiver holds the port; attaching to it would lose every event.
+    const realIsServerRunning = serverModule.isServerRunning;
+    let defaultPortProbes = 0;
+    const probe = vi
+      .spyOn(serverModule, "isServerRunning")
+      .mockImplementation((url) => {
+        if (new URL(url).port !== String(DEFAULT_PORT)) {
+          return realIsServerRunning(url);
+        }
+        defaultPortProbes += 1;
+        return defaultPortProbes === 1
+          ? Promise.resolve(false)
+          : Promise.reject(serverModule.portInUseError(DEFAULT_PORT));
+      });
+    const busy = makeDefaultPortBusy();
+    const info = vi.spyOn(logger, "info").mockImplementation(() => {});
+    const warn = vi.spyOn(logger, "warn").mockImplementation(() => {});
+    const context = makeParsedRunContext();
+    try {
+      await run(
+        app,
+        [
+          "local",
+          "run",
+          "--host",
+          "127.0.0.1",
+          "--",
+          process.execPath,
+          "-e",
+          "",
+        ],
+        context,
+      );
+      expect(context.process.exitCode ?? 0).toBe(0);
+      expect(defaultPortProbes).toBe(2);
+      const receiver = new URL(spawnCapture.env?.["SENTRY_SPOTLIGHT"] ?? "");
+      expect(Number(receiver.port)).not.toBe(DEFAULT_PORT);
+      expect(info).toHaveBeenCalledWith(
+        `Port ${DEFAULT_PORT} is held by another process, so this run listens on port ${receiver.port} instead. SDKs that hard-code ${DEFAULT_PORT} won't reach it; make sure they read SENTRY_SPOTLIGHT.`,
+      );
+      expect(warn).not.toHaveBeenCalledWith(
+        expect.stringContaining("attaching to it instead"),
+      );
+    } finally {
+      info.mockRestore();
+      warn.mockRestore();
+      busy.mockRestore();
+      probe.mockRestore();
+    }
+  }, 30_000);
+
   test("plain run still fails when the daemon holds an explicit --port", async () => {
     const daemonPort = makeDaemonHoldPort(45_678);
     spawnCapture.env = undefined;
@@ -1903,4 +2189,65 @@ describe("sentry local run messages", () => {
       warn.mockRestore();
     }
   }, 30_000);
+});
+
+describe("needsSessionDsn", () => {
+  test("names the programs whose SDKs take only a DSN", () => {
+    for (const command of [
+      ["go", "run", "."],
+      ["/usr/local/go/bin/go", "run", "."],
+      ["cargo", "run"],
+      ["C:\\Program Files\\Rust\\cargo.exe", "run"],
+      ["mix", "phx.server"],
+      ["iex", "-S", "mix"],
+      ["bin/rails", "server"],
+      ["bundle", "exec", "rackup"],
+      ["puma"],
+      ["rake", "jobs:work"],
+      ["rspec"],
+      ["sidekiq"],
+    ]) {
+      expect(needsSessionDsn(command), command.join(" ")).toBe(true);
+    }
+    for (const command of [
+      ["node", "app.js"],
+      ["npm", "run", "dev"],
+      ["python", "manage.py", "runserver"],
+      ["php", "artisan", "serve"],
+      // @sentry/deno never reads SENTRY_DSN, and npm:@sentry/node reads both.
+      ["deno", "run", "main.ts"],
+      // Compiled Go and Rust binaries are left to the user.
+      ["./server"],
+      ["./target/debug/app"],
+      // Without a Gemfile, these could start anything.
+      ["bin/dev"],
+      ["foreman", "start"],
+      [],
+    ]) {
+      expect(needsSessionDsn(command), command.join(" ")).toBe(false);
+    }
+  });
+
+  test("includes a detected DSN-only app whatever program starts it", () => {
+    expect(needsSessionDsn(["sh", "bin/dev"], { dsnOnlyApp: true })).toBe(true);
+    expect(needsSessionDsn(["sh", "bin/dev"])).toBe(false);
+  });
+
+  test("includes a Ruby project's process managers and bin scripts", () => {
+    for (const command of [
+      ["bin/dev"],
+      ["./bin/dev"],
+      ["bin\\dev"],
+      ["foreman", "start", "-f", "Procfile.dev"],
+      ["overmind", "start"],
+    ]) {
+      expect(
+        needsSessionDsn(command, { rubyProject: true }),
+        command.join(" "),
+      ).toBe(true);
+    }
+    expect(needsSessionDsn(["npm", "run", "dev"], { rubyProject: true })).toBe(
+      false,
+    );
+  });
 });

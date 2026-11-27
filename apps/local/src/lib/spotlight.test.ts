@@ -16,6 +16,7 @@ import {
   getPreferredStreamUrl,
   resolveInitialStreamUrl,
   getStreamUrlFromHash,
+  getSessionIdFromQuery,
   getStreamUrlFromQuery,
   getStreamUrlFromStorage,
 } from "./spotlight.js";
@@ -130,6 +131,22 @@ describe("getStreamUrlFromHash", () => {
         getStreamUrlFromQuery(`?${new URLSearchParams({ url: target })}`),
       ).toBeUndefined();
     }
+  });
+
+  test("reads a session ID only next to an accepted url query", () => {
+    const url = "http://localhost:9012/stream";
+    expect(
+      getSessionIdFromQuery(`?${new URLSearchParams({ url, session: "web" })}`),
+    ).toBe("web");
+    expect(getSessionIdFromQuery(`?${new URLSearchParams({ url })}`)).toBe(
+      undefined,
+    );
+    expect(
+      getSessionIdFromQuery(
+        `?${new URLSearchParams({ url: "https://evil.example/stream", session: "web" })}`,
+      ),
+    ).toBeUndefined();
+    expect(getSessionIdFromQuery("?session=web")).toBeUndefined();
   });
 
   test("restores this tab's remote choice ahead of the browser-wide local receiver", () => {

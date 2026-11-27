@@ -55,6 +55,8 @@ const RELATION_LABELS: Record<RelatedIssueType, string> = {
   similar_stacktrace: "similar stack trace",
   same_trace: "same trace",
   contributing: "contributing",
+  same_title: "same title",
+  same_supergroup: "same supergroup",
 };
 
 /**

@@ -11,6 +11,12 @@ import { logger } from "../../../src/lib/logger.js";
 import { gzipSync } from "node:zlib";
 import { Hono } from "hono";
 import {
+  createServer as createNetServer,
+  type Server as NetServer,
+  type Socket,
+} from "node:net";
+import { createServer as createTlsServer } from "node:tls";
+import {
   afterEach,
   beforeEach,
   describe,
@@ -38,7 +44,7 @@ import {
   ValidationError,
 } from "../../../src/lib/errors.js";
 import { SENTRY_CONTENT_TYPE } from "../../../src/lib/formatters/local.js";
-import { at } from "../../helpers.js";
+import { at, refuseLocalHealthProbes } from "../../helpers.js";
 
 vi.mock("../../../src/lib/browser.js", () => ({
   openBrowser: vi.fn().mockResolvedValue(true),
@@ -282,6 +288,8 @@ test("keeps reading after a retained reset notification until Close", async () =
   }
 });
 
+refuseLocalHealthProbes();
+
 describe("parsePort", () => {
   test("parses valid port numbers", () => {
     expect(parsePort("8969")).toBe(8969);
@@ -372,6 +380,116 @@ describe("sentry local serve --open", () => {
         directoryUrl,
       );
       expect(url.search).toBe("");
+    } finally {
+      signal.restore();
+      create.mockRestore();
+      retain.mockRestore();
+      await new Promise<void>((r) => {
+        server.close(() => r());
+        server.closeAllConnections();
+      });
+    }
+  });
+
+  test("scoped serve joins the open session and gives back its lease instead of closing it", async () => {
+    const daemon = await import("../../../src/commands/local/daemon.js");
+    const { server, port } = await tryListen(
+      buildApp(createLocalRetentionBuffer(5).buffer),
+      0,
+      "127.0.0.1",
+    );
+    const streamUrl = `http://127.0.0.1:${port}/stream`;
+    const create = vi
+      .spyOn(daemon, "createLocalDaemonSession")
+      .mockResolvedValue({
+        id: "web",
+        cwd: "/web",
+        label: "web",
+        streamUrl,
+        ingestUrl: streamUrl,
+        reused: true,
+        leaseId: "lease-1",
+      });
+    const release = vi
+      .spyOn(daemon, "releaseLocalDaemonSession")
+      .mockResolvedValue(undefined);
+    const retain = vi.spyOn(daemon, "retainLocalDaemonSession");
+    const warn = vi.spyOn(logger, "warn").mockImplementation(() => {});
+    const signal = interceptShutdownSignal();
+    const func = (await serverCommand.loader()) as unknown as ServeFunc;
+    try {
+      const command = func.call(
+        { cwd: "/web" },
+        { ...flags, open: false, port, session: "web", "max-envelopes": 50 },
+      );
+      await vi.waitFor(() => expect(create).toHaveBeenCalled());
+      signal.trigger();
+      await command;
+      expect(create).toHaveBeenCalledWith(
+        expect.objectContaining({ label: "web", reuse: true }),
+      );
+      // The joined session keeps its own limit, and serve says so.
+      expect(warn.mock.calls.map((c) => String(c[0]))).toContainEqual(
+        expect.stringContaining("--max-envelopes doesn't change"),
+      );
+      // A run that joined the session keeps it open after serve exits.
+      expect(release).toHaveBeenCalledWith(
+        expect.objectContaining({ id: "web", leaseId: "lease-1" }),
+      );
+      expect(retain).not.toHaveBeenCalled();
+    } finally {
+      signal.restore();
+      create.mockRestore();
+      release.mockRestore();
+      retain.mockRestore();
+      warn.mockRestore();
+      await new Promise<void>((r) => {
+        server.close(() => r());
+        server.closeAllConnections();
+      });
+    }
+  });
+
+  test("scoped serve prints a viewer link to its session without the capability", async () => {
+    const daemon = await import("../../../src/commands/local/daemon.js");
+    const { server, port } = await tryListen(
+      buildApp(createLocalRetentionBuffer(5).buffer),
+      0,
+      "127.0.0.1",
+    );
+    const streamUrl = `http://127.0.0.1:${port}/_local/v1/sessions/web-id/stream?cap=stream-secret`;
+    const create = vi
+      .spyOn(daemon, "createLocalDaemonSession")
+      .mockResolvedValue({
+        id: "web-id",
+        cwd: "/web",
+        label: "web",
+        streamUrl,
+        ingestUrl: streamUrl,
+      });
+    const retain = vi
+      .spyOn(daemon, "retainLocalDaemonSession")
+      .mockResolvedValue(undefined);
+    const signal = interceptShutdownSignal();
+    const func = (await serverCommand.loader()) as unknown as ServeFunc;
+    try {
+      const command = func.call(
+        { cwd: "/web" },
+        { ...flags, open: false, port, session: "web" },
+      );
+      const hints = () =>
+        info.mock.calls
+          .map((c) => String(c[0]))
+          .filter((line) => line.startsWith("View events at "));
+      await vi.waitFor(() => expect(hints()).toHaveLength(1));
+      signal.trigger();
+      await command;
+      const url = new URL(hints()[0]!.slice("View events at ".length));
+      expect(url.searchParams.get("url")).toBe(
+        `http://127.0.0.1:${port}/stream`,
+      );
+      expect(url.searchParams.get("session")).toBe("web-id");
+      expect(url.toString()).not.toContain("stream-secret");
     } finally {
       signal.restore();
       create.mockRestore();
@@ -1237,6 +1355,107 @@ describe("isServerRunning", () => {
     }
   });
 
+  /** Expect `isServerRunning` to reject `port` as held by another process. */
+  async function expectHeldByAnotherProcess(port: number): Promise<void> {
+    const savedFetch = globalThis.fetch;
+    const realFetch = (globalThis as { __originalFetch?: typeof fetch })
+      .__originalFetch;
+    if (realFetch) {
+      globalThis.fetch = realFetch;
+    }
+    try {
+      await expect(
+        isServerRunning(`http://127.0.0.1:${port}`),
+      ).rejects.toMatchObject({
+        name: "ValidationError",
+        field: PORT_IN_USE_FIELD,
+        message: expect.stringContaining(
+          `Port ${port} is already in use by another process`,
+        ),
+      });
+    } finally {
+      globalThis.fetch = savedFetch;
+    }
+  }
+
+  /** Listen on a free loopback port with a raw TCP or TLS server. */
+  async function listenRaw(
+    server: NetServer,
+  ): Promise<{ server: NetServer; port: number }> {
+    await new Promise<void>((done) => server.listen(0, "127.0.0.1", done));
+    const address = server.address();
+    if (!address || typeof address === "string") {
+      throw new Error("Expected a TCP address");
+    }
+    return { server, port: address.port };
+  }
+
+  function closeRaw(server: NetServer, sockets: Set<Socket>): Promise<void> {
+    for (const socket of sockets) socket.destroy();
+    return new Promise<void>((done) => server.close(() => done()));
+  }
+
+  test("rejects a port whose listener never answers /health", async () => {
+    // A silent listener, or one slower than the probe: binding the port
+    // would fail, and attaching would lose every event.
+    const sockets = new Set<Socket>();
+    const { server, port } = await listenRaw(
+      createNetServer((socket) => sockets.add(socket)),
+    );
+    try {
+      await expectHeldByAnotherProcess(port);
+    } finally {
+      await closeRaw(server, sockets);
+    }
+  }, 10_000);
+
+  test("rejects a port whose listener does not speak HTTP", async () => {
+    const sockets = new Set<Socket>();
+    const { server, port } = await listenRaw(
+      createNetServer((socket) => {
+        sockets.add(socket);
+        socket.write("SSH-2.0-OpenSSH_9.6\r\n");
+      }),
+    );
+    try {
+      await expectHeldByAnotherProcess(port);
+    } finally {
+      await closeRaw(server, sockets);
+    }
+  });
+
+  test("rejects a port whose listener speaks TLS", async () => {
+    const sockets = new Set<Socket>();
+    const tls = createTlsServer({});
+    tls.on("connection", (socket: Socket) => sockets.add(socket));
+    tls.on("tlsClientError", () => {});
+    const { server, port } = await listenRaw(tls);
+    try {
+      await expectHeldByAnotherProcess(port);
+    } finally {
+      await closeRaw(server, sockets);
+    }
+  });
+
+  test("rejects a port whose /health redirects to a receiver", async () => {
+    const receiver = await tryListen(
+      buildApp(createLocalRetentionBuffer(10).buffer),
+      0,
+      "127.0.0.1",
+    );
+    const redirect = new Hono();
+    redirect.get("/health", (c) =>
+      c.redirect(`http://127.0.0.1:${receiver.port}/health`, 302),
+    );
+    const { server, port } = await tryListen(redirect, 0, "127.0.0.1");
+    try {
+      await expectHeldByAnotherProcess(port);
+    } finally {
+      await new Promise<void>((done) => server.close(() => done()));
+      await new Promise<void>((done) => receiver.server.close(() => done()));
+    }
+  });
+
   test("rejects a port that a Sentry Local daemon holds", async () => {
     vi.stubGlobal(
       "fetch",
@@ -1258,12 +1477,130 @@ describe("isServerRunning", () => {
   });
 
   test("returns false when no server is running", async () => {
-    // isServerRunning uses global fetch which is mocked in tests.
-    // Verify the function handles connection errors gracefully.
-    const result = await isServerRunning("http://127.0.0.1:19999");
-    expect(result).toBe(false);
+    vi.stubGlobal("fetch", rejectLikeNodeFetch("ECONNREFUSED"));
+    try {
+      await expect(isServerRunning("http://127.0.0.1:19999")).resolves.toBe(
+        false,
+      );
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  test("returns false when both localhost addresses refuse", async () => {
+    // Dual-stack `localhost`: Node wraps both refusals in an AggregateError
+    // and copies ECONNREFUSED onto it.
+    const refused = Object.assign(
+      new AggregateError(
+        [
+          Object.assign(new Error("connect ECONNREFUSED ::1:8969"), {
+            code: "ECONNREFUSED",
+          }),
+          Object.assign(new Error("connect ECONNREFUSED 127.0.0.1:8969"), {
+            code: "ECONNREFUSED",
+          }),
+        ],
+        "",
+      ),
+      { code: "ECONNREFUSED" },
+    );
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        throw new TypeError("fetch failed", { cause: refused });
+      }),
+    );
+    try {
+      await expect(isServerRunning("http://localhost:8969")).resolves.toBe(
+        false,
+      );
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  test.each([
+    "ENOTFOUND",
+    "EAI_AGAIN",
+    "EHOSTUNREACH",
+    "ENETUNREACH",
+    "EADDRNOTAVAIL",
+  ])(
+    "returns false for an address it cannot reach (%s), so the bind reports it",
+    async (code) => {
+      // A bad --host is not a busy port; the bind's own error says what's wrong.
+      vi.stubGlobal("fetch", rejectLikeNodeFetch(code));
+      try {
+        await expect(isServerRunning("http://typo.invalid:8969")).resolves.toBe(
+          false,
+        );
+      } finally {
+        vi.unstubAllGlobals();
+      }
+    },
+  );
+
+  test("returns false for an OS-assigned port without probing it", async () => {
+    // --port 0 asks the OS for a free port, so there is nothing to attach to.
+    // On macOS, fetching port 0 fails with EADDRNOTAVAIL, not a refusal.
+    const fetchSpy = vi.fn(async () => new Response("OK"));
+    vi.stubGlobal("fetch", fetchSpy);
+    try {
+      await expect(isServerRunning("http://127.0.0.1:0")).resolves.toBe(false);
+      expect(fetchSpy).not.toHaveBeenCalled();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  test("returns false for a free port that fetch refuses to dial", async () => {
+    // Node's fetch blocks some ports (6000, 10080, ...) with "bad port" before
+    // it connects, so the failure says nothing about the port.
+    const probe = createNetServer();
+    await new Promise<void>((done) => probe.listen(0, "127.0.0.1", done));
+    const port = (probe.address() as { port: number }).port;
+    await new Promise<void>((done) => probe.close(() => done()));
+    vi.stubGlobal("fetch", rejectLikeBlockedPort());
+    try {
+      await expect(isServerRunning(`http://127.0.0.1:${port}`)).resolves.toBe(
+        false,
+      );
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  test("rejects a held port that fetch refuses to dial", async () => {
+    const holder = createNetServer((socket) => socket.resume());
+    await new Promise<void>((done) => holder.listen(0, "127.0.0.1", done));
+    const port = (holder.address() as { port: number }).port;
+    vi.stubGlobal("fetch", rejectLikeBlockedPort());
+    try {
+      await expect(
+        isServerRunning(`http://127.0.0.1:${port}`),
+      ).rejects.toMatchObject({ field: PORT_IN_USE_FIELD });
+    } finally {
+      vi.unstubAllGlobals();
+      await new Promise<void>((done) => holder.close(() => done()));
+    }
   });
 });
+
+/** A fetch that fails the way Node's does for a port it blocks, like 6000. */
+function rejectLikeBlockedPort() {
+  return vi.fn(async () => {
+    throw new TypeError("fetch failed", { cause: new Error("bad port") });
+  });
+}
+
+/** A fetch that fails the way Node's does when the connection fails with `code`. */
+function rejectLikeNodeFetch(code: string) {
+  return vi.fn(async () => {
+    throw new TypeError("fetch failed", {
+      cause: Object.assign(new Error(`connect ${code}`), { code }),
+    });
+  });
+}
 
 describe("oversized envelopes", () => {
   /** One byte over the encoded ingest limit; SDKs ignore the 413 and drop it. */

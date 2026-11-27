@@ -139,8 +139,10 @@ Or use existing projects and read their DSNs:
 
 ```bash
 sentry project list my-org/
-sentry dsn list my-org/my-project --json --fields name,dsn
+sentry dsn list my-org/my-project --json --fields name,dsn,isActive
 ```
+
+Use a key whose `isActive` is `true`. Sentry silently drops events sent with a disabled key.
 
 ## 5. Choose features
 

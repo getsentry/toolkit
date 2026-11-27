@@ -310,6 +310,10 @@ export function findProjectsByRole(projects, roles) {
 
 /** Select directly changed projects and every transitive workspace consumer. */
 export function selectAffectedProjects(projects, changedFiles, eventName) {
+  // Merge queue runs check the whole workspace in test.yml's quality job.
+  if (eventName === "merge_group") {
+    return [];
+  }
   if (eventName !== "pull_request") {
     return projects.filter((project) => project.enabled);
   }
@@ -519,9 +523,10 @@ function main() {
   process.stdout.write(`${JSON.stringify(buildMatrix(selected))}\n`);
 }
 
+const scriptPath = process.argv.at(1);
 const isMain =
-  process.argv[1] !== undefined &&
-  import.meta.url === pathToFileURL(resolve(process.argv[1])).href;
+  scriptPath !== undefined &&
+  import.meta.url === pathToFileURL(resolve(scriptPath)).href;
 if (isMain) {
   try {
     main();

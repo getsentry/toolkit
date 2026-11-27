@@ -1,6 +1,6 @@
 ---
 name: sentry-cli
-version: 0.51.0-dev.0
+version: 0.52.0-dev.0
 description: Guide for using the Sentry CLI to interact with Sentry from the command line. Use when the user asks about viewing issues, events, projects, organizations, making API calls, or authenticating with Sentry via CLI.
 requires:
   bins: ["sentry"]
@@ -127,7 +127,7 @@ sentry trace logs abc123def456...
 
 ```bash
 # Stream logs in real-time (auto-detects org/project)
-sentry log list --follow
+sentry log tail
 
 # Filter logs by severity
 sentry log list --query "severity:error"
@@ -728,6 +728,7 @@ Manage User Feedback
 View Sentry logs
 
 - `sentry log list <org/project-or-trace-id...>` — List logs from a project
+- `sentry log tail <org/project-or-trace-id...>` — Stream new logs from a project or trace
 - `sentry log view <org/project/log-id...>` — View details of one or more log entries
 
 → Full flags and examples: `references/log.md`
@@ -812,6 +813,14 @@ Print instructions for a coding agent to set up Sentry
 - `sentry init` — Print instructions for a coding agent to set up Sentry
 
 → Full flags and examples: `references/init.md`
+
+### Wizard
+
+Set up the Sentry SDK in your project interactively
+
+- `sentry wizard [<org>/<project>] [<integration>]` — Set up the Sentry SDK in your project interactively
+
+→ Full flags and examples: `references/wizard.md`
 
 ### Info
 

@@ -101,6 +101,14 @@
       "types": "./dist/tools/search-issue-events/agent.d.ts",
       "default": "./dist/tools/search-issue-events/agent.js"
     },
+    "./tools/search-attributes": {
+      "types": "./dist/tools/search-attributes/index.d.ts",
+      "default": "./dist/tools/search-attributes/index.js"
+    },
+    "./tools/search-attributes/agent": {
+      "types": "./dist/tools/search-attributes/agent.d.ts",
+      "default": "./dist/tools/search-attributes/agent.js"
+    },
     "./internal/agents/callEmbeddedAgent": {
       "types": "./dist/internal/agents/callEmbeddedAgent.d.ts",
       "default": "./dist/internal/agents/callEmbeddedAgent.js"
@@ -154,19 +162,27 @@
     "test": "pnpm run validate-skills && vitest run",
     "test:ci": "pnpm run generate-definitions && pnpm run validate-skills && vitest run --reporter=default --reporter=junit --outputFile=tests.junit.xml",
     "test:watch": "pnpm run generate-definitions && vitest",
-    "typecheck": "tsc --noEmit && tsc --noEmit -p scripts/tsconfig.json",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p scripts/tsconfig.json && tsc --noEmit -p chart-app",
     "generate-definitions": "node --experimental-strip-types --import ../../scripts/strip-types-resolve.mjs scripts/generate-definitions.ts && oxfmt --write src/toolDefinitions.json src/skillDefinitions.json",
+    "generate-chart-app": "node --experimental-strip-types --import ../../scripts/strip-types-resolve.mjs scripts/generate-chart-app.ts",
+    "ci:policy": "pnpm run generate-chart-app --check",
     "generate-platform-setup": "node --experimental-strip-types --import ../../scripts/strip-types-resolve.mjs scripts/generate-platform-setup.ts && oxfmt --write src/tools/support/project-setup/platforms.json",
     "generate-otel-namespaces": "node --experimental-strip-types --import ../../scripts/strip-types-resolve.mjs scripts/generate-otel-namespaces.ts",
+    "measure-ui": "node --experimental-strip-types --import ../../scripts/strip-types-resolve.mjs scripts/measure-ui-views.ts",
     "measure-tokens": "node --experimental-strip-types --import ../../scripts/strip-types-resolve.mjs scripts/measure-token-cost.ts",
     "validate-skills": "node --experimental-strip-types --import ../../scripts/strip-types-resolve.mjs scripts/validate-skills-mapping.ts"
   },
   "devDependencies": {
     "@ai-sdk/provider": "^3.0.6",
     "@ai-sdk/provider-utils": "^4.0.11",
+    "@modelcontextprotocol/client": "catalog:",
+    "@modelcontextprotocol/core": "catalog:",
+    "@modelcontextprotocol/ext-apps": "catalog:",
     "@modelcontextprotocol/sdk": "catalog:",
     "@sentry/mcp-server-mocks": "workspace:*",
+    "esbuild": "^0.28.1",
     "msw": "catalog:",
+    "playwright-core": "catalog:",
     "tiktoken": "^1.0.18",
     "yaml": "^2.8.3"
   },
@@ -179,6 +195,7 @@
     "@modelcontextprotocol/server": "catalog:",
     "@sentry/api": "catalog:",
     "@sentry/core": "catalog:",
+    "@sentry/http": "workspace:*",
     "@sentry/search-syntax": "catalog:",
     "@sentry/toolkit-core": "workspace:*",
     "ai": "catalog:",

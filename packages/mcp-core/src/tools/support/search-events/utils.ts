@@ -272,7 +272,7 @@ const FULL_TEXT_SEARCH_KEYS = new Set(["message", "log.body"]);
  * transaction:"handle message:hello"). Length is preserved so offsets still
  * map back to the original query.
  */
-function maskQuotedRegions(query: string): string {
+export function maskQuotedRegions(query: string): string {
   let out = "";
   let quote: '"' | "'" | null = null;
   let escaped = false;
@@ -1348,21 +1348,18 @@ export function createDatasetAttributesTool(options: {
       let commonFields: Record<string, string> = {};
       let datasetFields: Record<string, string> = {};
       if (substringMatch) {
-        Object.entries(BASE_COMMON_FIELDS).forEach(([key, value]) => {
+        for (const [key, value] of Object.entries(BASE_COMMON_FIELDS)) {
           if (key.includes(substringMatch) || value.includes(substringMatch)) {
             commonFields[key] = value;
           }
-        });
-        Object.entries(DATASET_FIELDS[normalizedDataset]).forEach(
-          ([key, value]) => {
-            if (
-              key.includes(substringMatch) ||
-              value.includes(substringMatch)
-            ) {
-              datasetFields[key] = value;
-            }
-          },
-        );
+        }
+        for (const [key, value] of Object.entries(
+          DATASET_FIELDS[normalizedDataset],
+        )) {
+          if (key.includes(substringMatch) || value.includes(substringMatch)) {
+            datasetFields[key] = value;
+          }
+        }
       } else {
         commonFields = BASE_COMMON_FIELDS;
         datasetFields = DATASET_FIELDS[normalizedDataset];

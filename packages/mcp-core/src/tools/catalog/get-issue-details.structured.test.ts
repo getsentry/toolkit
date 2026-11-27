@@ -654,19 +654,20 @@ describe("get_issue_details structuredContent for a realistic error", () => {
           },
           {
             "arguments": {
+              "issueId": "SHOP-4F2",
+              "organizationSlug": "sentry-mcp-evals",
+            },
+            "reason": "Chart this issue's events and affected users over time.",
+            "toolName": "render_issue_chart",
+            "type": "tool_call",
+          },
+          {
+            "arguments": {
               "organizationSlug": "sentry-mcp-evals",
               "traceId": "4bf92f3577b34da6a3ce929d0e0e4736",
             },
             "reason": "Inspect the distributed trace this event belongs to.",
             "toolName": "get_trace_details",
-            "type": "tool_call",
-          },
-          {
-            "arguments": {
-              "issueUrl": "https://sentry-mcp-evals.sentry.io/issues/SHOP-4F2",
-            },
-            "reason": "Read the breadcrumb trail leading up to this event.",
-            "toolName": "get_issue_breadcrumbs",
             "type": "tool_call",
           },
         ],

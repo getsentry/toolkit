@@ -81,9 +81,9 @@ function conditionRows(value: unknown, detector: boolean): Row[] {
   const rows: Row[] = [["Logic", valueText(group["logicType"])]];
   const conditions = group["conditions"];
   if (Array.isArray(conditions) && conditions.length > 0) {
-    conditions.forEach((condition, index) => {
+    for (const [index, condition] of conditions.entries()) {
       rows.push([`Condition ${index + 1}`, conditionText(condition, detector)]);
-    });
+    }
   } else {
     rows.push([
       "Conditions",
@@ -150,11 +150,11 @@ function workflowSections(workflow: GetOrganizationWorkflowResponse): string[] {
     ...workflowGroupSections(workflow.triggers, "Triggers"),
   ];
   if (workflow.actionFilters?.length) {
-    workflow.actionFilters.forEach((group, index) => {
+    for (const [index, group] of workflow.actionFilters.entries()) {
       sections.push(
         ...workflowGroupSections(group, `Action filter ${index + 1}`),
       );
-    });
+    }
   } else {
     sections.push(table([["Action filters", "none"]]));
   }
