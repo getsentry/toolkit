@@ -276,7 +276,9 @@ function traceProjects(spans: unknown): (string | undefined)[] {
     const fields = record(span);
     return [
       refOf(fields["project_slug"], fields["project_id"]),
-      ...(Array.isArray(fields["children"]) ? traceProjects(fields["children"]) : []),
+      ...(Array.isArray(fields["children"])
+        ? traceProjects(fields["children"])
+        : []),
     ];
   });
 }

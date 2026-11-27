@@ -50,7 +50,8 @@ function deriveResource(url: string): string {
 /**
  * The operations Sentry declares an `x-sentry-project-scope` for, other
  * than `path` (the scope rules match project paths themselves), for
- * `target-scope-rules.ts`. `@sentry/api` carries it as `projectScope`.
+ * `target-scope-rules.ts`, with full request paths. `@sentry/api` carries
+ * it as `projectScope`.
  */
 export function selectProjectScopeOperations(
   catalog: readonly { method: string; path: string; projectScope?: string }[],
@@ -58,7 +59,7 @@ export function selectProjectScopeOperations(
   return catalog
     .flatMap(({ method, path, projectScope }) =>
       projectScope && projectScope !== "path"
-        ? [{ method, path, scope: projectScope }]
+        ? [{ method, path: `${API_BASE_PATH}${path}`, scope: projectScope }]
         : [],
     )
     .sort(

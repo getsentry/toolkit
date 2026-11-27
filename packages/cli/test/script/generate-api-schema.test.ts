@@ -115,17 +115,17 @@ describe("project scope extraction", () => {
       selectProjectScopeOperations([
         {
           ...events,
-          path: "/api/0/organizations/{org}/z/",
+          path: "/organizations/{org}/z/",
           projectScope: "filter",
         },
         {
           ...events,
-          path: "/api/0/projects/{org}/{project}/",
+          path: "/projects/{org}/{project}/",
           projectScope: "path",
         },
         {
           ...events,
-          path: "/api/0/organizations/{org}/a/{id}/",
+          path: "/organizations/{org}/a/{id}/",
           projectScope: "response:/project/id",
         },
         events,
