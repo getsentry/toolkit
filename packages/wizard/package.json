@@ -1,0 +1,48 @@
+{
+  "name": "@sentry/wizard",
+  "version": "10.0.0-dev.0",
+  "description": "Deprecated: forwards to `sentry wizard` from the Sentry CLI. Use `npx sentry wizard` instead.",
+  "type": "module",
+  "packageManager": "pnpm@12.18.0",
+  "engines": {
+    "node": ">=20.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "license": "FSL-1.1-Apache-2.0",
+  "author": "Sentry",
+  "homepage": "https://github.com/getsentry/toolkit/tree/main/packages/wizard#readme",
+  "keywords": [
+    "sentry",
+    "wizard"
+  ],
+  "bugs": {
+    "url": "https://github.com/getsentry/toolkit/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/getsentry/toolkit.git",
+    "directory": "packages/wizard"
+  },
+  "bin": {
+    "sentry-wizard": "./bin/sentry-wizard.js"
+  },
+  "files": [
+    "bin/sentry-wizard.js",
+    "LICENSE.md"
+  ],
+  "scripts": {
+    "test": "vitest run",
+    "test:ci": "vitest run --reporter=default --reporter=junit --outputFile=tests.junit.xml",
+    "typecheck": "tsc"
+  },
+  "dependencies": {
+    "sentry": ">=0.52.0"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  }
+}
