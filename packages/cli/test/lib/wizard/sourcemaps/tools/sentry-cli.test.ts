@@ -114,9 +114,9 @@ describe("addSentryCommandToBuildCommand", () => {
 });
 
 describe("getSentryCliNpmScript", () => {
-  it("injects debug IDs and uploads with v4 sentry commands, without org or project flags", () => {
+  it("uploads with the v4 sentry command, without org or project flags", () => {
     expect(getSentryCliNpmScript("./dist")).toBe(
-      "sentry sourcemap inject ./dist && sentry sourcemap upload ./dist",
+      "sentry sourcemap upload ./dist",
     );
   });
 
@@ -124,7 +124,7 @@ describe("getSentryCliNpmScript", () => {
     "leaves the plain path %s unquoted",
     (artifactPath) => {
       expect(getSentryCliNpmScript(artifactPath)).toBe(
-        `sentry sourcemap inject ${artifactPath} && sentry sourcemap upload ${artifactPath}`,
+        `sentry sourcemap upload ${artifactPath}`,
       );
     },
   );
@@ -136,7 +136,7 @@ describe("getSentryCliNpmScript", () => {
     ["dist/$HOME", '"dist/\\$HOME"'],
   ])("double-quotes %s as %s", (artifactPath, quoted) => {
     expect(getSentryCliNpmScript(artifactPath)).toBe(
-      `sentry sourcemap inject ${quoted} && sentry sourcemap upload ${quoted}`,
+      `sentry sourcemap upload ${quoted}`,
     );
   });
 });
@@ -170,7 +170,7 @@ describe("configureSentryCLI", () => {
       expect(writeFileSpy).toHaveBeenCalledWith(
         expect.stringContaining("package.json"),
         expect.stringContaining(
-          '"sentry:sourcemaps": "sentry sourcemap inject . && sentry sourcemap upload ."',
+          '"sentry:sourcemaps": "sentry sourcemap upload ."',
         ),
       );
     } finally {
