@@ -25,6 +25,7 @@ import { findWranglerConfig } from "./find-wrangler-config.js";
 const b = recast.types.builders;
 
 type WranglerConfigUpdates = {
+  main?: string;
   compatibility_date?: string;
   compatibility_flags?: string[];
   version_metadata?: {
@@ -41,8 +42,12 @@ type WranglerConfigUpdateOptions = {
   removeCompatibilityFlags?: string[] | undefined;
 };
 
-const getTomlConfigSnippet = (options: WranglerConfigUpdateOptions) => {
+const getTomlConfigSnippet = (
+  updates: WranglerConfigUpdates,
+  options: WranglerConfigUpdateOptions,
+) => {
   const superseded = options.removeCompatibilityFlags ?? [];
+  const { main } = updates;
 
   return makeCodeSnippet(true, (_unchanged, plus) =>
     plus(
@@ -52,7 +57,7 @@ const getTomlConfigSnippet = (options: WranglerConfigUpdateOptions) => {
               .map((flag) => `"${flag}"`)
               .join(", ")} from compatibility_flags if present\n`
           : ""
-      }compatibility_flags = ["nodejs_compat"]
+      }${main ? `main = "${main}"\n` : ""}compatibility_flags = ["nodejs_compat"]
 compatibility_date = "${new Date().toISOString().slice(0, 10)}"
 
 [version_metadata]
@@ -98,7 +103,7 @@ export async function updateWranglerConfig(
       case ".toml":
         await showCopyPasteInstructions({
           filename: configFile,
-          codeSnippet: getTomlConfigSnippet(options),
+          codeSnippet: getTomlConfigSnippet(updates, options),
         });
         break;
     }

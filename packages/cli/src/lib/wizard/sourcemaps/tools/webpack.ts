@@ -4,6 +4,7 @@
  */
 
 import type { namedTypes as t } from "ast-types";
+import type { ExpressionKind } from "ast-types/lib/gen/kinds.js";
 import chalk from "chalk";
 import { promises } from "node:fs";
 import path from "node:path";
@@ -255,10 +256,18 @@ function addSentryWebpackPlugin(
   );
 
   if (pluginsProp) {
-    if (pluginsProp.value.type === "ArrayExpression") {
-      pluginsProp.value.elements.push(sentryPluginCall);
-    } else {
+    const plugins = pluginsProp.value;
+    if (plugins.type === "ArrayExpression") {
+      plugins.elements.push(sentryPluginCall);
+    } else if (isNullish(plugins)) {
       pluginsProp.value = b.arrayExpression([sentryPluginCall]);
+    } else {
+      // A variable or call such as `getPlugins()`: keep its plugins and add
+      // Sentry after them.
+      pluginsProp.value = b.arrayExpression([
+        b.spreadElement(plugins as ExpressionKind),
+        sentryPluginCall,
+      ]);
     }
     return true;
   }
@@ -271,6 +280,15 @@ function addSentryWebpackPlugin(
   );
 
   return true;
+}
+
+/** `undefined` or `null`, which leaves no plugins to keep. */
+function isNullish(node: t.Property["value"]): boolean {
+  return (
+    (node.type === "Identifier" && node.name === "undefined") ||
+    node.type === "NullLiteral" ||
+    (node.type === "Literal" && node.value === null)
+  );
 }
 
 function addSentryWebpackPluginImport(program: t.Program, importPath: string) {

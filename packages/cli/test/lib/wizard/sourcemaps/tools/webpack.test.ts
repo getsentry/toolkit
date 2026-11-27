@@ -310,4 +310,32 @@ describe("modifyWebpackConfig", () => {
     expect(fileContent).toContain('url: "https://santry.io/"');
     expect(addedCode).toBe(true);
   });
+
+  it.each([
+    ["a variable", "existingPlugins"],
+    ["a call", "getPlugins()"],
+  ])("keeps the plugins when plugins is %s", async (_kind, plugins) => {
+    updateFileContent(`module.exports = {
+  entry: "./src/index.js",
+  plugins: ${plugins},
+};`);
+
+    const addedCode = await modifyWebpackConfig(
+      "",
+      {
+        authToken: "",
+        orgSlug: "my-org",
+        projectSlug: "my-project",
+        selfHosted: false,
+        url: "https://sentry.io/",
+      },
+      "@sentry/bundler-plugins/webpack",
+    );
+
+    expect(addedCode).toBe(true);
+    const fileContent = writeFileSpy.mock.calls[0]?.[1];
+    expect(fileContent).toContain(
+      `plugins: [...${plugins}, sentryWebpackPlugin(`,
+    );
+  });
 });

@@ -201,6 +201,21 @@ describe("findOutDir", () => {
 });
 
 describe("getWranglerDeployCommand", () => {
+  it.each([
+    "npx wrangler deploy",
+    "npx -y wrangler@3 deploy",
+    "pnpm exec wrangler deploy",
+    "yarn wrangler deploy",
+    "bunx wrangler deploy",
+    "cross-env NODE_ENV=production wrangler deploy",
+  ])("finds wrangler deploy run through a runner: %s", (command) => {
+    expect(getWranglerDeployCommand(`tsc && ${command}`)?.trim()).toBe(command);
+  });
+
+  it("ignores commands that only mention wrangler deploy", () => {
+    expect(getWranglerDeployCommand("echo wrangler deploy")).toBeUndefined();
+  });
+
   it("returns the deploy command", () => {
     const deployCommand = getWranglerDeployCommand(
       "wrangler deploy --outdir someplace",

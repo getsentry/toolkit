@@ -24,7 +24,7 @@ import {
 } from "../../utils/clack/index.js";
 import { clack } from "../../utils/clack/prompts.js";
 import { hasPackageInstalled } from "../../utils/package-json.js";
-import { NPM } from "../../utils/package-manager.js";
+import { NPM, YARN_V2 } from "../../utils/package-manager.js";
 import { addUploadTargetToSentryCliRc } from "./sentry-cli.js";
 import type { SourceMapUploadToolConfigurationOptions } from "./types.js";
 
@@ -86,17 +86,24 @@ Otherwise, let's proceed with the Wrangler setup.`,
   }
 
   const deployCommand = await getDeployCommand();
-  if (!deployCommand) {
-    return;
-  }
-
-  const outDir = await getWranglerOutDir(deployCommand);
+  const outDir = deployCommand
+    ? await getWranglerOutDir(deployCommand)
+    : DIST_DIR;
 
   await createAndAddSentrySourcemapsScript(outDir);
 
-  await writePostDeployCommand(deployCommand);
-
-  await modifyDeployCommand(deployCommand, outDir);
+  if (deployCommand) {
+    await modifyDeployCommand(deployCommand, outDir);
+    await addUploadAfterDeploy(deployCommand);
+  } else {
+    const packageManager = await getPackageManager(NPM);
+    await showCopyPasteInstructions({
+      codeSnippet: `${getManualDeployCommand(outDir)} && ${
+        packageManager.runScriptCommand
+      } ${SENTRY_NPM_SCRIPT_NAME}`,
+      filename: "package.json",
+    });
+  }
 
   await addUploadTargetToSentryCliRc(options);
   await addSentryCliConfig({ authToken: options.authToken });
@@ -238,7 +245,7 @@ async function getDeployCommand(): Promise<string | undefined> {
       `We can only add the ${chalk.cyan(
         SENTRY_NPM_SCRIPT_NAME,
       )} script to another \`script\` in your ${chalk.cyan("package.json")}.
-Please add it manually to your prod build command.`,
+Please add it manually to your deploy command:`,
     );
     return undefined;
   }
@@ -246,12 +253,28 @@ Please add it manually to your prod build command.`,
   return deployCommand;
 }
 
-async function writePostDeployCommand(deployCommand: string): Promise<void> {
+/**
+ * Run `sentry:sourcemaps` after `deployCommand`: from its `post<deploy>`
+ * script, as the Sentry docs do, or chained onto the deploy script for Yarn
+ * 2+, which doesn't run `post` scripts. An existing `post<deploy>` script is
+ * kept, with the upload added after it.
+ */
+async function addUploadAfterDeploy(deployCommand: string): Promise<void> {
   const pkgJson = await getPackageDotJson();
   const packageManager = await getPackageManager(NPM);
   pkgJson.scripts = pkgJson.scripts ?? {};
-  pkgJson.scripts[`post${deployCommand}`] =
-    `${packageManager.runScriptCommand} ${SENTRY_NPM_SCRIPT_NAME}`;
+
+  const scriptName =
+    packageManager === YARN_V2 ? deployCommand : `post${deployCommand}`;
+  const existingScript = pkgJson.scripts[scriptName];
+  if (existingScript?.includes(SENTRY_NPM_SCRIPT_NAME)) {
+    return;
+  }
+
+  const runUpload = `${packageManager.runScriptCommand} ${SENTRY_NPM_SCRIPT_NAME}`;
+  pkgJson.scripts[scriptName] = existingScript
+    ? `${existingScript} && ${runUpload}`
+    : runUpload;
 
   await promises.writeFile(
     path.join(process.cwd(), "package.json"),
@@ -259,10 +282,17 @@ async function writePostDeployCommand(deployCommand: string): Promise<void> {
   );
 
   clack.log.success(
-    `Added a ${chalk.cyan(`post${deployCommand}`)} script to your ${chalk.cyan(
-      "package.json",
-    )}.`,
+    `${existingScript ? "Updated" : "Added"} the ${chalk.cyan(
+      scriptName,
+    )} script in your ${chalk.cyan("package.json")} to upload source maps after each deploy.`,
   );
+}
+
+/** The `wrangler deploy` command to show when the wizard can't edit it. */
+function getManualDeployCommand(outDir: string): string {
+  return `wrangler deploy --outdir ${quoteShellArg(
+    outDir,
+  )} --var SENTRY_RELEASE:${PROPOSE_VERSION} --upload-source-maps`;
 }
 
 async function modifyDeployCommand(
@@ -281,9 +311,7 @@ async function modifyDeployCommand(
     );
 
     await showCopyPasteInstructions({
-      codeSnippet: `wrangler deploy --outdir ${quoteShellArg(
-        outDir,
-      )} --var SENTRY_RELEASE:${PROPOSE_VERSION} --upload-source-maps`,
+      codeSnippet: getManualDeployCommand(outDir),
       filename: "package.json",
     });
 
@@ -305,7 +333,7 @@ async function modifyDeployCommand(
     );
 
     await showCopyPasteInstructions({
-      codeSnippet: oldDeployCommand,
+      codeSnippet: getManualDeployCommand(outDir),
       filename: "package.json",
     });
 
@@ -485,6 +513,39 @@ function splitShellCommands(script: string): string[] {
 }
 
 /**
+ * Commands that run `wrangler` for a script, such as `npx wrangler deploy`,
+ * `pnpm exec wrangler deploy`, or `cross-env FOO=1 wrangler deploy`.
+ */
+const WRANGLER_RUNNERS = new Set([
+  "npx",
+  "pnpx",
+  "bunx",
+  "pnpm",
+  "yarn",
+  "bun",
+  "exec",
+  "x",
+  "dlx",
+  "cross-env",
+]);
+
+/**
+ * Whether `arg`, before `wrangler`, only runs it: a runner from
+ * {@link WRANGLER_RUNNERS}, a runner flag such as `-y`, or an environment
+ * variable such as `FOO=1`.
+ */
+function isWranglerRunnerArg(arg: string): boolean {
+  return (
+    WRANGLER_RUNNERS.has(arg) ||
+    arg.startsWith("-") ||
+    /^[A-Za-z_][A-Za-z0-9_]*=/.test(arg)
+  );
+}
+
+/**
+ * The command of `deployCommand` that runs `wrangler deploy`, directly or
+ * through a runner such as `npx`.
+ *
  * Exported for testing
  */
 export function getWranglerDeployCommand(
@@ -496,6 +557,13 @@ export function getWranglerDeployCommand(
       .map((arg) => arg.trim())
       .filter(Boolean);
 
-    return argv[0] === "wrangler" && argv.includes("deploy");
+    const wranglerIndex = argv.findIndex(
+      (arg) => arg === "wrangler" || arg.startsWith("wrangler@"),
+    );
+    return (
+      wranglerIndex !== -1 &&
+      argv.slice(0, wranglerIndex).every(isWranglerRunnerArg) &&
+      argv.slice(wranglerIndex + 1).includes("deploy")
+    );
   });
 }

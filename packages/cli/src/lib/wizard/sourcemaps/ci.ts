@@ -96,7 +96,7 @@ async function configureCI(
     return;
   }
 
-  // Wrangler's `post<deploy>` script already runs `sentry:sourcemaps`
+  // The Wrangler deploy script already runs `sentry:sourcemaps` afterwards
   if (isCliBasedFlowTool && selectedTool !== "wrangler") {
     await traceStep("ci-npm-script-setup", setupNpmScriptInCI);
   }

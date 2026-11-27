@@ -1,6 +1,7 @@
 /**
  * Point users of a framework that has its own wizard (SvelteKit, React
- * Native) to that wizard instead of the generic source maps one.
+ * Native) to that wizard instead of the generic source maps one, or to its
+ * guides while this version doesn't have that wizard yet.
  */
 
 import chalk from "chalk";
@@ -25,21 +26,8 @@ type FrameworkInfo = {
   frameworkPackage: string;
   troubleshootingDocsLink: string;
   sourcemapsDocsLink: string;
-  wizard: WizardFunction;
+  integration: "sveltekit" | "reactNative";
 };
-
-/**
- * The `sentry wizard -i <integration>` flow. `run.ts` is imported on demand
- * because it imports this flow.
- */
-function runOtherWizard(
-  integration: "sveltekit" | "reactNative",
-): WizardFunction {
-  return async (options) => {
-    const { runWizard } = await import("../../run.js");
-    await runWizard({ integration, wizardOptions: options });
-  };
-}
 
 const sdkMap: Record<string, FrameworkInfo> = {
   "@sentry/sveltekit": {
@@ -49,7 +37,7 @@ const sdkMap: Record<string, FrameworkInfo> = {
       "https://docs.sentry.io/platforms/javascript/guides/sveltekit/manual-setup/#configure-source-maps-upload",
     troubleshootingDocsLink:
       "https://docs.sentry.io/platforms/javascript/guides/sveltekit/sourcemaps/troubleshooting_js/",
-    wizard: runOtherWizard("sveltekit"),
+    integration: "sveltekit",
   },
   "@sentry/react-native": {
     frameworkName: "React Native",
@@ -58,7 +46,7 @@ const sdkMap: Record<string, FrameworkInfo> = {
       "https://docs.sentry.io/platforms/react-native/sourcemaps/",
     troubleshootingDocsLink:
       "https://docs.sentry.io/platforms/react-native/troubleshooting/#source-maps",
-    wizard: runOtherWizard("reactNative"),
+    integration: "reactNative",
   },
 };
 
@@ -75,7 +63,14 @@ export async function checkIfMoreSuitableWizardExistsAndAskForRedirect(): Promis
     return undefined;
   }
 
-  return await askForRedirect(framework.sdkName, framework.info);
+  // `run.ts` is imported on demand because it imports this flow.
+  const { hasWizardRunner, runWizard } = await import("../../run.js");
+  const { integration } = framework.info;
+  const wizard: WizardFunction | undefined = hasWizardRunner(integration)
+    ? (options) => runWizard({ integration, wizardOptions: options })
+    : undefined;
+
+  return await askForRedirect(framework.sdkName, framework.info, wizard);
 }
 
 async function checkIfMoreSuitableWizardExists(): Promise<
@@ -107,24 +102,29 @@ async function checkIfMoreSuitableWizardExists(): Promise<
   return { sdkName: installedSdkPackage.name, info };
 }
 
+/**
+ * Recommend the framework's wizard, or its guides when `wizard` is unset
+ * because this version doesn't have that wizard yet.
+ */
 async function askForRedirect(
   sdkName: string,
-  {
-    frameworkName,
-    sourcemapsDocsLink,
-    troubleshootingDocsLink,
-    wizard,
-  }: FrameworkInfo,
+  { frameworkName, sourcemapsDocsLink, troubleshootingDocsLink }: FrameworkInfo,
+  wizard: WizardFunction | undefined,
 ): Promise<WizardFunction | undefined> {
+  const recommendation = wizard
+    ? `We recommend using our dedicated ${frameworkName} wizard instead of this wizard.
+The ${frameworkName} wizard will set up our ${sdkName} SDK and also configure uploading source maps for you.
+
+If you already tried the ${frameworkName} wizard and it didn't work for you, check out the following guides:`
+    : `This version of the Sentry CLI doesn't have the ${frameworkName} wizard yet.
+We recommend setting up source maps for ${frameworkName} with the following guides instead of this wizard:`;
+
   clack.log.warn(
     `${chalk.yellow(
       `It seems like you're using this wizard in a ${frameworkName} project.`,
     )}
 
-We recommend using our dedicated ${frameworkName} wizard instead of this wizard.
-The ${frameworkName} wizard will set up our ${sdkName} SDK and also configure uploading source maps for you.
-
-If you already tried the ${frameworkName} wizard and it didn't work for you, check out the following guides:
+${recommendation}
 
 Manual source maps configuration for ${frameworkName}:
 ${sourcemapsDocsLink}
@@ -136,19 +136,29 @@ ${troubleshootingDocsLink}
 
   const nextStep = await abortIfCancelled(
     clack.select<"redirect" | "continue" | "stop">({
-      message: `Do you want to run the ${frameworkName} wizard now?`,
+      message: wizard
+        ? `Do you want to run the ${frameworkName} wizard now?`
+        : "How do you want to continue?",
       options: [
+        ...(wizard
+          ? [
+              {
+                label: "Yes",
+                value: "redirect" as const,
+                hint: chalk.green("Recommended"),
+              },
+            ]
+          : []),
         {
-          label: "Yes",
-          value: "redirect",
-          hint: chalk.green("Recommended"),
-        },
-        {
-          label: "No, continue with this wizard",
+          label: wizard
+            ? "No, continue with this wizard"
+            : "Continue with this wizard",
           value: "continue",
         },
         {
-          label: "No, I'll check out the guides ",
+          label: wizard
+            ? "No, I'll check out the guides "
+            : "Exit and check out the guides",
           value: "stop",
           hint: "Exit this wizard",
         },
