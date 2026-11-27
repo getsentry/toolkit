@@ -31,6 +31,8 @@ const WITHOUT_SENTRY_CREDENTIAL = [
   // games leaderboard.
   "lib/docs-service.ts",
   "lib/games/leaderboard-api.ts",
+  // Objectstore uploads, with the pre-signed token Sentry issues for them.
+  "lib/objectstore.ts",
   // Local servers: Sentry Local and the React Native bundler.
   "commands/local/daemon.ts",
   "commands/local/server.ts",

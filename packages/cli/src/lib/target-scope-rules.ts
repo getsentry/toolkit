@@ -137,8 +137,8 @@ function refOf(slug: unknown, id: unknown): string | undefined {
 
 /** `{ project: { slug, id } }`, as issues and monitors carry it. */
 function projectOf(body: unknown): (string | undefined)[] {
-  const project = record(record(body).project);
-  return [refOf(project.slug, project.id)];
+  const project = record(record(body)["project"]);
+  return [refOf(project["slug"], project["id"])];
 }
 
 /** Each span's `project_slug` or `project_id` in a trace's span tree. */
@@ -149,8 +149,10 @@ function traceProjects(spans: unknown): (string | undefined)[] {
   return spans.flatMap((span) => {
     const fields = record(span);
     return [
-      refOf(fields.project_slug, fields.project_id),
-      ...(Array.isArray(fields.children) ? traceProjects(fields.children) : []),
+      refOf(fields["project_slug"], fields["project_id"]),
+      ...(Array.isArray(fields["children"])
+        ? traceProjects(fields["children"])
+        : []),
     ];
   });
 }
@@ -158,7 +160,7 @@ function traceProjects(spans: unknown): (string | undefined)[] {
 /** `organizations/<org>/<kind>/<id>/`, from a rule's params. */
 function orgPath(kind: string, param: string) {
   return (params: Record<string, string>): string =>
-    `organizations/${encodeURIComponent(params.org ?? "")}/${kind}/${encodeURIComponent(params[param] ?? "")}/`;
+    `organizations/${encodeURIComponent(params["org"] ?? "")}/${kind}/${encodeURIComponent(params[param] ?? "")}/`;
 }
 
 const issuePath = orgPath("issues", "issue");
@@ -239,8 +241,8 @@ export const PROJECT_SCOPE_RULES: readonly ScopeRule[] = [
     enforce: {
       kind: "response",
       projects: (body) => [
-        ref(record(body).projectSlug),
-        ...projectOf(record(body).group),
+        ref(record(body)["projectSlug"]),
+        ...projectOf(record(body)["group"]),
       ],
     },
   },
@@ -254,7 +256,7 @@ export const PROJECT_SCOPE_RULES: readonly ScopeRule[] = [
     subject: ({ event }) => `Event ${event}`,
     enforce: {
       kind: "response",
-      projects: (body) => [ref(record(body).projectSlug)],
+      projects: (body) => [ref(record(body)["projectSlug"])],
     },
   },
   {
@@ -294,7 +296,7 @@ export const PROJECT_SCOPE_RULES: readonly ScopeRule[] = [
     subject: ({ replay }) => `Replay ${replay}`,
     enforce: {
       kind: "response",
-      projects: (body) => [ref(record(record(body).data).project_id)],
+      projects: (body) => [ref(record(record(body)["data"])["project_id"])],
     },
   },
   {
@@ -316,7 +318,7 @@ export const PROJECT_SCOPE_RULES: readonly ScopeRule[] = [
     subject: ({ detector }) => `Alert ${detector}`,
     enforce: {
       kind: "response",
-      projects: (body) => [ref(record(body).projectId)],
+      projects: (body) => [ref(record(body)["projectId"])],
       path: detectorPath,
     },
   },
@@ -336,10 +338,10 @@ export const PROJECT_SCOPE_RULES: readonly ScopeRule[] = [
     enforce: {
       kind: "response",
       projects: (body) => {
-        const projects = record(body).projects;
+        const projects = record(body)["projects"];
         return Array.isArray(projects)
           ? projects.map((project) =>
-              refOf(record(project).slug, record(project).id),
+              refOf(record(project)["slug"], record(project)["id"]),
             )
           : [undefined];
       },

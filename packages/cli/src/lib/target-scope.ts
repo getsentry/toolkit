@@ -125,7 +125,7 @@ const NOTHING_TO_VERIFY = async (): Promise<void> => {
 const NUMERIC_ID = /^\d+$/;
 
 /** A scope project's numeric ID and slug. */
-type ScopeProject = { id: string; slug?: string };
+type ScopeProject = { id: string; slug?: string | undefined };
 
 /** The scope projects this process looked up, by scope and host. */
 const scopeProjects = new Map<string, Promise<ScopeProject>>();
@@ -314,7 +314,7 @@ async function applyRule(
     rule.subject?.(params) ?? `${context.method} ${context.url.pathname}`;
   switch (rule.enforce.kind) {
     case "project-path":
-      if (!(await anyScopeProject(context, [params.project]))) {
+      if (!(await anyScopeProject(context, [params["project"]]))) {
         throw outsideScope(subject, scope);
       }
       return { input, verify: NOTHING_TO_VERIFY };
