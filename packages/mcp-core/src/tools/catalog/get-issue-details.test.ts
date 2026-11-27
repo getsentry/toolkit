@@ -2210,6 +2210,20 @@ describe("structuredContent", () => {
       ).not.toContain("find_related_issues");
     });
 
+    it("leaves them out at once when the lookup is rate limited", async () => {
+      mockLatestEvent();
+      const requests = captureRelatedRequest(() =>
+        HttpResponse.json({ detail: "Too many requests" }, { status: 429 }),
+      );
+
+      const result = await getIssueDetails.handler(params, experimentalContext);
+      const payload = parsePayload(result);
+
+      // a retry would only spend more of the endpoint's per-user limit
+      expect(requests).toHaveLength(1);
+      expect(payload).not.toHaveProperty("relatedIssues");
+    });
+
     it("drops issues from other projects in a project-scoped session", async () => {
       mockLatestEvent();
       captureRelatedRequest();

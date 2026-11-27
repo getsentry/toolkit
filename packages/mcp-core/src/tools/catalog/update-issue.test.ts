@@ -2096,7 +2096,7 @@ describe("update_issue", () => {
     });
 
     it("leaves them out when the lookup is rate limited", async () => {
-      captureRelatedRequests(() =>
+      const requests = captureRelatedRequests(() =>
         HttpResponse.json({ detail: "Too many requests" }, { status: 429 }),
       );
 
@@ -2104,6 +2104,7 @@ describe("update_issue", () => {
         await updateIssue.handler(resolve, serverContext),
       );
 
+      expect(requests).toHaveLength(1);
       expect(output.updated).toBe(true);
       expect(output).not.toHaveProperty("sideQuests");
       expect(logIssue).not.toHaveBeenCalled();

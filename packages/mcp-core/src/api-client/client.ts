@@ -373,6 +373,18 @@ const transport = createApiTransport({
 });
 
 /**
+ * The shared transport without retries, for the related issues endpoint. Its
+ * limit is 15 requests per 5 seconds per user. `get_issue_details` and the
+ * `update_issue` side quest drop its results when it fails, so a 429 or 5xx
+ * fails at once instead of adding up to 3 seconds and more requests against
+ * that limit. `find_related_issues` returns the error to the agent.
+ */
+const noRetryTransport = createApiTransport({
+  retry: { ...REQUEST_RETRY_POLICY, maxRetries: 0 },
+  fresh: isFreshRead,
+});
+
+/**
  * Default cap for returning attachment bytes inline over the MCP transport.
  * A 30 MB attachment takes ~80 MB in memory once base64-encoded and serialized,
  * which fits the Cloudflare Worker's 128 MB isolate with room for the rest of the
@@ -617,16 +629,8 @@ export class SentryApiService {
   protected apiPrefix: string;
   /** Cancels every request this service sends, such as a tool call's signal. */
   readonly signal?: AbortSignal | undefined;
-  private readonly core = this.withSignal(
-    createApiClientCore({
-      transport,
-      headers: () => this.requestHeaders(),
-      logger: {
-        warn: (message, extra) =>
-          logWarn(message, { loggerScope: ["api", "client"], extra }),
-      },
-    }),
-  );
+  private readonly core = this.createCore(transport);
+  private readonly noRetryCore = this.createCore(noRetryTransport);
 
   /**
    * Creates a new Sentry API service instance.
@@ -670,6 +674,19 @@ export class SentryApiService {
     this.protocol = protocol;
     this.apiPrefix = `${protocol}://${host}${API_BASE_PATH}`;
     this.signal = signal;
+  }
+
+  private createCore(coreTransport: typeof transport): ApiClientCore {
+    return this.withSignal(
+      createApiClientCore({
+        transport: coreTransport,
+        headers: () => this.requestHeaders(),
+        logger: {
+          warn: (message, extra) =>
+            logWarn(message, { loggerScope: ["api", "client"], extra }),
+        },
+      }),
+    );
   }
 
   /**
@@ -3388,7 +3405,8 @@ export class SentryApiService {
    * matched it, plus whether each requested type ran, didn't apply, or
    * failed. Sentry returns 503 only when every requested type failed.
    *
-   * The endpoint is private, so the generated SDK doesn't have it.
+   * The endpoint is private, so the generated SDK doesn't have it. Requests
+   * are not retried; see `noRetryTransport`.
    *
    * @param params.types Relation types to return; every known type when empty
    *   or omitted
@@ -3428,11 +3446,11 @@ export class SentryApiService {
     }
     const queryString = query.toString();
 
-    const body = await this.requestJSON(
+    const body = await this.noRetryCore.requestJson(
+      this.origin(opts?.host),
       apiPath`/organizations/${organizationSlug}/issues/${issueId}/related/` +
         (queryString ? `?${queryString}` : ""),
       {},
-      opts,
     );
     return RelatedIssuesResponseSchema.parse(body);
   }
