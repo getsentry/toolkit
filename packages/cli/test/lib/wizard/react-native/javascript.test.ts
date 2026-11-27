@@ -11,6 +11,23 @@ import { describe, expect, it } from "vitest";
 
 describe("react-native javascript", () => {
   describe("addSentryInitWithSdkImport", () => {
+    it("adds sentry init under the last import when imports have no semicolons", () => {
+      const input = `import * as React from 'react'
+import {
+  View,
+} from "react-native"
+
+const App = () => <View />
+`;
+
+      const output = addSentryInitWithSdkImport(input, { dsn: "dsn" });
+
+      expect(output).toMatch(
+        /^import \{\n {2}View,\n\} from "react-native"\nimport \* as Sentry from '@sentry\/react-native';\n\nSentry\.init\(\{\n {2}dsn: 'dsn',/m,
+      );
+      expect(output).toContain("});\n\nconst App = () => <View />\n");
+    });
+
     it("adds sdk import and sentry init under last import in the file", () => {
       const input = `import * as React from 'react';
 

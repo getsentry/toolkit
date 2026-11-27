@@ -76,14 +76,31 @@ export async function addSentryInit({
     return;
   }
 
-  traceStep("add-sentry-init", () => {
-    const newContent = addSentryInitWithSdkImport(js, {
-      dsn,
-      enableSessionReplay,
-      enableFeedbackWidget,
-      enableLogs,
+  const newContent = addSentryInitWithSdkImport(js, {
+    dsn,
+    enableSessionReplay,
+    enableFeedbackWidget,
+    enableLogs,
+  });
+  if (newContent === js) {
+    Sentry.setTag("app-js-file-status", "no-import-found");
+    clack.log.warn(
+      `Could not find an import in ${chalk.cyan(jsRelativePath)}. Place the following code snippet close to the Apps Root component.`,
+    );
+    await showCopyPasteInstructions({
+      filename: jsRelativePath,
+      codeSnippet: getSentryInitColoredCodeSnippet(
+        dsn,
+        enableSessionReplay,
+        enableFeedbackWidget,
+        enableLogs,
+      ),
+      hint: "This ensures the Sentry SDK is ready to capture errors.",
     });
+    return;
+  }
 
+  traceStep("add-sentry-init", () => {
     try {
       writeFileSync(jsPath, newContent, "utf-8");
       clack.log.success(
@@ -116,7 +133,8 @@ export function addSentryInitWithSdkImport(
   },
 ): string {
   return js.replace(
-    /^([^]*)(import\s+[^;]*?;$)/m,
+    // The last import statement, with or without a trailing semicolon.
+    /^([^]*)(import\s+[^;]*?(?:;|['"])[ \t]*$)/m,
     (match: string) => `${match}
 ${getSentryInitPlainTextSnippet(
   dsn,
