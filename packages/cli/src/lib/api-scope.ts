@@ -43,8 +43,6 @@ export const SENTRY_SCOPES = [
   "event:admin",
   "alerts:read",
   "alerts:write",
-  "user_preference:read",
-  "user_preference:write",
 ] as const;
 
 // Explicit alternation (not `<ns>:<action>` product) rejects nonexistent

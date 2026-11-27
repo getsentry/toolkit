@@ -919,7 +919,6 @@ describe("403 scope challenge guidance", () => {
     ["personal", "org:admin org:ci org:read", "An org auth token has org:ci."],
     ["org", "org:admin org:billing", "Org auth tokens only have org:ci."],
     ["login", "org:admin org:read", "auth login --force"],
-    ["login", "org:admin org:write user_preference:read", "auth login --force"],
     [
       "login",
       "org:admin org:billing org:write",
