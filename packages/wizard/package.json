@@ -29,7 +29,8 @@
     "sentry-wizard": "./bin/sentry-wizard.js"
   },
   "files": [
-    "bin/sentry-wizard.js"
+    "bin/sentry-wizard.js",
+    "LICENSE.md"
   ],
   "scripts": {
     "test": "vitest run",
