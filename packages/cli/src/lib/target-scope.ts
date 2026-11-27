@@ -23,7 +23,8 @@
  *   against the project of what it finds, before the command sees it. A
  *   request that reads or changes something an ID names first looks it up.
  * - A few account reads every invocation may need ({@link ACCOUNT_READS})
- *   and organization settings with no project data ({@link ORG_SETTINGS}).
+ *   and read-only organization metadata with no project's data in it
+ *   ({@link ORG_READS}).
  */
 
 import type { ScopeRule } from "./target-scope-rules.js";
@@ -36,7 +37,7 @@ import {
   ACCOUNT_READS,
   matchScopeRule,
   ORG_PATH_PREFIXES,
-  ORG_SETTINGS,
+  ORG_READS,
   PROJECT_SCOPE_RULES,
   record,
 } from "./target-scope-rules.js";
@@ -388,7 +389,7 @@ export async function scopeRequest(
     }
     throw outsideScope(subject, scope);
   }
-  if (matchScopeRule(ORG_SETTINGS, method, segments)) {
+  if (matchScopeRule(ORG_READS, method, segments)) {
     return { input, verify: NOTHING_TO_VERIFY };
   }
   const match = matchScopeRule(PROJECT_SCOPE_RULES, method, segments);

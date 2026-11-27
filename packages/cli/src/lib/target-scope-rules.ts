@@ -70,27 +70,48 @@ export const ACCOUNT_READS: readonly SimpleRule[] = [
   // The API index: the token's user and scopes.
   { pattern: "" },
   { pattern: "auth/" },
-  { pattern: "users/me/" },
+  { pattern: "users/:user/" },
+  // The user's organizations, which DSN detection and organization
+  // resolution read. Requests to any but the scope's are still refused.
+  { pattern: "organizations/" },
+  { pattern: "seer/models/" },
 ];
 
 /**
- * Organization settings a project scope reads, with no project's issues,
- * events or other data in them.
+ * Read-only organization metadata a project scope may read: settings,
+ * members, integrations and saved views, with no project's issues, events
+ * or other data in them.
  */
-export const ORG_SETTINGS: readonly SimpleRule[] = [
+export const ORG_READS: readonly SimpleRule[] = [
   { pattern: "organizations/:org/" },
   { pattern: "organizations/:org/projects/" },
   { pattern: "organizations/:org/teams/" },
+  { pattern: "organizations/:org/user-teams/" },
   { pattern: "organizations/:org/members/" },
+  { pattern: "organizations/:org/members/:member/" },
   { pattern: "organizations/:org/environments/" },
+  // The project a DSN belongs to: its ID, slug and name.
+  { pattern: "organizations/:org/dsn-lookup/" },
+  { pattern: "organizations/:org/chunk-upload/" },
   { pattern: "organizations/:org/integrations/" },
-  { pattern: "organizations/:org/integrations/:integration/" },
-  { pattern: "organizations/:org/repos/" },
+  { pattern: "organizations/:org/integrations/:integration/**" },
+  { pattern: "organizations/:org/config/integrations/" },
+  { pattern: "organizations/:org/available-actions/" },
+  { pattern: "organizations/:org/sentry-apps/" },
+  { pattern: "organizations/:org/sentry-app-installations/" },
   { pattern: "organizations/:org/sentry-app-components/" },
+  { pattern: "organizations/:org/repos/" },
+  { pattern: "organizations/:org/repos/:repo/commits/" },
+  { pattern: "organizations/:org/code-mappings/" },
   { pattern: "organizations/:org/dashboards/" },
   { pattern: "organizations/:org/dashboards/:dashboard/" },
   { pattern: "organizations/:org/dashboards/:dashboard/revisions/" },
+  { pattern: "organizations/:org/discover/saved/" },
+  { pattern: "organizations/:org/discover/saved/:query/" },
+  { pattern: "organizations/:org/group-search-views/" },
   { pattern: "organizations/:org/workflows/:workflow/" },
+  { pattern: "teams/:org/:team/**" },
+  { pattern: "customers/:org/" },
 ];
 
 /** `value` as an object, or `{}` when it is not one. */

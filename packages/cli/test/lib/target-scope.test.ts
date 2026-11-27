@@ -112,6 +112,26 @@ describe("a project scope", () => {
     ["GET", "organizations/acme/trace/empty/", "an empty trace"],
     ["GET", "organizations/acme/detectors/7/", "an alert of it"],
     ["GET", "organizations/acme/releases/1.0/", "a release with it"],
+    // Read-only organization metadata.
+    ["GET", "organizations/", "the organization list"],
+    ["GET", "users/42/", "a user"],
+    ["GET", "seer/models/", "Seer's models"],
+    ["GET", "organizations/acme/dsn-lookup/?dsn=x", "a DSN lookup"],
+    ["GET", "organizations/acme/chunk-upload/", "upload options"],
+    ["GET", "organizations/acme/members/5/", "a member"],
+    ["GET", "organizations/acme/user-teams/", "the user's teams"],
+    ["GET", "organizations/acme/integrations/3/repos/", "integration repos"],
+    ["GET", "organizations/acme/config/integrations/", "integration providers"],
+    ["GET", "organizations/acme/available-actions/", "alert actions"],
+    ["GET", "organizations/acme/sentry-apps/", "custom integrations"],
+    ["GET", "organizations/acme/sentry-app-installations/", "app installs"],
+    ["GET", "organizations/acme/repos/4/commits/", "a repo's commits"],
+    ["GET", "organizations/acme/code-mappings/", "code mappings"],
+    ["GET", "organizations/acme/discover/saved/", "saved queries"],
+    ["GET", "organizations/acme/discover/saved/6/", "a saved query"],
+    ["GET", "organizations/acme/group-search-views/", "issue views"],
+    ["GET", "teams/acme/backend/members/", "a team's members"],
+    ["GET", "customers/acme/", "the subscription"],
   ])("sends %s %s (%s) as it is", async (method, path) => {
     expect(await sentAs(WEB_SCOPE, method, path)).toBe(path);
   });
@@ -196,9 +216,19 @@ describe("a project scope", () => {
     ["GET", "organizations/acme/detectors/8/", "another project's alert"],
     ["DELETE", "organizations/acme/detectors/8/", "a change to it"],
     ["GET", "organizations/acme/releases/2.0/", "a release without it"],
+    ["GET", "organizations/other/dsn-lookup/", "another org's DSN lookup"],
     // Paths no rule covers.
-    ["GET", "organizations/", "the organization list"],
     ["GET", "issues/200/", "an issue outside an organization path"],
+    ["GET", "projects/", "every organization's projects"],
+    ["POST", "teams/acme/backend/projects/", "a team write"],
+    ["PUT", "customers/acme/", "a subscription write"],
+    ["GET", "organizations/acme/project-keys/", "every project's keys"],
+    ["GET", "organizations/acme/org-auth-tokens/", "org auth tokens"],
+    ["GET", "organizations/acme/scim/v2/Users", "SCIM members"],
+    ["GET", "organizations/acme/stats_v2/", "event counts"],
+    ["GET", "organizations/acme/sessions/", "session stats"],
+    ["GET", "organizations/acme/preprodartifacts/1/size-analysis/", "preprod"],
+    ["GET", "organizations/acme/agents/conversations/9/", "a conversation"],
     ["POST", "organizations/acme/dashboards/", "an organization write"],
     ["GET", "organizations/acme/brand-new-endpoint/", "an unknown endpoint"],
     ["GET", "sentry-app-installations/x/external-requests/", "an app install"],
@@ -241,6 +271,7 @@ describe("an organization scope", () => {
 
   test.each([
     ["GET", "users/me/"],
+    ["GET", "organizations/"],
     ["GET", "organizations/acme/brand-new-endpoint/"],
     ["POST", "organizations/acme/dashboards/"],
     ["GET", "projects/acme/api/events/b/"],
@@ -253,7 +284,7 @@ describe("an organization scope", () => {
   test.each([
     ["GET", "organizations/other/issues/"],
     ["GET", "projects/other/web/"],
-    ["GET", "organizations/"],
+    ["GET", "projects/"],
     ["GET", "issues/200/"],
   ])("refuses %s %s", async (method, path) => {
     await expect(send(ORG_SCOPE, method, path)).rejects.toThrow(
