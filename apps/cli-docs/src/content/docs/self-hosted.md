@@ -93,6 +93,8 @@ If your proxy requires custom HTTP headers (e.g. an IAP token), set them with `S
 sentry cli defaults headers "X-IAP: token"
 ```
 
+Requests that send no auth token, such as resolving a share link with `sentry issue view <share-url>`, get these headers only on a host you logged in to with `sentry auth login --url`. A host that comes only from `SENTRY_HOST`/`SENTRY_URL` doesn't count, because in CI an earlier step can set those variables without access to your token. Authenticated requests are unchanged: they get the headers on the host your token is scoped to.
+
 ## Relevant Environment Variables
 
 <!-- GENERATED:START self-hosted-env-vars -->

@@ -200,14 +200,16 @@ describe(".sentryclirc sntrys_ token", () => {
     expect(headers.get("X-IAP-Token")).toBe("secret");
   });
 
-  test("keeps SENTRY_CUSTOM_HEADERS on a boot SENTRY_URL that matches", async () => {
+  test("does not trust a boot SENTRY_URL alone for unauthenticated requests", async () => {
     process.env["SENTRY_CUSTOM_HEADERS"] = "X-IAP-Token: secret";
     process.env["SENTRY_URL"] = ACME;
     const dir = projectDir();
     writeRc(dir, `[auth]\ntoken = ${ACME_TOKEN}\n`);
     await boot(dir);
 
-    expect(isRequestOriginTrustedForCustomHeaders(`${ACME}/api/0/`)).toBe(true);
+    expect(isRequestOriginTrustedForCustomHeaders(`${ACME}/api/0/`)).toBe(
+      false,
+    );
   });
 });
 
@@ -222,12 +224,14 @@ describe("unchanged trust paths", () => {
 
   test("an env sntrys_ token is trusted with an rc url that matches its claim", async () => {
     process.env["SENTRY_AUTH_TOKEN"] = ACME_TOKEN;
+    process.env["SENTRY_CUSTOM_HEADERS"] = "X-IAP-Token: secret";
     const dir = projectDir();
     writeRc(dir, `[defaults]\nurl = ${ACME}\n`);
     await boot(dir);
 
     await expect(assertRcUrlTrusted(dir)).resolves.toBeUndefined();
-    expect(isRequestOriginTrustedForCustomHeaders(`${ACME}/api/0/`)).toBe(true);
+    const headers = await sentHeaders(ACME);
+    expect(headers.get("X-IAP-Token")).toBe("secret");
   });
 
   test("an env sntrys_ token is refused with an rc url for another host", async () => {

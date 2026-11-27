@@ -17,11 +17,22 @@ import {
   _resetCustomHeadersCache,
   applyCustomHeaders,
 } from "../../../src/lib/custom-headers.js";
+import { setAuthToken } from "../../../src/lib/db/auth.js";
 import {
   captureEnvTokenHost,
   resetEnvTokenHostForTesting,
 } from "../../../src/lib/env-token-host.js";
-import { useEnvSandbox } from "../../helpers.js";
+import {
+  getSdkConfig,
+  resetAuthenticatedFetch,
+} from "../../../src/lib/sentry-client.js";
+import {
+  mintSntrysToken,
+  mockFetch,
+  resetHostScopingState,
+  useEnvSandbox,
+  useTestConfigDir,
+} from "../../helpers.js";
 
 const ENV_KEYS = [
   "SENTRY_AUTH_TOKEN",
@@ -121,5 +132,93 @@ describe("CVE: custom-headers leak (share URL + auth-login bypass)", () => {
     const headers = new Headers();
     applyCustomHeaders(headers, "https://evil.com/oauth/device/code/");
     expect(headers.get("X-IAP-Token")).toBeNull();
+  });
+});
+
+/**
+ * getsentry/toolkit#2545: the share lookup is unauthenticated, so no
+ * credential guard vouches for its host. A CI step that can write
+ * `$GITHUB_ENV` sets `SENTRY_URL` to its own host without reading the token;
+ * a later `sentry issue view <share-url>` for that host must not send it
+ * `SENTRY_CUSTOM_HEADERS`. Only a host the user logged in to qualifies.
+ */
+describe("custom headers on unauthenticated requests need a login", () => {
+  useTestConfigDir("custom-headers-login-");
+  useEnvSandbox(ENV_KEYS);
+
+  const ACME = "https://sentry.acme.com";
+  let originalFetch: typeof globalThis.fetch;
+  let sent: Headers[];
+
+  beforeEach(async () => {
+    await resetHostScopingState();
+    _resetCustomHeadersCache();
+    resetAuthenticatedFetch();
+    originalFetch = globalThis.fetch;
+    sent = [];
+    globalThis.fetch = mockFetch(async (input, init) => {
+      sent.push(
+        new Headers(
+          init?.headers ??
+            (input instanceof Request ? input.headers : undefined),
+        ),
+      );
+      return Response.json({ id: "1" });
+    });
+    process.env["SENTRY_CUSTOM_HEADERS"] = "X-IAP-Token: secret";
+  });
+
+  afterEach(async () => {
+    globalThis.fetch = originalFetch;
+    resetAuthenticatedFetch();
+    _resetCustomHeadersCache();
+    await resetHostScopingState();
+  });
+
+  test("an env-only SENTRY_URL host gets no custom headers on the share lookup with an env token", async () => {
+    process.env["SENTRY_AUTH_TOKEN"] = "opaque-env-token";
+    process.env["SENTRY_URL"] = ACME;
+    captureEnvTokenHost();
+
+    await getSharedIssue(ACME, "test-org", "deadbeef12345678");
+
+    expect(sent).toHaveLength(1);
+    expect(sent[0]?.get("X-IAP-Token")).toBeNull();
+  });
+
+  test("an env-only SENTRY_URL host gets no custom headers on the share lookup with an rc token", async () => {
+    process.env["SENTRY_URL"] = ACME;
+    captureEnvTokenHost();
+    // The .sentryclirc shim copies `[auth] token` in after the boot snapshot.
+    process.env["SENTRY_AUTH_TOKEN"] = mintSntrysToken({ iat: 1, url: ACME });
+
+    await getSharedIssue(ACME, "test-org", "deadbeef12345678");
+
+    expect(sent).toHaveLength(1);
+    expect(sent[0]?.get("X-IAP-Token")).toBeNull();
+  });
+
+  test("a stored login's host still gets custom headers on the share lookup", async () => {
+    process.env["SENTRY_URL"] = ACME;
+    captureEnvTokenHost();
+    setAuthToken("stored-token", undefined, undefined, { host: ACME });
+
+    await getSharedIssue(ACME, "test-org", "deadbeef12345678");
+
+    expect(sent).toHaveLength(1);
+    expect(sent[0]?.get("X-IAP-Token")).toBe("secret");
+    expect(sent[0]?.has("Authorization")).toBe(false);
+  });
+
+  test("authenticated requests to the env token's host still get custom headers", async () => {
+    process.env["SENTRY_AUTH_TOKEN"] = "opaque-env-token";
+    process.env["SENTRY_URL"] = ACME;
+    captureEnvTokenHost();
+
+    await getSdkConfig(ACME).fetch(`${ACME}/api/0/organizations/`);
+
+    expect(sent).toHaveLength(1);
+    expect(sent[0]?.get("Authorization")).toBe("Bearer opaque-env-token");
+    expect(sent[0]?.get("X-IAP-Token")).toBe("secret");
   });
 });
