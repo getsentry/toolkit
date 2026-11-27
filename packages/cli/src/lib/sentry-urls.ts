@@ -326,6 +326,22 @@ export function buildBillingUrl(orgSlug: string, product?: string): string {
   return product ? `${base}?product=${product}` : base;
 }
 
+/**
+ * Build URL to the billing page with the Seer auto-reload modal open.
+ *
+ * @param orgSlug - Organization slug
+ * @param denialReason - Why Seer stopped, which the modal uses for its copy
+ */
+export function buildSeerAutoReloadUrl(
+  orgSlug: string,
+  denialReason?: string,
+): string {
+  const hash = denialReason
+    ? `#open-seer-auto-reload-modal:${denialReason}`
+    : "#open-seer-auto-reload-modal";
+  return `${buildBillingUrl(orgSlug)}${hash}`;
+}
+
 // Logs URLs
 
 /**
