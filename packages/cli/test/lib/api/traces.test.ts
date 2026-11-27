@@ -594,9 +594,9 @@ describe("getSpanDetails", () => {
       const req = new Request(input, init);
       capturedUrl = req.url;
       const url = new URL(capturedUrl);
-      url.searchParams.forEach((v, k) => {
+      for (const [k, v] of url.searchParams) {
         capturedParams[k] = v;
-      });
+      }
       return new Response(JSON.stringify(body), {
         status: 200,
         headers: { "Content-Type": "application/json" },

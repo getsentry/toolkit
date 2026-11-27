@@ -762,6 +762,9 @@ importers:
       '@vitest/coverage-v8':
         specifier: 'catalog:'
         version: 5.0.5(vitest@5.0.5)
+      ast-types:
+        specifier: ^0.16.3
+        version: 0.16.3
       binpatch:
         specifier: ^0.4.2
         version: 0.4.2
@@ -825,6 +828,9 @@ importers:
       qrcode-terminal:
         specifier: ^0.12.0
         version: 0.12.0
+      recast:
+        specifier: ^0.23.21
+        version: 0.23.21
       semver:
         specifier: ^7.8.5
         version: 7.8.5
