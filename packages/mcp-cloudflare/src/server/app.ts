@@ -1,6 +1,7 @@
-import { logIssue } from "@sentry/mcp-core/telem/logging";
+import { logIssue, logWarn } from "@sentry/mcp-core/telem/logging";
 import { type Context, Hono } from "hono";
 import { csrf } from "hono/csrf";
+import { HTTPException } from "hono/http-exception";
 import { secureHeaders } from "hono/secure-headers";
 import { generateHomepageMarkdown } from "../homepage-content";
 import { createScopedAuthorizationServerMetadataResponse } from "./authorization-server-metadata";
@@ -25,6 +26,21 @@ function handleOAuthProtectedResourceMetadata(c: Context): Response {
   return createProtectedResourceMetadataResponse(new URL(c.req.url));
 }
 
+const CSRF_REJECTION = "csrf";
+const ABSENT_HEADER = "(absent)";
+
+const csrfProtection = csrf({
+  origin: (origin, c) => {
+    // In hono 4.11.x+, this handler is only called when origin is defined
+    const requestUrl = new URL(c.req.url);
+    return origin === requestUrl.origin;
+  },
+  secFetchSite: (secFetchSite) => {
+    // Allow same-origin and same-site requests (handles requests without Origin header)
+    return secFetchSite === "same-origin" || secFetchSite === "same-site";
+  },
+});
+
 const app = new Hono<{
   Bindings: Env;
 }>()
@@ -44,20 +60,22 @@ const app = new Hono<{
       strictTransportSecurity: "max-age=31536000; includeSubDomains",
     }),
   )
-  .use(
-    "*",
-    csrf({
-      origin: (origin, c) => {
-        // In hono 4.11.x+, this handler is only called when origin is defined
-        const requestUrl = new URL(c.req.url);
-        return origin === requestUrl.origin;
-      },
-      secFetchSite: (secFetchSite) => {
-        // Allow same-origin and same-site requests (handles requests without Origin header)
-        return secFetchSite === "same-origin" || secFetchSite === "same-site";
-      },
-    }),
-  )
+  // Tag csrf() rejections so onError can record them as audit log entries.
+  // Downstream errors are handled by onError at their own dispatch level, so
+  // only csrf() itself throws here.
+  .use("*", async (c, next) => {
+    try {
+      await csrfProtection(c, next);
+    } catch (err) {
+      if (err instanceof HTTPException) {
+        throw new HTTPException(err.status, {
+          res: err.getResponse(),
+          cause: CSRF_REJECTION,
+        });
+      }
+      throw err;
+    }
+  })
   // Content-negotiated homepage: serve markdown to agents, SPA to browsers
   .get("/", async (c, next) => {
     const accept = c.req.header("Accept") ?? "";
@@ -136,6 +154,31 @@ const app = new Hono<{
 
 // TODO: propagate the error as sentry isnt injecting into hono
 app.onError((err, c) => {
+  // Middleware such as csrf() throws HTTPException for expected 4xx outcomes;
+  // return its response and only report server errors.
+  if (err instanceof HTTPException) {
+    if (err.status >= 500) {
+      logIssue(err);
+    } else {
+      // Log only, never an issue: keeps 4xx rejections auditable in Sentry Logs.
+      logWarn("HTTP exception response", {
+        loggerScope: ["cloudflare", "http"],
+        extra: {
+          "http.response.status_code": err.status,
+          "http.request.method": c.req.method,
+          "url.path": c.req.path,
+          "app.http_exception.reason":
+            err.cause === CSRF_REJECTION ? CSRF_REJECTION : "unknown",
+          "http.request.header.origin": c.req.header("Origin") ?? ABSENT_HEADER,
+          "http.request.header.sec_fetch_site":
+            c.req.header("Sec-Fetch-Site") ?? ABSENT_HEADER,
+          "http.request.header.content_type":
+            c.req.header("Content-Type") ?? ABSENT_HEADER,
+        },
+      });
+    }
+    return err.getResponse();
+  }
   logIssue(err);
   return c.text("Internal Server Error", 500);
 });
