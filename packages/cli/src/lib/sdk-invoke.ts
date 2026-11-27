@@ -303,7 +303,8 @@ type CaptureContext = {
       stdin: NodeJS.ReadStream & { fd: 0 };
       env: NodeJS.ProcessEnv;
       cwd: () => string;
-      exitCode: number;
+      /** Unset until something fails, as on Node's own `process`. */
+      exitCode: number | undefined;
     };
     stdout: Writer;
     stderr: Writer;
@@ -365,7 +366,9 @@ async function buildCaptureContext(
     stdin: process.stdin,
     env,
     cwd: () => cwd,
-    exitCode: 0,
+    // Unset, as on Node's `process`: Stricli's `run()` records a failure
+    // with `exitCode ??= code`, which a 0 here would swallow.
+    exitCode: undefined,
   };
 
   if (opts?.abortSignal) {
@@ -443,11 +446,9 @@ async function executeWithCapture<T>(
       await flushTelemetry();
 
       // Check exit code (Stricli sets it without throwing for some errors)
-      if (captureCtx.context.process.exitCode !== 0) {
-        throw buildSdkError(
-          captureCtx.stderrChunks,
-          captureCtx.context.process.exitCode,
-        );
+      const exitCode = captureCtx.context.process.exitCode ?? 0;
+      if (exitCode !== 0) {
+        throw buildSdkError(captureCtx.stderrChunks, exitCode);
       }
 
       return parseOutput(
@@ -512,13 +513,9 @@ function executeWithStream<T>(
         });
 
         // Check exit code — Stricli sets it without throwing for some errors
-        if (captureCtx.context.process.exitCode !== 0) {
-          channel.error(
-            buildSdkError(
-              captureCtx.stderrChunks,
-              captureCtx.context.process.exitCode,
-            ),
-          );
+        const exitCode = captureCtx.context.process.exitCode ?? 0;
+        if (exitCode !== 0) {
+          channel.error(buildSdkError(captureCtx.stderrChunks, exitCode));
         } else {
           // Drain any raw stdout the command wrote directly (via stdout.write)
           // instead of yielding via captureObject — e.g. a binary Uint8Array
