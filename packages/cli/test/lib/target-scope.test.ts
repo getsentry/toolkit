@@ -9,7 +9,11 @@ import {
   withEnv,
 } from "../../src/lib/env.js";
 import { ResolutionError } from "../../src/lib/errors.js";
-import { assertIssueInScope } from "../../src/lib/target-scope.js";
+import {
+  assertIssueInScope,
+  assertOrgInScope,
+  assertProjectInScope,
+} from "../../src/lib/target-scope.js";
 
 const WEB_ISSUE = {
   id: "100",
@@ -57,5 +61,45 @@ describe("assertIssueInScope", () => {
     expect(() =>
       check({ [SCOPE_ORG_ENV_VAR]: "acme" }, "acme", { id: "100" }),
     ).not.toThrow();
+  });
+});
+
+describe("the error of a refused lookup", () => {
+  const webScope = {
+    [SCOPE_ORG_ENV_VAR]: "acme",
+    [SCOPE_PROJECT_ENV_VAR]: "web",
+  };
+
+  function refusal(subject: string): ResolutionError {
+    try {
+      withEnv(webScope, () => assertProjectInScope("acme", "api", subject));
+    } catch (error) {
+      if (error instanceof ResolutionError) {
+        return error;
+      }
+      throw error;
+    }
+    throw new Error(`${subject} was not refused`);
+  }
+
+  test.each([
+    ["Issue 100", "issue list acme/web"],
+    ["Event abc", "issue list acme/web"],
+    ["Trace abc", "trace list acme/web"],
+    ["Replay abc", "replay list acme/web"],
+  ])("for %s suggests %s", (subject, command) => {
+    expect(refusal(subject).hint).toContain(command);
+  });
+
+  test("suggests issue list for a trace in an organization scope", () => {
+    let hint: string | undefined;
+    try {
+      withEnv({ [SCOPE_ORG_ENV_VAR]: "acme" }, () =>
+        assertOrgInScope("other", "Trace abc"),
+      );
+    } catch (error) {
+      hint = error instanceof ResolutionError ? error.hint : undefined;
+    }
+    expect(hint).toContain("issue list acme/");
   });
 });

@@ -334,7 +334,7 @@ export async function getIssueInOrg(
   issueId: string,
   options?: { collapse?: IssueCollapseField[] },
 ): Promise<SentryIssue> {
-  assertOrgInScope(orgSlug, issueId);
+  assertOrgInScope(orgSlug, `Issue ${issueId}`);
   const collapse = toIssueDetailsCollapse(options?.collapse);
   const result = await getOrganizationIssue({
     ...getOrgSdkConfig(),
@@ -413,7 +413,7 @@ export async function getIssueByShortId(
   options?: { collapse?: IssueCollapseField[] },
 ): Promise<SentryIssue> {
   const normalizedShortId = shortId.toUpperCase();
-  assertOrgInScope(orgSlug, normalizedShortId);
+  assertOrgInScope(orgSlug, `Issue ${normalizedShortId}`);
   const config = getOrgSdkConfig();
 
   let data: { group?: SentryIssue };
