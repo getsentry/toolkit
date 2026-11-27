@@ -308,6 +308,19 @@ describe("a project scope", () => {
     expect(lookups).toEqual(["Bearer t"]);
   });
 
+  test.each([
+    ["organizations/acme/issues/200/", "issue list acme/web"],
+    ["organizations/acme/eventids/b/", "issue list acme/web"],
+    ["organizations/acme/trace/b/", "trace list acme/web"],
+    ["organizations/acme/replays/b/", "replay list acme/web"],
+  ])("suggests the list command for GET %s", async (path, command) => {
+    const refused = await send(WEB_SCOPE, "GET", path).catch(
+      (error: unknown) => error,
+    );
+    expect(refused).toBeInstanceOf(ResolutionError);
+    expect((refused as ResolutionError).hint).toContain(command);
+  });
+
   test("refuses before it sends", async () => {
     const sent: string[] = [];
     const fetchScoped = withTargetScope(async (input, init) => {
@@ -360,6 +373,15 @@ describe("an organization scope", () => {
     await expect(send(ORG_SCOPE, method, path)).rejects.toThrow(
       /outside this session's scope \(acme\)/,
     );
+  });
+  test("suggests issue list for another organization's trace", async () => {
+    const refused = await send(
+      ORG_SCOPE,
+      "GET",
+      "organizations/other/trace/b/",
+    ).catch((error: unknown) => error);
+    expect(refused).toBeInstanceOf(ResolutionError);
+    expect((refused as ResolutionError).hint).toContain("issue list acme/");
   });
 });
 
