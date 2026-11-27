@@ -17,6 +17,7 @@
 import { existsSync, promises, readFileSync } from "node:fs";
 import path from "node:path";
 import chalk from "chalk";
+import { CLI_VERSION } from "../../../constants.js";
 import { Sentry, traceStep } from "../../telemetry.js";
 import {
   abortIfCancelled,
@@ -35,6 +36,13 @@ import { NPM } from "../../utils/package-manager.js";
 import type { SourceMapUploadToolConfigurationOptions } from "./types.js";
 
 const SENTRY_NPM_SCRIPT_NAME = "sentry:sourcemaps";
+
+/**
+ * The `sentry` package to install: the major this wizard runs on. The
+ * package manager runs through a shell, so the spec must not hold shell
+ * metacharacters such as `>`, `<`, `|` or `^`.
+ */
+export const SENTRY_CLI_PACKAGE_SPEC = `sentry@${CLI_VERSION.split(".")[0]}.x`;
 
 let addedToBuildCommand = false;
 
@@ -62,7 +70,7 @@ export async function configureSentryCLI(
   const packageDotJson = await getPackageDotJson();
 
   await installPackage({
-    packageName: "sentry@^4",
+    packageName: SENTRY_CLI_PACKAGE_SPEC,
     alreadyInstalled: hasPackageInstalled("sentry", packageDotJson),
     devDependency: true,
     forceInstall: options.forceInstall,

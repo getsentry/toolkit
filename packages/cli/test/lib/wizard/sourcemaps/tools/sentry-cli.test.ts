@@ -6,8 +6,10 @@ import {
   addSentryCommandToBuildCommand,
   configureSentryCLI,
   getSentryCliNpmScript,
+  SENTRY_CLI_PACKAGE_SPEC,
   setSentryCliRcDefaults,
 } from "../../../../../src/lib/wizard/sourcemaps/tools/sentry-cli.js";
+import { CLI_VERSION } from "../../../../../src/lib/constants.js";
 
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as packageManagerHelpers from "../../../../../src/lib/wizard/utils/package-manager.js";
@@ -211,7 +213,10 @@ describe("configureSentryCLI forceInstall", () => {
         );
 
         expect(installPackage).toHaveBeenLastCalledWith(
-          expect.objectContaining({ packageName: "sentry@^4", forceInstall }),
+          expect.objectContaining({
+            packageName: SENTRY_CLI_PACKAGE_SPEC,
+            forceInstall,
+          }),
         );
       } finally {
         process.chdir(originalCwd);
@@ -219,6 +224,19 @@ describe("configureSentryCLI forceInstall", () => {
       }
     },
   );
+});
+
+describe("SENTRY_CLI_PACKAGE_SPEC", () => {
+  it("installs the CLI major the wizard runs on", () => {
+    expect(SENTRY_CLI_PACKAGE_SPEC).toBe(
+      `sentry@${CLI_VERSION.split(".")[0]}.x`,
+    );
+    expect(SENTRY_CLI_PACKAGE_SPEC).toMatch(/^sentry@\d+\.x$/);
+  });
+
+  it("has no shell metacharacters", () => {
+    expect(SENTRY_CLI_PACKAGE_SPEC).not.toMatch(/[<>|&;^$`'" ]/);
+  });
 });
 
 describe("setSentryCliRcDefaults", () => {
