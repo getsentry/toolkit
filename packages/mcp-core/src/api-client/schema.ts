@@ -160,17 +160,19 @@ export const DashboardWidgetPreviewSchema = z
 
 export const DashboardWidgetQuerySchema = z
   .object({
-    id: z.union([z.string(), z.number()]),
+    // Prebuilt dashboards (e.g. `default-overview`) are static definitions
+    // whose queries have no persisted `id`, `widgetId`, or `fieldAliases`.
+    id: z.union([z.string(), z.number()]).optional(),
     name: z.string(),
     fields: z.array(z.string()),
     aggregates: z.array(z.string()),
     // Keyed by aggregate position; omitted by servers that predate the field.
     transformations: z.record(z.string(), z.array(z.string())).optional(),
     columns: z.array(z.string()),
-    fieldAliases: z.array(z.string()),
+    fieldAliases: z.array(z.string()).optional(),
     conditions: z.string(),
     orderby: z.string(),
-    widgetId: z.union([z.string(), z.number()]),
+    widgetId: z.union([z.string(), z.number()]).optional(),
     isHidden: z.boolean().optional(),
     selectedAggregate: z.number().nullable().optional(),
     linkedDashboards: z
@@ -188,13 +190,15 @@ export const DashboardWidgetQuerySchema = z
 
 export const DashboardWidgetSchema = z
   .object({
-    id: z.union([z.string(), z.number()]),
+    // Prebuilt dashboards (e.g. `default-overview`) return widgets that were
+    // never persisted, so `id`, `dateCreated`, and `dashboardId` are omitted.
+    id: z.union([z.string(), z.number()]).optional(),
     title: z.string(),
     description: z.string().nullable().optional(),
     displayType: z.string().nullable(),
     interval: z.string().nullable().optional(),
-    dateCreated: z.string(),
-    dashboardId: z.union([z.string(), z.number()]),
+    dateCreated: z.string().optional(),
+    dashboardId: z.union([z.string(), z.number()]).optional(),
     queries: z.array(DashboardWidgetQuerySchema).default([]),
     limit: z.number().nullable().optional(),
     widgetType: z.string().nullable().optional(),
