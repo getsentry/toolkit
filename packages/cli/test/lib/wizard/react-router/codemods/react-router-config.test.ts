@@ -134,6 +134,29 @@ export default {
       expect(result.ssrWasChanged).toBe(false);
     });
 
+    it("updates an existing react-router.config.js in a TypeScript project", async () => {
+      const writtenFiles: Record<string, string> = {};
+      vi.mocked(existsSync).mockImplementation(
+        (filePath) => filePath === path.join(mockCwd, "react-router.config.js"),
+      );
+      vi.mocked(promises.readFile).mockResolvedValue(
+        "export default {\n  ssr: true,\n};\n",
+      );
+      vi.mocked(promises.writeFile).mockImplementation((filePath, content) => {
+        writtenFiles[filePath as string] = content as string;
+        return Promise.resolve();
+      });
+
+      await instrumentReactRouterConfig(true);
+
+      expect(Object.keys(writtenFiles)).toEqual([
+        path.join(mockCwd, "react-router.config.js"),
+      ]);
+      expect(
+        writtenFiles[path.join(mockCwd, "react-router.config.js")],
+      ).toContain("sentryOnBuildEnd");
+    });
+
     it("should add buildEnd hook to existing config", async () => {
       const existingConfig = `export default {
   ssr: true,

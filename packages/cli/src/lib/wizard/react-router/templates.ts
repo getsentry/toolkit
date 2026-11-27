@@ -378,3 +378,21 @@ export default defineConfig(config => {
 });`),
   );
 };
+
+/** The `package.json` scripts change, shown when the automatic edit fails. */
+export const getManualPackageJsonScriptsContent = () =>
+  makeCodeSnippet(true, (unchanged, plus, minus) =>
+    unchanged(`{
+  scripts: {
+    ${minus('"start": "react-router-serve ./build/server/index.js"')}
+    ${plus(
+      '"start": "NODE_ENV=production NODE_OPTIONS=\'--import ./instrument.server.mjs\' react-router-serve ./build/server/index.js"',
+    )}
+    ${minus('"dev": "react-router dev"')}
+    ${plus(
+      '"dev": "NODE_OPTIONS=\'--import ./instrument.server.mjs\' react-router dev"',
+    )}
+  },
+  // ... rest of your package.json
+}`),
+  );

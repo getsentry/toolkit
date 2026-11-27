@@ -71,29 +71,26 @@ export async function enableTracingAndInstrumentation(
   originalSvelteConfig: PartialBackwardsForwardsCompatibleSvelteConfig,
   enableTracing: boolean,
 ) {
-  const hasTracingEnabled = originalSvelteConfig.kit?.experimental?.tracing;
+  const experimental = originalSvelteConfig.kit?.experimental;
+  const hasTracingEnabled = experimental?.tracing?.server === true;
   const hasInstrumentationEnabled =
-    originalSvelteConfig.kit?.experimental?.instrumentation;
+    experimental?.instrumentation?.server === true;
 
-  if (hasTracingEnabled && hasInstrumentationEnabled) {
+  if (hasInstrumentationEnabled && (hasTracingEnabled || !enableTracing)) {
     clack.log.info("Tracing and instrumentation are already enabled.");
     return;
   }
 
-  if (hasTracingEnabled || hasInstrumentationEnabled) {
-    clack.log.info(
-      "Tracing and instrumentation are partially enabled. Make sure both options are enabled.",
-    );
-    await showFallbackConfigSnippet();
-    return;
-  }
+  // Never turn off server tracing that the project already enabled.
+  const tracingServer = enableTracing || hasTracingEnabled;
+
   try {
     const configPath = path.join(process.cwd(), SVELTE_CONFIG_FILE);
     const svelteConfigContent = await promises.readFile(configPath, "utf-8");
 
     const { error, result } = _enableTracingAndInstrumentationInConfig(
       svelteConfigContent,
-      enableTracing,
+      tracingServer,
     );
 
     if (error) {
@@ -102,7 +99,7 @@ export async function enableTracingAndInstrumentation(
       );
       debug(error);
       reportCliError(error);
-      await showFallbackConfigSnippet();
+      await showFallbackConfigSnippet(tracingServer);
       return;
     }
 
@@ -127,7 +124,7 @@ export async function enableTracingAndInstrumentation(
         `Failed to enable tracing and instrumentation in ${SVELTE_CONFIG_FILE}`,
       ),
     );
-    await showFallbackConfigSnippet();
+    await showFallbackConfigSnippet(tracingServer);
     return;
   }
 }
@@ -370,7 +367,9 @@ function _isValidConfigObject(
   return !!o;
 }
 
-async function showFallbackConfigSnippet(): Promise<void> {
+async function showFallbackConfigSnippet(
+  tracingServer: boolean,
+): Promise<void> {
   const codeSnippet = makeCodeSnippet(true, (unchanged, plus) =>
     unchanged(`const config = {
 preprocess: vitePreprocess(),
@@ -382,7 +381,7 @@ kit: {
       server: true,
     },
     tracing: {
-      server: true,
+      server: ${tracingServer},
     },
   },`)}
 },

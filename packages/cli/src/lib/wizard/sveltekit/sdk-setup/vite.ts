@@ -89,6 +89,7 @@ Skipping adding Sentry functionality to.`,
       ),
     );
     reportCliError(new Error("Sveltekit Vite Config Modification Fail"));
+    return;
   }
 
   clack.log.success(`Added Sentry code to ${prettyViteConfigFilename}`);

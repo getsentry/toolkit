@@ -17,7 +17,7 @@ import { getPackageVersion } from "../utils/package-json.js";
 import { debug } from "../utils/debug.js";
 import { getSentryInstrumentationServerContent } from "./templates.js";
 import { instrumentServerEntry } from "./codemods/server-entry.js";
-import { getPackageDotJson } from "../utils/clack/index.js";
+import { abortIfCancelled, getPackageDotJson } from "../utils/clack/index.js";
 import { instrumentClientEntry } from "./codemods/client.entry.js";
 import { instrumentViteConfig } from "./codemods/vite.js";
 import { instrumentReactRouterConfig } from "./codemods/react-router-config.js";
@@ -62,12 +62,14 @@ export async function tryRevealAndGetManualInstructions(
   missingFilename: string,
   filePath: string,
 ): Promise<boolean> {
-  const shouldTryReveal = await clack.confirm({
-    message: `Would you like to try running ${chalk.cyan(
-      REACT_ROUTER_REVEAL_COMMAND,
-    )} to generate entry files?`,
-    initialValue: true,
-  });
+  const shouldTryReveal = await abortIfCancelled(
+    clack.confirm({
+      message: `Would you like to try running ${chalk.cyan(
+        REACT_ROUTER_REVEAL_COMMAND,
+      )} to generate entry files?`,
+      initialValue: true,
+    }),
+  );
 
   if (shouldTryReveal) {
     try {

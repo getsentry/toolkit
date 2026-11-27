@@ -74,6 +74,38 @@ export default [
     );
   });
 
+  it("should add routes when the default export uses `as RouteConfig`", async () => {
+    writeFileSync(
+      routesConfigPath,
+      `import type { RouteConfig } from "@react-router/dev/routes";
+import { index, route } from "@react-router/dev/routes";
+
+export default [index("routes/home.tsx")] as RouteConfig;`,
+    );
+
+    await addRoutesToConfig(routesConfigPath, true);
+
+    const updatedContent = readFileSync(routesConfigPath, "utf-8");
+    expect(updatedContent).toContain(
+      'route("/sentry-example-page", "routes/sentry-example-page.tsx")',
+    );
+    expect(updatedContent).toContain(
+      'route("/api/sentry-example-api", "routes/api.sentry-example-api.ts")',
+    );
+  });
+
+  it("should throw when the default export is not an array literal", async () => {
+    const routesContent = `import { flatRoutes } from "@react-router/fs-routes";
+
+export default flatRoutes();`;
+    writeFileSync(routesConfigPath, routesContent);
+
+    await expect(addRoutesToConfig(routesConfigPath, true)).rejects.toThrow(
+      "not an array literal",
+    );
+    expect(readFileSync(routesConfigPath, "utf-8")).toBe(routesContent);
+  });
+
   it("should handle JavaScript projects correctly", async () => {
     // Create a routes.ts file
     const routesContent = `import type { RouteConfig } from "@react-router/dev/routes";

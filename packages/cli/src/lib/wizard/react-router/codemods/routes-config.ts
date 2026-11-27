@@ -70,23 +70,31 @@ export async function addRoutesToConfig(
 
       if (declaration.type === "ArrayExpression") {
         arrayExpression = declaration;
-      } else if (declaration.type === "TSSatisfiesExpression") {
-        // Handle TypeScript satisfies expression like: [...] satisfies RouteConfig
+      } else if (
+        declaration.type === "TSSatisfiesExpression" ||
+        declaration.type === "TSAsExpression"
+      ) {
+        // Handle `[...] satisfies RouteConfig` and `[...] as RouteConfig`
         if (declaration.expression.type === "ArrayExpression") {
           arrayExpression = declaration.expression;
         }
       }
 
-      if (arrayExpression) {
-        // Parse and add the new route calls directly to the elements array
-        const pageRouteCall =
-          recast.parse(pageRouteCode).program.body[0].expression;
-        const apiRouteCall =
-          recast.parse(apiRouteCode).program.body[0].expression;
-
-        arrayExpression.elements.push(pageRouteCall);
-        arrayExpression.elements.push(apiRouteCall);
+      if (!arrayExpression) {
+        // The caller turns this into manual instructions for the user.
+        throw new Error(
+          "The default export of the routes config is not an array literal",
+        );
       }
+
+      // Parse and add the new route calls directly to the elements array
+      const pageRouteCall =
+        recast.parse(pageRouteCode).program.body[0].expression;
+      const apiRouteCall =
+        recast.parse(apiRouteCode).program.body[0].expression;
+
+      arrayExpression.elements.push(pageRouteCall);
+      arrayExpression.elements.push(apiRouteCall);
       break;
     }
   }

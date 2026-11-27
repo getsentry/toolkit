@@ -165,7 +165,13 @@ export async function instrumentReactRouterConfig(
     undefined,
   ),
 ): Promise<{ ssrWasChanged: boolean }> {
-  const configFilename = `react-router.config.${isTS ? "ts" : "js"}`;
+  // Prefer an existing config with either extension, so a `.js` config in a
+  // TypeScript project is updated instead of shadowed by a new `.ts` file.
+  const preferredFilename = `react-router.config.${isTS ? "ts" : "js"}`;
+  const configFilename =
+    [preferredFilename, `react-router.config.${isTS ? "js" : "ts"}`].find(
+      (candidate) => existsSync(path.join(process.cwd(), candidate)),
+    ) ?? preferredFilename;
   const configPath = path.join(process.cwd(), configFilename);
 
   if (!existsSync(configPath)) {

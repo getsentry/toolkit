@@ -31,6 +31,7 @@ import {
   getManualServerInstrumentContent,
   getManualReactRouterConfigContent,
   getManualViteConfigContent,
+  getManualPackageJsonScriptsContent,
 } from "../../../../src/lib/wizard/react-router/templates.js";
 
 describe("React Router Templates", () => {
@@ -468,6 +469,21 @@ describe("React Router Templates", () => {
         "import { sentryReactRouter } from '@sentry/react-router/vite';",
       );
       expect(result).toContain("exclude: ['@sentry/react-router']");
+    });
+  });
+
+  describe("getManualPackageJsonScriptsContent", () => {
+    it("replaces the serve start script and the dev script", () => {
+      const result = getManualPackageJsonScriptsContent();
+
+      expect(result).toContain(
+        '- "start": "react-router-serve ./build/server/index.js"',
+      );
+      expect(result).not.toContain('"start": "react-router dev"');
+      expect(result).toContain('- "dev": "react-router dev"');
+      expect(result).toContain(
+        '+ "dev": "NODE_OPTIONS=\'--import ./instrument.server.mjs\' react-router dev"',
+      );
     });
   });
 });

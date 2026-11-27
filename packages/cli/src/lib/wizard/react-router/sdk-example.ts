@@ -70,14 +70,16 @@ export async function createExamplePage(options: {
     clack.log.info(`Created ${chalk.cyan(apiRouteRelative)}.`);
   }
 
-  // Check if there's a routes.ts configuration file and add the route using codemod
-  const routesConfigPath = path.join(options.projectDir, "app", "routes.ts");
-  if (existsSync(routesConfigPath)) {
+  // Check if there's a routes.(ts|js) configuration file and add the route using codemod
+  const routesConfigPath = ["routes.ts", "routes.js"]
+    .map((filename) => path.join(options.projectDir, "app", filename))
+    .find((candidate) => existsSync(candidate));
+  if (routesConfigPath) {
     try {
       await addRoutesToConfig(routesConfigPath, options.isTS);
     } catch (e) {
       clack.log.warn(
-        `Could not update routes.ts configuration: ${
+        `Could not update ${path.basename(routesConfigPath)} configuration: ${
           e instanceof Error ? e.message : String(e)
         }`,
       );

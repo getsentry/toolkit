@@ -14,10 +14,15 @@ vi.mock("@clack/prompts", () => ({
   select: vi.fn(() => Promise.resolve(true)),
 }));
 
+vi.mock("../../../../../src/lib/error-reporting.js", () => ({
+  reportCliError: vi.fn(),
+}));
+
 vi.mock("../../../../../src/lib/wizard/utils/clack/index.js", () => ({
   abortIfCancelled: vi.fn((v: unknown) => v),
 }));
 
+import { log } from "@clack/prompts";
 import { modifyViteConfig } from "../../../../../src/lib/wizard/sveltekit/sdk-setup/vite.js";
 import type { ProjectInfo } from "../../../../../src/lib/wizard/sveltekit/sdk-setup/types.js";
 
@@ -107,5 +112,18 @@ export default defineConfig({
     await modifyViteConfig(viteConfigPath, projectInfo({}));
 
     expect(readFileSync(viteConfigPath, "utf-8")).toBe(existing);
+  });
+
+  it("does not report success when the automatic edit fails", async () => {
+    vi.clearAllMocks();
+    // A config that magicast can parse but `addVitePlugin` cannot handle.
+    writeFileSync(viteConfigPath, "export default 42;\n");
+
+    await modifyViteConfig(viteConfigPath, projectInfo({}));
+
+    expect(log.warning).toHaveBeenCalledWith(
+      expect.stringContaining("Couldn't automatically modify"),
+    );
+    expect(log.success).not.toHaveBeenCalled();
   });
 });

@@ -94,6 +94,16 @@ vi.mock("../../../../src/lib/wizard/utils/clack/index.js", () => {
       },
     ),
     getPackageDotJson: getPackageDotJsonMock,
+    // Same contract as the real helper: a cancelled prompt stops the wizard.
+    abortIfCancelled: vi.fn(async (input: unknown) => {
+      const value = await input;
+      if (typeof value === "symbol") {
+        const { WizardExitError } =
+          await import("../../../../src/lib/errors.js");
+        throw new WizardExitError(0);
+      }
+      return value;
+    }),
   };
 });
 
@@ -109,6 +119,7 @@ import {
 } from "../../../../src/lib/wizard/react-router/sdk-setup.js";
 import { execSync } from "node:child_process";
 import type { Mock } from "vitest";
+import { WizardExitError } from "../../../../src/lib/errors.js";
 import { getSentryInstrumentationServerContent } from "../../../../src/lib/wizard/react-router/templates.js";
 
 describe("React Router SDK Setup", () => {
@@ -450,6 +461,20 @@ describe("tryRevealAndGetManualInstructions", () => {
     expect(clackMocks.success).toHaveBeenCalledWith(
       expect.stringContaining("Found entry.client.tsx after running reveal"),
     );
+  });
+
+  it("stops the wizard without running reveal when the prompt is cancelled", async () => {
+    clackMocks.confirm.mockResolvedValueOnce(
+      Symbol("clack:cancel") as unknown as boolean,
+    );
+
+    await expect(
+      tryRevealAndGetManualInstructions(
+        "entry.client.tsx",
+        "/app/entry.client.tsx",
+      ),
+    ).rejects.toThrow(WizardExitError);
+    expect(execSync).not.toHaveBeenCalled();
   });
 
   it("should return false when user declines reveal operation", async () => {

@@ -22,7 +22,6 @@ import {
   printSdkV11MigrationGuideIfOutdated,
   addDotEnvSentryBuildPluginFile,
   showCopyPasteInstructions,
-  makeCodeSnippet,
   runPrettierIfInstalled,
 } from "../utils/clack/index.js";
 import { offerProjectScopedMcpConfig } from "../utils/clack/mcp-config.js";
@@ -56,6 +55,7 @@ import {
   getManualServerInstrumentContent,
   getManualReactRouterConfigContent,
   getManualViteConfigContent,
+  getManualPackageJsonScriptsContent,
 } from "./templates.js";
 import { abortIfSpotlightNotSupported } from "../utils/abort-if-sportlight-not-supported.js";
 import {
@@ -124,6 +124,7 @@ async function runReactRouterWizardWithTelemetry(
     packageName: `@sentry/react-router@${SENTRY_REACT_ROUTER_SDK_RANGE}`,
     packageNameDisplayLabel: "@sentry/react-router",
     alreadyInstalled: sentryAlreadyInstalled,
+    forceInstall: options.forceInstall,
   });
 
   // The install may have been skipped (user declined the update prompt), so
@@ -203,6 +204,7 @@ The wizard will continue, but you may need to upgrade React Router before moving
       packageName: `@sentry/profiling-node@${SENTRY_REACT_ROUTER_SDK_RANGE}`,
       packageNameDisplayLabel: "@sentry/profiling-node",
       alreadyInstalled: profilingAlreadyInstalled,
+      forceInstall: options.forceInstall,
     });
   }
 
@@ -371,21 +373,7 @@ Please create your entry files manually using React Router v7 commands.`);
 
       await showCopyPasteInstructions({
         filename: "package.json",
-        codeSnippet: makeCodeSnippet(true, (unchanged, plus, minus) => {
-          return unchanged(`{
-            scripts: {
-              ${minus('"start": "react-router dev"')}
-              ${plus(
-                '"start": "NODE_ENV=production NODE_OPTIONS=\'--import ./instrument.server.mjs\' react-router-serve ./build/server/index.js"',
-              )}
-              ${minus('"dev": "react-router dev"')}
-              ${plus(
-                '"dev": "NODE_OPTIONS=\'--import ./instrument.server.mjs\' react-router dev"',
-              )}
-            },
-            // ... rest of your package.json
-          }`);
-        }),
+        codeSnippet: getManualPackageJsonScriptsContent(),
       });
 
       debug(e);
