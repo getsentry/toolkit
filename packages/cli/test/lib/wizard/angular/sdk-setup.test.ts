@@ -1,4 +1,10 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
@@ -60,6 +66,30 @@ describe("initializeSentryOnApplicationEntry", () => {
     expect(error).toHaveBeenCalledWith(
       expect.stringContaining("app.config.ts"),
     );
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining("guides/angular/#configure"),
+    );
+  });
+
+  it("leaves src/app/app.config.ts unchanged and reports no success when it has no providers array", async () => {
+    const appConfigPath = path.join(dir, "src", "app", "app.config.ts");
+    const original = `import { ApplicationConfig } from '@angular/core';
+
+export const appConfig: ApplicationConfig = {
+  providers: someVar,
+};
+`;
+    mkdirSync(path.dirname(appConfigPath), { recursive: true });
+    writeFileSync(appConfigPath, original);
+    vi.spyOn(clack.log, "error").mockImplementation(() => {});
+    vi.spyOn(clack.log, "info").mockImplementation(() => {});
+    const warn = vi.spyOn(clack.log, "warn").mockImplementation(() => {});
+    const success = vi.spyOn(clack.log, "success").mockImplementation(() => {});
+
+    await updateAppConfig(new SemVer("19.0.0"), true);
+
+    expect(readFileSync(appConfigPath, "utf8")).toBe(original);
+    expect(success).not.toHaveBeenCalled();
     expect(warn).toHaveBeenCalledWith(
       expect.stringContaining("guides/angular/#configure"),
     );

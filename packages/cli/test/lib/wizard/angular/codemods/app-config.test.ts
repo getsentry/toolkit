@@ -63,4 +63,37 @@ describe("updateAppConfigMod", () => {
       expect(code).not.toContain("APP_INITIALIZER");
     },
   );
+
+  it("throws instead of reporting success when appConfig has no providers array", () => {
+    const mod = parseModule(`import { ApplicationConfig } from '@angular/core';
+
+export const appConfig: ApplicationConfig = {
+  providers: someVar,
+};
+`);
+
+    expect(() => updateAppConfigMod(mod, new SemVer("19.0.0"), true)).toThrow(
+      "Could not find a `providers` array",
+    );
+  });
+
+  it("ignores other named exports in the file", () => {
+    const mod = parseModule(`export const API_URL = '/api';
+${APP_CONFIG}`);
+    const { code } = generateCode(
+      updateAppConfigMod(mod, new SemVer("19.0.0"), false),
+    );
+
+    expect(code).toContain("provide: ErrorHandler");
+  });
+
+  it("throws when the file has no exported appConfig object", () => {
+    const mod = parseModule(`const appConfig = { providers: [] };
+export default appConfig;
+`);
+
+    expect(() => updateAppConfigMod(mod, new SemVer("19.0.0"), true)).toThrow(
+      "Could not find a `providers` array",
+    );
+  });
 });

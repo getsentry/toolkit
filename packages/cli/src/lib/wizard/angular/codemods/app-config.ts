@@ -21,7 +21,13 @@ export function updateAppConfigMod(
   const isAboveAngularV19 = gte(angularVersion, "19.0.0");
 
   addImports(originalAppConfigMod, isAboveAngularV19, isTracingEnabled);
-  addProviders(originalAppConfigMod, isAboveAngularV19, isTracingEnabled);
+  if (
+    !addProviders(originalAppConfigMod, isAboveAngularV19, isTracingEnabled)
+  ) {
+    throw new Error(
+      "Could not find a `providers` array in `export const appConfig`.",
+    );
+  }
 
   return originalAppConfigMod;
 }
@@ -139,8 +145,9 @@ function addProviders(
   originalAppConfigMod: ProxifiedModule,
   isAboveAngularV19: boolean,
   isTracingEnabled: boolean,
-): void {
+): boolean {
   const b = recast.types.builders;
+  let foundProviders = false;
 
   recast.visit(originalAppConfigMod.exports.$ast, {
     visitExportNamedDeclaration(path) {
@@ -151,7 +158,7 @@ function addProviders(
         path.node.declaration.declarations[0].id.name !== "appConfig" ||
         path.node.declaration.declarations[0].init?.type !== "ObjectExpression"
       ) {
-        return;
+        return false;
       }
 
       const appConfigProps =
@@ -171,8 +178,9 @@ function addProviders(
           : undefined;
 
       if (!validProviders) {
-        return;
+        return false;
       }
+      foundProviders = true;
 
       // Check if there is already an ErrorHandler provider
       const hasErrorHandlerProvider = validProviders.elements.some(
@@ -265,6 +273,9 @@ ${chalk.underline(
       }
 
       this.traverse(path);
+      return false;
     },
   });
+
+  return foundProviders;
 }
