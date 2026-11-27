@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   getSentryReactRouterVitePluginImportPath,
   SENTRY_REACT_ROUTER_SDK_RANGE,
+  getProfilingNodeRange,
 } from "../../../../src/lib/wizard/react-router/sdk-version.js";
 
 describe("getSentryReactRouterVitePluginImportPath", () => {
@@ -31,4 +32,16 @@ describe("getSentryReactRouterVitePluginImportPath", () => {
       );
     },
   );
+});
+
+describe("getProfilingNodeRange", () => {
+  it.each([
+    ["^10.20.0", "^10"],
+    ["10.5.1", "^10"],
+    ["^11.0.0", "^11"],
+    [undefined, "^11"],
+    ["workspace:*", "^11"],
+  ])("matches the installed SDK %s with %s", (installed, expected) => {
+    expect(getProfilingNodeRange(installed)).toBe(expected);
+  });
 });

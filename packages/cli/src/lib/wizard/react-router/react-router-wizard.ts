@@ -32,6 +32,7 @@ import {
 import {
   MIN_REACT_ROUTER_VERSION_FOR_SDK_V11,
   SENTRY_REACT_ROUTER_SDK_RANGE,
+  getProfilingNodeRange,
   getSentryReactRouterVitePluginImportPath,
 } from "./sdk-version.js";
 import { debug } from "../utils/debug.js";
@@ -205,7 +206,9 @@ The wizard will continue, but you may need to upgrade React Router before moving
     );
 
     await installPackage({
-      packageName: `@sentry/profiling-node@${SENTRY_REACT_ROUTER_SDK_RANGE}`,
+      packageName: `@sentry/profiling-node@${getProfilingNodeRange(
+        installedSdkVersion,
+      )}`,
       packageNameDisplayLabel: "@sentry/profiling-node",
       alreadyInstalled: profilingAlreadyInstalled,
       forceInstall: options.forceInstall,
