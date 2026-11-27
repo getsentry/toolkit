@@ -259,6 +259,20 @@ describe("getWranglerDeployCommand", () => {
     ).toBeUndefined();
   });
 
+  it.each([
+    "pnpm -C wrangler deploy",
+    "pnpm --filter wrangler deploy",
+    "yarn --cwd wrangler deploy",
+  ])("ignores a flag value named wrangler: %s", (command) => {
+    expect(getWranglerDeployCommand(command)).toBeUndefined();
+  });
+
+  it("finds wrangler after a flag value: npx -p wrangler wrangler deploy", () => {
+    expect(getWranglerDeployCommand("npx -p wrangler wrangler deploy")).toBe(
+      "npx -p wrangler wrangler deploy",
+    );
+  });
+
   it("ignores commands that only mention wrangler deploy", () => {
     expect(getWranglerDeployCommand("echo wrangler deploy")).toBeUndefined();
   });

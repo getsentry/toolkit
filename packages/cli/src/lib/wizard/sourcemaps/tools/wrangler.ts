@@ -558,6 +558,43 @@ function isWranglerRunnerArg(arg: string): boolean {
 }
 
 /**
+ * Runner flags whose value is the next arg, such as the directory in
+ * `pnpm -C wrangler deploy`, so a `wrangler` there isn't the CLI.
+ */
+const RUNNER_FLAGS_WITH_VALUE = new Set([
+  "-C",
+  "--dir",
+  "-F",
+  "--filter",
+  "--cwd",
+  "-w",
+  "--workspace",
+  "--prefix",
+  "-p",
+  "--package",
+]);
+
+/**
+ * Where `argv` runs `wrangler`, after only runner args (see
+ * {@link isWranglerRunnerArg}), or -1 when it doesn't.
+ */
+function findWranglerIndex(argv: string[]): number {
+  for (let i = 0; i < argv.length; i += 1) {
+    const arg = argv[i] ?? "";
+    if (arg === "wrangler" || arg.startsWith("wrangler@")) {
+      return i;
+    }
+    if (!isWranglerRunnerArg(arg)) {
+      return -1;
+    }
+    if (RUNNER_FLAGS_WITH_VALUE.has(arg)) {
+      i += 1;
+    }
+  }
+  return -1;
+}
+
+/**
  * Wrangler commands with their own `deploy` subcommand, which doesn't take
  * the Workers flags this wizard adds.
  */
@@ -586,13 +623,8 @@ function findWranglerDeployCommand(
       .map((arg) => arg.trim())
       .filter(Boolean);
 
-    const wranglerIndex = argv.findIndex(
-      (arg) => arg === "wrangler" || arg.startsWith("wrangler@"),
-    );
-    if (
-      wranglerIndex === -1 ||
-      !argv.slice(0, wranglerIndex).every(isWranglerRunnerArg)
-    ) {
+    const wranglerIndex = findWranglerIndex(argv);
+    if (wranglerIndex === -1) {
       return false;
     }
     const deployIndex = argv.indexOf("deploy", wranglerIndex + 1);
