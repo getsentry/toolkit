@@ -14,6 +14,7 @@ on:
           - cli
           - http
           - logger
+          - wizard
       bump:
         description: "Version bump: auto (from commits), pre (next prerelease), or an explicit bump type"
         required: true

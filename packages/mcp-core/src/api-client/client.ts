@@ -4248,7 +4248,7 @@ export class SentryApiService {
     params: {
       organizationSlug: string;
       issueId: string | number;
-      dataSource: "discover" | "search_issues";
+      dataSource: "errors" | "search_issues";
     },
     opts?: RequestOptions,
   ): Promise<string[]> {
