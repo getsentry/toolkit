@@ -2,8 +2,9 @@ import {
   getColumnsAndAggregates,
   isAggregateFieldOrEquation,
 } from "@sentry/toolkit-core/events-fields";
+import type { RetryPolicy } from "@sentry/http";
+import { sentryRetry } from "@sentry/toolkit-core/sentry-retry";
 import {
-  type GetOrganizationIssueEventData,
   getOrganizationIssue,
   getOrganizationIssueAutofixState,
   getOrganizationIssueEvent,
@@ -29,7 +30,6 @@ import {
   createIdempotentOperationMatcher,
   nextPageCursor,
   readJsonResponse,
-  type RetryPolicy,
   selectIdempotentWrites,
   sentryBearerHeader,
 } from "@sentry/api/client";
@@ -339,8 +339,8 @@ type RequestOptions = {
 };
 
 /**
- * Caps for automatic retries. Which statuses and methods are retried is the
- * shared rule in `@sentry/api/client`.
+ * Caps for automatic retries. Which statuses and methods are retried is
+ * Sentry's rule in `@sentry/toolkit-core/sentry-retry`.
  *
  * Sentry's per-endpoint limits are mostly per second ("Limit is 40 requests
  * in 1 seconds"), so a 429's reset is usually under a second away and two
@@ -355,18 +355,21 @@ const REQUEST_RETRY_POLICY: RetryPolicy = {
   maxTotalDelayMs: 3000,
 };
 
+const isIdempotentOperation = createIdempotentOperationMatcher(() =>
+  selectIdempotentWrites(operations),
+);
+
 /**
- * Every request goes through the shared transport. `SentryApiService` sets its
- * own headers, including Authorization, so the transport only retries; as
- * before, it adds no timeout. `fresh` passes on a tool call's `fresh: true`,
- * for when the transport gets a cache.
+ * Every request goes through the shared transport, which retries each
+ * attempt through `sentryRetry`. `SentryApiService` sets its own
+ * headers, including Authorization, and as before there is no timeout.
+ * `fresh` passes on a tool call's `fresh: true`, for when the transport gets
+ * a cache.
  */
 const transport = createApiTransport({
-  retry: REQUEST_RETRY_POLICY,
+  retry: sentryRetry({ policy: REQUEST_RETRY_POLICY }),
   fresh: isFreshRead,
-  isIdempotent: createIdempotentOperationMatcher(() =>
-    selectIdempotentWrites(operations),
-  ),
+  isIdempotent: isIdempotentOperation,
 });
 
 /**
@@ -3848,9 +3851,7 @@ export class SentryApiService {
       path: {
         organization_id_or_slug: organizationSlug,
         issue_id: issueId,
-        // The generated type lists only the aliases, but Sentry also accepts
-        // a 32-character event ID here.
-        event_id: eventId as GetOrganizationIssueEventData["path"]["event_id"],
+        event_id: eventId,
       },
       throwOnError: true,
     });

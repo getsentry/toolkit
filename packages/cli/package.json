@@ -102,6 +102,7 @@
     "@hono/node-server": "^2.1.6",
     "@sentry/api": "catalog:",
     "@sentry/core": "catalog:",
+    "@sentry/http": "workspace:*",
     "@sentry/logger": "workspace:*",
     "@sentry/mcp-core": "workspace:*",
     "@sentry/node": "catalog:",

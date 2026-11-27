@@ -108,6 +108,8 @@ export type FlagDef = {
   variadic?: boolean;
   placeholder?: string;
   hidden?: boolean;
+  /** Takes a value only as `--flag=value` (our Stricli patch); bare, it consumes nothing. */
+  inlineOnly?: boolean;
   /** Stricli parser; completion-aware parsers carry a {@link CompletionTarget}. */
   parse?: unknown;
   /** Accepted values of an `enum` flag. */
@@ -144,6 +146,8 @@ export type FlagInfo = {
   optional: boolean;
   variadic: boolean;
   hidden: boolean;
+  /** Value attaches only as `--flag=value`. */
+  inlineOnly?: boolean;
 };
 
 /** Extracted metadata for a route group or standalone command */
@@ -289,6 +293,7 @@ export function extractFlags(
     optional: def.optional ?? def.kind === "boolean",
     variadic: def.variadic ?? false,
     hidden: def.hidden ?? false,
+    ...(def.inlineOnly ? { inlineOnly: true } : {}),
   }));
 }
 
@@ -484,7 +489,9 @@ function getCommandCompletion(command: Command): CommandCompletion {
   const flagKinds: Record<string, CompletionTarget | null> = {};
   const datasets: Record<string, DatasetCompletion> = {};
   for (const [name, def] of Object.entries(flags)) {
-    if (def.kind !== "boolean") {
+    // An inline-only flag never takes the next word, so completion treats it
+    // like a boolean.
+    if (def.kind !== "boolean" && !def.inlineOnly) {
       const { kind, values } = argumentCompletion(
         def.parse,
         def.kind === "enum" ? def.values : undefined,

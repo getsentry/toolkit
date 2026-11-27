@@ -24,8 +24,11 @@
  *   description as a workflow-design concern; recommendation is to use
  *   `sntrys_` tokens in CI.
  *
- * - `.sentryclirc` files are never consulted here — they have weaker
- *   integrity than either env or token claims.
+ * - `.sentryclirc` files are never read here — they have weaker integrity
+ *   than either env or token claims. A `sntrys_` token that the rc shim
+ *   injects is scoped to its own claim through
+ *   {@link scopeRcTokenToClaim}, never to anything else in the file (see
+ *   `assertRcUrlTrusted` in `sentryclirc.ts` for the attack this blocks).
  *
  * Boot ordering (see `src/cli.ts::preloadProjectContext`):
  *   1. captureEnvTokenHost()      ← this module, env + claim, synchronous
@@ -50,9 +53,11 @@ type HostSnapshot = {
   /**
    * The env token present when the snapshot was taken. A token set later
    * (the `.sentryclirc` shim copies `[auth] token` into `SENTRY_AUTH_TOKEN`)
-   * was not scoped by this snapshot.
+   * was not scoped by this snapshot, except through `rcClaim`.
    */
   token?: string;
+  /** A `.sentryclirc` `sntrys_` token and its claim host. */
+  rcClaim?: { token: string; host: string };
 };
 const EXPLICIT_SCHEME_RE = /^([a-z][a-z\d+.-]*):\/\//i;
 
@@ -163,7 +168,51 @@ export function getEnvTokenHost(): string {
   if (snapshot?.claimError) {
     throw snapshot.claimError;
   }
-  return snapshot?.host ?? DEFAULT_SENTRY_URL;
+  return (
+    getRcClaimHost(snapshot, getRawEnvToken()) ??
+    snapshot?.host ??
+    DEFAULT_SENTRY_URL
+  );
+}
+
+function getRcClaimHost(
+  snapshot: HostSnapshot | undefined,
+  token: string | undefined,
+): string | undefined {
+  return token !== undefined && snapshot?.rcClaim?.token === token
+    ? snapshot.rcClaim.host
+    : undefined;
+}
+
+/**
+ * Scope the env token that the `.sentryclirc` shim just injected to its
+ * `sntrys_` claim, so {@link getEnvTokenHost} returns the claim's host for
+ * it. No-op for a token without a usable claim (it keeps the boot host),
+ * and before the boot snapshot exists: a snapshot taken after the shim
+ * would not know the token came from rc.
+ */
+export function scopeRcTokenToClaim(): void {
+  const env = getEnv();
+  const snapshot = snapshotState.byEnv.get(env);
+  const token = getRawEnvToken();
+  if (!(snapshot && token) || snapshot.token === token) {
+    return;
+  }
+  const { host } = captureClaimHost(token);
+  if (host) {
+    snapshotState.byEnv.set(env, { ...snapshot, rcClaim: { token, host } });
+  }
+}
+
+/**
+ * The host the active `.sentryclirc` token had before its claim scoped it:
+ * the boot `SENTRY_HOST`/`SENTRY_URL`, else SaaS. `undefined` unless
+ * `token` is the claim-scoped rc token. `SENTRY_CUSTOM_HEADERS` use it, so
+ * a host that only the rc file names never receives them.
+ */
+export function getRcTokenBootHost(token: string): string | undefined {
+  const snapshot = snapshotState.byEnv.get(getEnv());
+  return getRcClaimHost(snapshot, token) ? snapshot?.host : undefined;
 }
 
 /**

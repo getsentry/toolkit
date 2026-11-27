@@ -6,6 +6,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   getAuthConfig: vi.fn(),
+  getCredentialContext: vi.fn(),
   runInteractiveLogin: vi.fn(),
   completeAgentHandoff: vi.fn(),
   ensureScopesForAction: vi.fn(),
@@ -19,7 +20,7 @@ const mocks = vi.hoisted(() => ({
   createOrgAuthToken: vi.fn(),
   select: vi.fn(),
   text: vi.fn(),
-  isRequestOriginTrusted: vi.fn(),
+  isRequestOriginTrustedForContext: vi.fn(),
   getApiBaseUrl: vi.fn(),
   resolveOrgOptionalTarget: vi.fn(),
   warn: vi.fn(),
@@ -44,7 +45,7 @@ vi.mock("../../../../src/lib/token-host.js", async (importOriginal) => ({
   ...(await importOriginal<
     typeof import("../../../../src/lib/token-host.js")
   >()),
-  isRequestOriginTrusted: mocks.isRequestOriginTrusted,
+  isRequestOriginTrustedForContext: mocks.isRequestOriginTrustedForContext,
 }));
 vi.mock("../../../../src/lib/sentry-client.js", async (importOriginal) => ({
   ...(await importOriginal<
@@ -55,6 +56,7 @@ vi.mock("../../../../src/lib/sentry-client.js", async (importOriginal) => ({
 vi.mock("../../../../src/lib/db/auth.js", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../../../src/lib/db/auth.js")>()),
   getAuthConfig: mocks.getAuthConfig,
+  getCredentialContext: mocks.getCredentialContext,
 }));
 vi.mock("../../../../src/lib/interactive-login.js", () => ({
   runInteractiveLogin: mocks.runInteractiveLogin,
@@ -123,7 +125,11 @@ beforeEach(async () => {
   mocks.getApiBaseUrl.mockImplementation(actualClient.getApiBaseUrl);
   vi.stubEnv("SENTRY_HANDOFF", "");
   mocks.getAuthConfig.mockReturnValue({ token: "stored" });
-  mocks.isRequestOriginTrusted.mockReturnValue(true);
+  mocks.getCredentialContext.mockReturnValue({
+    host: "https://sentry.io",
+    identity: "stored",
+  });
+  mocks.isRequestOriginTrustedForContext.mockReturnValue(true);
   mocks.listOrganizations.mockResolvedValue([ORG]);
   mocks.getProject.mockResolvedValue(PROJECT);
   mocks.getProjectKeys.mockResolvedValue([KEY]);
@@ -281,7 +287,7 @@ describe("getOrAskForProjectData", () => {
   });
 
   it("logs in again when the stored login is for another instance", async () => {
-    mocks.isRequestOriginTrusted.mockReturnValueOnce(false);
+    mocks.isRequestOriginTrustedForContext.mockReturnValueOnce(false);
     mocks.runInteractiveLogin.mockResolvedValue({ method: "oauth" });
 
     await getOrAskForProjectData({

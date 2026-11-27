@@ -331,13 +331,13 @@ export function getCustomHeaders(): readonly [string, string][] {
  * Apply custom headers to a `Headers` instance, scoped to a request URL.
  *
  * Reads from the env var or SQLite defaults, validates, and sets each header,
- * but ONLY when `requestUrl`'s origin matches the active token's trust class
- * (or, in the no-token bootstrap window, the explicit `--url` login anchor).
- * This prevents `SENTRY_CUSTOM_HEADERS` (IAP tokens, mTLS headers) from
- * leaking to a host the user didn't authenticate against.
- *
- * Fails closed when no token and no login anchor are present — see
- * {@link isRequestOriginTrustedForCustomHeaders}.
+ * but ONLY when `isTrusted`. Authenticated requests pass the result of their
+ * credential's host check. Without it, the default trusts only a host the
+ * user logged in to (the `--url` login anchor or a stored login), never an
+ * env-only `SENTRY_URL`/`SENTRY_HOST` — see
+ * {@link isRequestOriginTrustedForCustomHeaders}. This prevents
+ * `SENTRY_CUSTOM_HEADERS` (IAP tokens, mTLS headers) from leaking to a host
+ * the user didn't authenticate against.
  *
  * @param headers - The `Headers` instance to modify in-place
  * @param requestUrl - The destination URL whose origin is checked

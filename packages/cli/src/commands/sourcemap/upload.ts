@@ -14,8 +14,10 @@ import {
 import type { SentryContext } from "../../context.js";
 import {
   type ArtifactFile,
+  DEFAULT_UPLOAD_MAX_WAIT_MS,
   uploadSourcemaps,
 } from "../../lib/api/sourcemaps.js";
+import { isCi } from "../../lib/ci.js";
 import { buildCommand } from "../../lib/command.js";
 import {
   choiceListParser,
@@ -37,6 +39,7 @@ import {
   discoverFilePairs,
   injectDirectory,
   type InjectResult,
+  readExistingDebugIds,
   resolveUploadTarget,
 } from "../../lib/sourcemap/inject.js";
 import { sentry } from "../../lib/app-identity.js";
@@ -76,6 +79,25 @@ function formatUploadResult(data: UploadCommandResult): string {
 }
 
 const usageHint = () => sentry`sourcemap upload <directory>`;
+
+/**
+ * Parse `--wait[=seconds]` into a wait limit in seconds.
+ *
+ * Bare `--wait` parses `""` and keeps the default limit. `0` means no limit.
+ */
+export function parseWaitSeconds(input: string): number {
+  if (input === "") {
+    return DEFAULT_UPLOAD_MAX_WAIT_MS / 1000;
+  }
+  const seconds = Number(input);
+  if (!Number.isInteger(seconds) || seconds < 0) {
+    throw new ValidationError(
+      `--wait takes a whole number of seconds (got "${input}"). Use --wait=0 to wait with no limit.`,
+      "wait",
+    );
+  }
+  return seconds;
+}
 
 /**
  * Compute the longest common directory prefix across a list of paths.
@@ -124,7 +146,7 @@ type ArtifactContext = {
   urlPrefix: string;
   /** Directory prefix to strip from relative paths (may be empty). */
   pathPrefixToStrip: string;
-  /** True when `--no-rewrite` is set (upload as-is, no debug IDs injected). */
+  /** True when `--no-rewrite` is set (upload as-is, keeping existing debug IDs). */
   noRewrite: boolean;
 };
 
@@ -194,8 +216,6 @@ function buildArtifactPair(
   return [
     {
       path: jsPath,
-      // Empty debugId when --no-rewrite: files uploaded without debug IDs,
-      // relying on release/URL-based matching instead.
       ...debugIdField,
       type: "minified_source",
       url: `${ctx.urlPrefix}${jsRelative}`,
@@ -223,7 +243,12 @@ export const uploadCommand = buildCommand({
       "Exits with an error if zero JS + sourcemap pairs are discovered " +
       "(typical cause: bundler not emitting .map files). Pass " +
       "--allow-empty to suppress this check for directories that may " +
-      "legitimately be empty.",
+      "legitimately be empty.\n\n" +
+      "In CI, the command waits up to five minutes for Sentry to finish " +
+      "processing the upload and exits with an error if processing fails. " +
+      "Elsewhere it exits once Sentry accepts the upload. Pass --wait or " +
+      "--no-wait to override, and --wait=<seconds> to change the limit " +
+      "(--wait=0 waits with no limit). The value must be attached with =.",
     examples: [
       {
         description: "Upload sourcemaps from dist/",
@@ -256,6 +281,14 @@ export const uploadCommand = buildCommand({
       {
         description: "Only upload some extensions",
         run: "sourcemap upload ./dist --ext .js,.mjs",
+      },
+      {
+        description: "Wait for Sentry to process the upload outside CI",
+        run: "sourcemap upload ./dist --wait",
+      },
+      {
+        description: "Wait up to ten minutes for processing",
+        run: "sourcemap upload ./dist --wait=600",
       },
     ],
   },
@@ -340,6 +373,22 @@ export const uploadCommand = buildCommand({
         optional: true,
         default: false,
       },
+      wait: {
+        kind: "parsed",
+        parse: parseWaitSeconds,
+        brief:
+          "Wait for the server to fully process the uploaded files, up to " +
+          "the given seconds (default: 300, 0 = no limit; on in CI)",
+        placeholder: "seconds",
+        optional: true,
+        inlineOnly: true,
+      },
+      "no-wait": {
+        kind: "boolean",
+        brief: "Exit once Sentry accepts the upload, even in CI",
+        optional: true,
+        default: false,
+      },
     },
   },
   async *func(
@@ -355,9 +404,32 @@ export const uploadCommand = buildCommand({
       "strip-common-prefix"?: boolean;
       "no-rewrite"?: boolean;
       "allow-empty"?: boolean;
+      wait?: number | string;
+      "no-wait"?: boolean;
     },
     dir: string,
   ) {
+    if (flags.wait !== undefined && flags["no-wait"]) {
+      throw new ValidationError(
+        "--wait and --no-wait cannot be used together.",
+        "wait",
+      );
+    }
+    // CI must fail when Sentry rejects the bundle, so wait there by default.
+    const wait = flags["no-wait"]
+      ? false
+      : flags.wait !== undefined || isCi(this.env);
+    // SDK callers may supply the public string form without Stricli parsing.
+    const waitSeconds =
+      typeof flags.wait === "string"
+        ? parseWaitSeconds(flags.wait)
+        : flags.wait;
+    let maxWaitMs = DEFAULT_UPLOAD_MAX_WAIT_MS;
+    if (waitSeconds !== undefined) {
+      maxWaitMs =
+        waitSeconds === 0 ? Number.POSITIVE_INFINITY : waitSeconds * 1000;
+    }
+
     // Validate the directory and discover pairs read-only first so we
     // don't write debug IDs when the upload won't proceed (empty dir,
     // typoed path, missing credentials).
@@ -424,13 +496,7 @@ export const uploadCommand = buildCommand({
     const { org, project } = resolved;
 
     const results: InjectResult[] = flags["no-rewrite"]
-      ? pairs.map((p) => ({
-          jsPath: p.jsPath,
-          map: p.map,
-          mapPath: p.map.kind === "external" ? p.map.mapPath : undefined,
-          injected: false,
-          debugId: "",
-        }))
+      ? await readExistingDebugIds(pairs)
       : await injectDirectory(target.dir, {
           extensions,
           ignoreMatcher,
@@ -475,6 +541,8 @@ export const uploadCommand = buildCommand({
       release: flags.release,
       dist: flags.dist,
       files: artifactFiles,
+      wait,
+      maxWaitMs,
     });
 
     // Count actually-uploaded pairs (one minified_source entry per pair).

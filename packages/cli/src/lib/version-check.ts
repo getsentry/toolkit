@@ -30,7 +30,7 @@ import { GLOBAL_FLAGS } from "./global-flags.js";
 import { logger } from "./logger.js";
 import { cleanupPatchCache } from "./patch-cache.js";
 import {
-  fetchLatestFromGitHubWithSource,
+  fetchLatestStableWithSource,
   fetchLatestNightlyVersionWithSource,
 } from "./upgrade.js";
 import { reportCliError } from "./error-reporting.js";
@@ -297,11 +297,11 @@ function checkForUpdateInBackgroundImpl(): void {
     },
     async (span) => {
       try {
-        // Use GHCR for nightly channel; GitHub Releases for stable.
+        // Use GHCR for nightly channel; the release registry for stable.
         const { version: latestVersion, source } =
           channel === "nightly"
             ? await fetchLatestNightlyVersionWithSource(signal)
-            : await fetchLatestFromGitHubWithSource(signal);
+            : await fetchLatestStableWithSource(signal);
         setVersionCheckInfo(latestVersion);
 
         // Pre-fetch delta patches so `sentry cli upgrade` can apply them offline
