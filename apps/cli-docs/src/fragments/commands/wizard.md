@@ -53,9 +53,9 @@ the Sentry docs instead.
 
 Flows that uploaded source maps with `@sentry/cli`, such as Angular, now
 install the `sentry` package instead. The `sentry:sourcemaps` script they add
-to `package.json` runs `sentry sourcemap inject` and `sentry sourcemap upload`
-on your build output. The wizard writes your org, project and, on self-hosted
-Sentry, URL to the `[defaults]` section of the project's `.sentryclirc`, next
-to the auth token, and adds the file to `.gitignore`. In CI, set
-`SENTRY_AUTH_TOKEN`. On self-hosted Sentry, also set `SENTRY_ORG`,
+to `package.json` runs `sentry sourcemap upload` on your build output, which
+injects debug IDs before it uploads. The wizard writes your org, project and,
+on self-hosted Sentry, URL to the `[defaults]` section of the project's
+`.sentryclirc`, next to the auth token, and adds the file to `.gitignore`. In
+CI, set `SENTRY_AUTH_TOKEN`. On self-hosted Sentry, also set `SENTRY_ORG`,
 `SENTRY_PROJECT` and `SENTRY_URL`.
