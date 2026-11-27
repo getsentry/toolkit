@@ -480,7 +480,7 @@ function getModuleExports(
 
 function getMetroWithSentryConfigSnippet(colors: boolean) {
   return makeCodeSnippet(colors, (unchanged, plus, _) =>
-    unchanged(`const {getDefaultConfig, mergeConfig} = require('@react-native/metro-config');";
+    unchanged(`const {getDefaultConfig, mergeConfig} = require('@react-native/metro-config');
 ${plus("const {withSentryConfig} = require('@sentry/react-native/metro');")}
 
 const config = {};

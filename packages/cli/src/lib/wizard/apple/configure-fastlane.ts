@@ -7,6 +7,7 @@ import { clack } from "../utils/clack/prompts.js";
 import { Sentry } from "../telemetry.js";
 import chalk from "chalk";
 import { traceStep } from "../telemetry.js";
+import { abortIfCancelled } from "../utils/clack/index.js";
 import { debug } from "../utils/debug.js";
 import { addSentryToFastlane, fastFile } from "./fastlane.js";
 
@@ -29,10 +30,12 @@ export async function configureFastlane({
   }
 
   debug(`Fastfile found, asking user if they want to configure Fastlane`);
-  const shouldAddLane = await clack.confirm({
-    message:
-      "Found a Fastfile in your project. Do you want to configure a lane to upload debug symbols to Sentry?",
-  });
+  const shouldAddLane = await abortIfCancelled(
+    clack.confirm({
+      message:
+        "Found a Fastfile in your project. Do you want to configure a lane to upload debug symbols to Sentry?",
+    }),
+  );
   debug(`User wants to add lane: ${chalk.cyan(shouldAddLane.toString())}`);
   Sentry.setTag("fastlane-desired", shouldAddLane);
 

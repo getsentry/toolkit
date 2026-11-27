@@ -6,16 +6,16 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { MacOSSystemHelpers } from "../../../../src/lib/wizard/apple/macos-system-helper.js";
 
-const { execSyncMock } = vi.hoisted(() => {
+const { execFileSyncMock } = vi.hoisted(() => {
   return {
-    execSyncMock: vi.fn(),
+    execFileSyncMock: vi.fn(),
   };
 });
 
 vi.mock("node:child_process", async () => {
   return {
     ...(await vi.importActual("node:child_process")),
-    execSync: execSyncMock,
+    execFileSync: execFileSyncMock,
   };
 });
 
@@ -27,12 +27,11 @@ describe("MacOSSystemHelpers", () => {
 
   describe("readXcodeBuildSettings", () => {
     describe("project path", () => {
-      it("should escape quotes", () => {
+      it("passes the path as one argument without a shell", () => {
         // -- Arrange --
-        const projectPath = 'some path" && echo "Hello World"';
+        const projectPath = 'some path" && echo "$(touch pwned)"';
 
-        // Use spyOn instead of vi.mock
-        execSyncMock.mockImplementationOnce(() => {
+        execFileSyncMock.mockImplementationOnce(() => {
           return "   ACTION = build";
         });
 
@@ -44,9 +43,9 @@ describe("MacOSSystemHelpers", () => {
         expect(buildSettings).toEqual({
           ACTION: "build",
         });
-        // We expect the project path to be escaped
-        expect(execSyncMock).toHaveBeenCalledWith(
-          `"xcodebuild" "-project" "some path\\" && echo \\"Hello World\\"" "-showBuildSettings"`,
+        expect(execFileSyncMock).toHaveBeenCalledWith(
+          "xcodebuild",
+          ["-project", projectPath, "-showBuildSettings"],
           { encoding: "utf8" },
         );
       });
