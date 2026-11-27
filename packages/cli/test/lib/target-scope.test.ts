@@ -161,11 +161,12 @@ describe("a project scope", () => {
       "organizations/acme/issues/?id=100",
       "organizations/acme/issues/?id=100&project=1",
     ],
-    // Not every endpoint reads a slug, so the filter is by ID.
+    // Older Sentry versions read only IDs in `project`, and not every
+    // endpoint reads `projectSlug`, so the filter is by ID.
     [
       "GET",
       "organizations/acme/issues/?project=web",
-      "organizations/acme/issues/?project=web&project=1",
+      "organizations/acme/issues/?project=1",
     ],
     [
       "GET",

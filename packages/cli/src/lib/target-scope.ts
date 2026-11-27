@@ -221,9 +221,10 @@ const ALL_PROJECTS = "-1";
 
 /**
  * Filter an organization endpoint to the scope's project: a request for
- * another project is refused, and one with no numeric `project` filter
- * (none, `-1` for every project, or only slugs) gets the scope project's
- * ID. Not every endpoint reads `projectSlug`, or slugs in `project`.
+ * another project is refused, and the rest are sent with `project` set to
+ * numeric IDs, the scope project's when they have none. A slug or `-1` in
+ * `project` is dropped once checked, since older Sentry versions read only
+ * IDs there; not every endpoint reads `projectSlug` either.
  */
 async function filterToProject(
   context: RequestContext,
@@ -232,23 +233,23 @@ async function filterToProject(
 ): Promise<Request | string | URL> {
   const { url, scope } = context;
   const projects = url.searchParams.getAll("project");
-  const kept = projects.filter((project) => project !== ALL_PROJECTS);
-  for (const project of [...kept, ...url.searchParams.getAll("projectSlug")]) {
+  const requested = projects.filter((project) => project !== ALL_PROJECTS);
+  for (const project of [
+    ...requested,
+    ...url.searchParams.getAll("projectSlug"),
+  ]) {
     if (!(await anyScopeProject(context, [project]))) {
       throw outsideScope(subject, scope);
     }
   }
-  const hasId = kept.some((project) => NUMERIC_ID.test(project));
-  if (hasId && kept.length === projects.length) {
+  const ids = requested.filter((project) => NUMERIC_ID.test(project));
+  if (ids.length > 0 && ids.length === projects.length) {
     return input;
   }
   const filtered = new URL(url);
   filtered.searchParams.delete("project");
-  for (const project of kept) {
-    filtered.searchParams.append("project", project);
-  }
-  if (!hasId) {
-    filtered.searchParams.append("project", await scopeProjectId(context));
+  for (const id of ids.length > 0 ? ids : [await scopeProjectId(context)]) {
+    filtered.searchParams.append("project", id);
   }
   return input instanceof Request
     ? new Request(filtered, input)
