@@ -23,6 +23,7 @@ const API = { id: "2", slug: "api" };
 /** Bodies by path: issue 100 is in `web`, issue 200 in `api`. */
 const BODIES: Record<string, unknown> = {
   "projects/acme/web/": WEB,
+  "projects/acme/1/": WEB,
   "organizations/acme/issues/100/": { id: "100", project: WEB },
   "organizations/acme/issues/200/": { id: "200", project: API },
   "organizations/acme/shortids/WEB-1/": { projectSlug: "web" },
@@ -36,6 +37,9 @@ const BODIES: Record<string, unknown> = {
   ],
   "organizations/acme/trace/b/": [{ project_slug: "api", children: [] }],
   "organizations/acme/trace/empty/": [],
+  "organizations/acme/trace/mixed/": [
+    { project_slug: "api", children: [{ project_id: 1 }] },
+  ],
   "organizations/acme/detectors/7/": { projectId: "1" },
   "organizations/acme/detectors/8/": { projectId: "2" },
   "organizations/acme/releases/1.0/": { projects: [API, WEB] },
@@ -103,13 +107,13 @@ describe("a project scope", () => {
     ["PUT", "projects/acme/web/", "a change to its project"],
     ["GET", "projects/acme/1/", "its project by ID"],
     ["GET", "organizations/acme/issues/?project=1", "issues of its project"],
-    ["GET", "organizations/acme/issues/?project=web", "the same by slug"],
     ["GET", "organizations/acme/issues/100/", "an issue of its project"],
     ["GET", "organizations/acme/shortids/WEB-1/", "a short ID in it"],
     ["GET", "organizations/acme/eventids/a/", "an event ID in it"],
     ["GET", "organizations/acme/replays/a/", "a replay of it"],
     ["GET", "organizations/acme/trace/a/", "a trace through it"],
     ["GET", "organizations/acme/trace/empty/", "an empty trace"],
+    ["GET", "organizations/acme/trace/mixed/", "a trace naming it by ID"],
     ["GET", "organizations/acme/detectors/7/", "an alert of it"],
     ["GET", "organizations/acme/releases/1.0/", "a release with it"],
     // Read-only organization metadata.
@@ -156,6 +160,17 @@ describe("a project scope", () => {
       "PUT",
       "organizations/acme/issues/?id=100",
       "organizations/acme/issues/?id=100&project=1",
+    ],
+    // Not every endpoint reads a slug, so the filter is by ID.
+    [
+      "GET",
+      "organizations/acme/issues/?project=web",
+      "organizations/acme/issues/?project=web&project=1",
+    ],
+    [
+      "GET",
+      "organizations/acme/issues/?projectSlug=web",
+      "organizations/acme/issues/?projectSlug=web&project=1",
     ],
   ])("filters %s %s to its project", async (method, path, filtered) => {
     expect(await sentAs(WEB_SCOPE, method, path)).toBe(filtered);
@@ -236,6 +251,60 @@ describe("a project scope", () => {
     await expect(send(WEB_SCOPE, method, path)).rejects.toThrow(
       /outside this session's scope \(acme\/web\)/,
     );
+  });
+
+  test.each([
+    [
+      "GET",
+      "organizations/acme/issues/",
+      "organizations/acme/issues/?project=1",
+    ],
+    ["GET", "projects/acme/1/", "projects/acme/1/"],
+  ])("by ID sends %s %s as %s", async (method, path, sent) => {
+    expect(await sentAs({ org: "acme", project: "1" }, method, path)).toBe(
+      sent,
+    );
+  });
+
+  test("by ID checks a short ID's slug", async () => {
+    const sent = await send(
+      { org: "acme", project: "1" },
+      "GET",
+      "organizations/acme/shortids/WEB-1/",
+    );
+    expect(sent.map((request) => request.path)).toEqual([
+      "organizations/acme/shortids/WEB-1/",
+      "projects/acme/1/",
+    ]);
+  });
+
+  test("by ID refuses another project's short ID", async () => {
+    await expect(
+      send(
+        { org: "acme", project: "1" },
+        "GET",
+        "organizations/acme/shortids/API-1/",
+      ),
+    ).rejects.toThrow(/outside this session's scope \(acme\/1\)/);
+  });
+
+  test("sends its lookups with the request's headers", async () => {
+    const lookups: (string | null)[] = [];
+    const fetchScoped = withTargetScope(async (input, init) => {
+      const request = new Request(input, init);
+      if (request.url.endsWith("/projects/acme/web/")) {
+        lookups.push(request.headers.get("Authorization"));
+      }
+      return Response.json(WEB);
+    });
+    await withEnv(
+      { [SCOPE_ORG_ENV_VAR]: "acme", [SCOPE_PROJECT_ENV_VAR]: "web" },
+      () =>
+        fetchScoped(`${BASE}organizations/acme/issues/`, {
+          headers: { Authorization: "Bearer t" },
+        }),
+    );
+    expect(lookups).toEqual(["Bearer t"]);
   });
 
   test("refuses before it sends", async () => {

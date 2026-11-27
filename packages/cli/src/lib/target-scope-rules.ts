@@ -127,13 +127,21 @@ function ref(value: unknown): string | undefined {
     : undefined;
 }
 
+/**
+ * One project's ref: its slug when it has one, which the scope can check
+ * without looking up its own project's ID.
+ */
+function refOf(slug: unknown, id: unknown): string | undefined {
+  return ref(slug) ?? ref(id);
+}
+
 /** `{ project: { slug, id } }`, as issues and monitors carry it. */
 function projectOf(body: unknown): (string | undefined)[] {
   const project = record(record(body).project);
-  return [ref(project.slug), ref(project.id)];
+  return [refOf(project.slug, project.id)];
 }
 
-/** Every `project_slug`/`project_id` of a trace's span tree. */
+/** Each span's `project_slug` or `project_id` in a trace's span tree. */
 function traceProjects(spans: unknown): (string | undefined)[] {
   if (!Array.isArray(spans)) {
     return [undefined];
@@ -141,8 +149,7 @@ function traceProjects(spans: unknown): (string | undefined)[] {
   return spans.flatMap((span) => {
     const fields = record(span);
     return [
-      ref(fields.project_slug),
-      ref(fields.project_id),
+      refOf(fields.project_slug, fields.project_id),
       ...(Array.isArray(fields.children) ? traceProjects(fields.children) : []),
     ];
   });
@@ -331,10 +338,9 @@ export const PROJECT_SCOPE_RULES: readonly ScopeRule[] = [
       projects: (body) => {
         const projects = record(body).projects;
         return Array.isArray(projects)
-          ? projects.flatMap((project) => [
-              ref(record(project).slug),
-              ref(record(project).id),
-            ])
+          ? projects.map((project) =>
+              refOf(record(project).slug, record(project).id),
+            )
           : [undefined];
       },
       path: releasePath,

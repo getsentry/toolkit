@@ -121,15 +121,21 @@ const NOTHING_TO_VERIFY = async (): Promise<void> => {
   // The request alone keeps it in scope.
 };
 
-/** The scope projects' IDs this process looked up, by scope and host. */
-const projectIds = new Map<string, Promise<string>>();
+/** Project slugs are never entirely numeric, so digits are a project ID. */
+const NUMERIC_ID = /^\d+$/;
+
+/** A scope project's numeric ID and slug. */
+type ScopeProject = { id: string; slug?: string };
+
+/** The scope projects this process looked up, by scope and host. */
+const scopeProjects = new Map<string, Promise<ScopeProject>>();
 
 /** Paths a `response` rule found in scope, by scope and host. */
 const foundInScope = new Set<string>();
 
 /** @internal Test-only: forget the lookups of earlier invocations. */
 export function __resetScopeLookupsForTests(): void {
-  projectIds.clear();
+  scopeProjects.clear();
   foundInScope.clear();
 }
 
@@ -145,16 +151,17 @@ function lookupKey({ scope, url }: RequestContext, path: string): string {
   return `${scopeLabel(scope)}|${url.origin}/api/0/${path}`;
 }
 
-/** The numeric ID of the scope's project, looked up once per process. */
-function scopeProjectId(context: RequestContext): Promise<string> {
+/** The scope's project, looked up once per process. */
+function lookUpScopeProject(context: RequestContext): Promise<ScopeProject> {
   const { scope, url, send } = context;
   const path = `projects/${encodeURIComponent(scope.org)}/${encodeURIComponent(scope.project)}/`;
   const key = lookupKey(context, path);
-  let pending = projectIds.get(key);
+  let pending = scopeProjects.get(key);
   if (!pending) {
     pending = (async () => {
       const response = await send(`${url.origin}/api/0/${path}`);
-      const id = response.ok ? record(await readJson(response)).id : undefined;
+      const project = response.ok ? record(await readJson(response)) : {};
+      const { id, slug } = project;
       if (typeof id !== "string" && typeof id !== "number") {
         throw new ResolutionError(
           `Project ${scopeLabel(scope)}`,
@@ -163,40 +170,60 @@ function scopeProjectId(context: RequestContext): Promise<string> {
           ["This session filters its requests by the project's ID."],
         );
       }
-      return String(id);
+      return {
+        id: String(id),
+        slug: typeof slug === "string" ? slug : undefined,
+      };
     })();
-    projectIds.set(key, pending);
-    pending.catch(() => projectIds.delete(key));
+    scopeProjects.set(key, pending);
+    pending.catch(() => scopeProjects.delete(key));
   }
   return pending;
 }
 
-/** Project slugs are never entirely numeric, so digits are a project ID. */
-const NUMERIC_ID = /^\d+$/;
+/** The numeric ID of the scope's project. */
+async function scopeProjectId(context: RequestContext): Promise<string> {
+  const { project } = context.scope;
+  return NUMERIC_ID.test(project)
+    ? project
+    : (await lookUpScopeProject(context)).id;
+}
 
 /**
  * Whether one of `refs`, project slugs or numeric IDs, is the scope's
- * project. The scope project's ID is looked up only when `refs` has no slug.
+ * project. The scope's project is looked up only when it isn't among them
+ * as given and some ref is the other kind: an ID for a scope named by
+ * slug, or a slug for one named by ID.
  */
 async function anyScopeProject(
   context: RequestContext,
   refs: readonly (string | undefined)[],
 ): Promise<boolean> {
+  const { project } = context.scope;
   const known = refs.filter((ref) => ref !== undefined);
-  const ids = known.filter((ref) => NUMERIC_ID.test(ref));
-  if (ids.length < known.length) {
-    return known.includes(context.scope.project);
+  // Also how the scope project's own lookup (`projects/:org/:project/`)
+  // passes, so it never waits on itself.
+  if (known.includes(project)) {
+    return true;
   }
-  return ids.length > 0 && ids.includes(await scopeProjectId(context));
+  const byId = NUMERIC_ID.test(project);
+  const otherKind = known.filter((ref) => NUMERIC_ID.test(ref) !== byId);
+  if (otherKind.length === 0) {
+    return false;
+  }
+  const { id, slug } = await lookUpScopeProject(context);
+  const asOtherKind = byId ? slug : id;
+  return asOtherKind !== undefined && otherKind.includes(asOtherKind);
 }
 
 /** The `project` filter that asks for every project. */
 const ALL_PROJECTS = "-1";
 
 /**
- * Filter an organization endpoint to the scope's project: a request with
- * no filter, or one for every project (`-1`), gets the scope's; a request
- * for another project is refused.
+ * Filter an organization endpoint to the scope's project: a request for
+ * another project is refused, and one with no numeric `project` filter
+ * (none, `-1` for every project, or only slugs) gets the scope project's
+ * ID. Not every endpoint reads `projectSlug`, or slugs in `project`.
  */
 async function filterToProject(
   context: RequestContext,
@@ -204,29 +231,23 @@ async function filterToProject(
   subject: string,
 ): Promise<Request | string | URL> {
   const { url, scope } = context;
-  const requested = [
-    ...url.searchParams.getAll("project"),
-    ...url.searchParams.getAll("projectSlug"),
-  ].filter((project) => project !== ALL_PROJECTS);
-  if (requested.length > 0) {
-    for (const project of requested) {
-      if (!(await anyScopeProject(context, [project]))) {
-        throw outsideScope(subject, scope);
-      }
-    }
-    if (!url.searchParams.getAll("project").includes(ALL_PROJECTS)) {
-      return input;
+  const projects = url.searchParams.getAll("project");
+  const kept = projects.filter((project) => project !== ALL_PROJECTS);
+  for (const project of [...kept, ...url.searchParams.getAll("projectSlug")]) {
+    if (!(await anyScopeProject(context, [project]))) {
+      throw outsideScope(subject, scope);
     }
   }
+  const hasId = kept.some((project) => NUMERIC_ID.test(project));
+  if (hasId && kept.length === projects.length) {
+    return input;
+  }
   const filtered = new URL(url);
-  const kept = filtered.searchParams
-    .getAll("project")
-    .filter((project) => project !== ALL_PROJECTS);
   filtered.searchParams.delete("project");
   for (const project of kept) {
     filtered.searchParams.append("project", project);
   }
-  if (requested.length === 0) {
+  if (!hasId) {
     filtered.searchParams.append("project", await scopeProjectId(context));
   }
   return input instanceof Request
@@ -406,7 +427,9 @@ export async function scopeRequest(
 
 /**
  * Wrap a fetch that sends requests outside the authenticated transport
- * (a share link's) so the invocation's scope applies to it too.
+ * (a share link's) so the invocation's scope applies to it too. The
+ * scope's lookups go out with the request's headers, so an authenticated
+ * download's lookups carry its token.
  */
 export function withTargetScope(
   fetchFn: (
@@ -418,7 +441,11 @@ export function withTargetScope(
     input: Request | string | URL,
     init?: RequestInit,
   ): Promise<Response> => {
-    const request = await scopeRequest(input, init, (lookup) => scoped(lookup));
+    const headers =
+      init?.headers ?? (input instanceof Request ? input.headers : undefined);
+    const request = await scopeRequest(input, init, (lookup) =>
+      scoped(lookup, headers ? { headers } : undefined),
+    );
     if (request.response) {
       return request.response;
     }
