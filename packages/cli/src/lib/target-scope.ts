@@ -28,20 +28,30 @@ export function getTargetScope(): TargetScope | undefined {
   return project ? { org, project } : { org };
 }
 
-/** The command group that lists what a refused subject names (`Event abc`). */
-const LIST_GROUPS: Readonly<Record<string, string>> = {
-  Event: "event",
-  Trace: "trace",
-  Replay: "replay",
-};
+/**
+ * The command that lists what the scope allows, for a refused subject
+ * (`Replay abc`): `replay list`, `trace list` in a project scope (traces
+ * need a project), or `issue list`. `event list` takes an issue, not a
+ * project, so events get `issue list` too.
+ */
+function listCommand(subject: string, scope: TargetScope, target: string) {
+  const kind = subject.split(" ", 1)[0];
+  const listTarget = scope.project ? target : `${target}/`;
+  if (kind === "Replay") {
+    return sentry`replay list ${listTarget}`;
+  }
+  if (kind === "Trace" && scope.project) {
+    return sentry`trace list ${listTarget}`;
+  }
+  return sentry`issue list ${listTarget}`;
+}
 
 function outsideScope(subject: string, scope: TargetScope): ResolutionError {
   const target = scope.project ? `${scope.org}/${scope.project}` : scope.org;
-  const group = LIST_GROUPS[subject.split(" ", 1)[0] ?? ""] ?? "issue";
   return new ResolutionError(
     subject,
     `is outside this session's scope (${target})`,
-    sentry`${group} list ${scope.project ? target : `${target}/`}`,
+    listCommand(subject, scope, target),
     [`This session can only read or change data in ${target}.`],
   );
 }

@@ -11,6 +11,7 @@ import {
 import { ResolutionError } from "../../src/lib/errors.js";
 import {
   assertIssueInScope,
+  assertOrgInScope,
   assertProjectInScope,
 } from "../../src/lib/target-scope.js";
 
@@ -83,10 +84,22 @@ describe("the error of a refused lookup", () => {
 
   test.each([
     ["Issue 100", "issue list acme/web"],
-    ["Event abc", "event list acme/web"],
+    ["Event abc", "issue list acme/web"],
     ["Trace abc", "trace list acme/web"],
     ["Replay abc", "replay list acme/web"],
   ])("for %s suggests %s", (subject, command) => {
     expect(refusal(subject).hint).toContain(command);
+  });
+
+  test("suggests issue list for a trace in an organization scope", () => {
+    let hint: string | undefined;
+    try {
+      withEnv({ [SCOPE_ORG_ENV_VAR]: "acme" }, () =>
+        assertOrgInScope("other", "Trace abc"),
+      );
+    } catch (error) {
+      hint = error instanceof ResolutionError ? error.hint : undefined;
+    }
+    expect(hint).toContain("issue list acme/");
   });
 });
