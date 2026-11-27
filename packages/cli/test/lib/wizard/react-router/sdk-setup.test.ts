@@ -116,6 +116,7 @@ import {
   createServerInstrumentationFile,
   tryRevealAndGetManualInstructions,
   updatePackageJsonScripts,
+  getEntryFilename,
 } from "../../../../src/lib/wizard/react-router/sdk-setup.js";
 import { execSync } from "node:child_process";
 import type { Mock } from "vitest";
@@ -762,5 +763,32 @@ describe("updatePackageJsonScripts", () => {
     expect(writtenContent.scripts["start"]).toBe(
       "NODE_ENV=production NODE_OPTIONS='--enable-source-maps --import ./instrument.server.mjs' react-router serve",
     );
+  });
+});
+
+describe("getEntryFilename", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("finds a .jsx entry in a TypeScript project", () => {
+    existsSyncMock.mockImplementation((p: string) =>
+      p.endsWith("entry.client.jsx"),
+    );
+    expect(getEntryFilename("entry.client", true)).toBe("entry.client.jsx");
+  });
+
+  it("finds a .tsx entry in a JavaScript project", () => {
+    existsSyncMock.mockImplementation((p: string) =>
+      p.endsWith("entry.server.tsx"),
+    );
+    expect(getEntryFilename("entry.server", false)).toBe("entry.server.tsx");
+  });
+
+  it("uses the project language when both or neither exist", () => {
+    existsSyncMock.mockReturnValue(true);
+    expect(getEntryFilename("entry.client", true)).toBe("entry.client.tsx");
+    existsSyncMock.mockReturnValue(false);
+    expect(getEntryFilename("entry.client", false)).toBe("entry.client.jsx");
   });
 });

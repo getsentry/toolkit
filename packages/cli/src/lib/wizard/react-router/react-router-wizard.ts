@@ -50,6 +50,7 @@ import {
   instrumentSentryOnEntryServer,
   configureReactRouterConfig,
   configureReactRouterVitePlugin,
+  getEntryFilename,
 } from "./sdk-setup.js";
 import {
   getManualClientEntryContent,
@@ -284,9 +285,10 @@ Please create your entry files manually using React Router v7 commands.`);
         `Could not initialize Sentry on client entry automatically.`,
       );
 
-      const clientEntryFilename = `entry.client.${
-        typeScriptDetected ? "tsx" : "jsx"
-      }`;
+      const clientEntryFilename = getEntryFilename(
+        "entry.client",
+        typeScriptDetected,
+      );
 
       const manualClientContent = getManualClientEntryContent(
         selectedProject.keys[0].dsn.public,
@@ -318,9 +320,10 @@ Please create your entry files manually using React Router v7 commands.`);
         `Could not initialize Sentry on server entry automatically.`,
       );
 
-      const serverEntryFilename = `entry.server.${
-        typeScriptDetected ? "tsx" : "jsx"
-      }`;
+      const serverEntryFilename = getEntryFilename(
+        "entry.server",
+        typeScriptDetected,
+      );
       const manualServerContent = getManualServerEntryContent(
         useInstrumentationAPI,
       );

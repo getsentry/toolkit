@@ -45,13 +45,24 @@ function _formatConfigErrorMessage(
   );
 }
 
-function getAppFilePath(
-  filename: string,
-  isTS: boolean,
-  isPage = true,
-): string {
-  const ext = isPage ? (isTS ? "tsx" : "jsx") : isTS ? "ts" : "js";
-  return path.join(process.cwd(), APP_DIRECTORY, `${filename}.${ext}`);
+/**
+ * The filename of an `app/` entry such as `entry.client`: the `.tsx` or
+ * `.jsx` file that exists, else the one matching the project's language.
+ */
+export function getEntryFilename(name: string, isTS: boolean): string {
+  const preferred = `${name}.${isTS ? "tsx" : "jsx"}`;
+  const alternate = `${name}.${isTS ? "jsx" : "tsx"}`;
+  const exists = (file: string) =>
+    existsSync(path.join(process.cwd(), APP_DIRECTORY, file));
+  return !exists(preferred) && exists(alternate) ? alternate : preferred;
+}
+
+function getAppFilePath(filename: string, isTS: boolean): string {
+  return path.join(
+    process.cwd(),
+    APP_DIRECTORY,
+    getEntryFilename(filename, isTS),
+  );
 }
 
 export function getRouteFilePath(filename: string, isTS: boolean): string {
