@@ -93,6 +93,12 @@ compatibility_date = "2024-01-01"`,
     expect(result).toBeUndefined();
   });
 
+  it("returns undefined if main is empty in wrangler.json", () => {
+    fs.writeFileSync(path.join(tmpDir, "wrangler.json"), `{ "main": "" }`);
+
+    expect(getEntryPointFromWranglerConfig()).toBeUndefined();
+  });
+
   it("returns undefined if JSON parsing fails", () => {
     fs.writeFileSync(path.join(tmpDir, "wrangler.json"), "{ invalid json }");
 

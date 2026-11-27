@@ -49,7 +49,8 @@ export function getEntryPointFromWranglerConfig(): string | undefined {
             mainProperty?.value.type === "Literal") &&
           typeof mainProperty.value.value === "string"
         ) {
-          return mainProperty.value.value;
+          // An empty `main` names no file, as in the TOML branch.
+          return mainProperty.value.value || undefined;
         }
 
         return undefined;
