@@ -430,24 +430,42 @@ function bindErrorAndRequest(
     params.push(b.objectPattern([requestProperty()]));
     return { error, request: "request" };
   }
-  if (contextParam.type === "Identifier") {
-    return { error, request: `${contextParam.name}.request` };
+  // `{ request } = {}` binds like `{ request }`.
+  const context =
+    contextParam.type === "AssignmentPattern"
+      ? contextParam.left
+      : contextParam;
+  if (context.type === "Identifier") {
+    return { error, request: `${context.name}.request` };
   }
-  if (contextParam.type !== "ObjectPattern") {
+  if (context.type !== "ObjectPattern") {
     return undefined;
   }
-  const existing = contextParam.properties.find(
+  const existing = context.properties.find(
     (prop) => "key" in prop && safeGetIdentifierName(prop.key) === "request",
   );
   if (!existing) {
-    contextParam.properties.push(requestProperty());
+    // A property can't follow `...rest`, and `request` is already in it.
+    const rest = context.properties.find(
+      (prop) => prop.type === "RestElement" || prop.type === "RestProperty",
+    );
+    if (rest) {
+      return "argument" in rest && rest.argument.type === "Identifier"
+        ? { error, request: `${rest.argument.name}.request` }
+        : undefined;
+    }
+    context.properties.push(requestProperty());
     return { error, request: "request" };
   }
-  if (
-    (existing.type === "Property" || existing.type === "ObjectProperty") &&
-    existing.value.type === "Identifier"
-  ) {
-    return { error, request: existing.value.name };
+  if (existing.type === "Property" || existing.type === "ObjectProperty") {
+    // `{ request = fallback }` binds `request` too.
+    const value =
+      existing.value.type === "AssignmentPattern"
+        ? existing.value.left
+        : existing.value;
+    if (value.type === "Identifier") {
+      return { error, request: value.name };
+    }
   }
   return undefined;
 }

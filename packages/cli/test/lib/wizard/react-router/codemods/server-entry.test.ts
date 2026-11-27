@@ -428,6 +428,30 @@ export function handleError(err: unknown, args: { request: Request }) {
     expect(code).toContain("if (!args.request.signal.aborted)");
     expect(code).toContain("Sentry.captureException(err)");
   });
+
+  it.each([
+    ["a defaulted context", "error: any, { request } = {} as any"],
+    ["a defaulted request", "error: any, { request = fallback }: any"],
+  ])("captures with %s", async (_, params) => {
+    const code = await instrument(`
+export function handleError(${params}) {
+  console.error(error);
+}
+`);
+    expect(code).toContain("if (!request.signal.aborted)");
+    expect(code).toContain("Sentry.captureException(error)");
+  });
+
+  it("reads request from a rest binding instead of adding a property after it", async () => {
+    const code = await instrument(`
+export function handleError(error: unknown, { params, ...rest }: any) {
+  console.error(error);
+}
+`);
+    expect(code).toContain("{ params, ...rest }");
+    expect(code).toContain("if (!rest.request.signal.aborted)");
+    expect(code).not.toMatch(/\.\.\.rest,\s*request/);
+  });
 });
 
 describe("instrumentHandleError AST manipulation edge cases", () => {
