@@ -94,6 +94,26 @@ describe("getChunkUploadOptions", () => {
     expect(result.url).toBe(BASE.url);
   });
 
+  test("resolves a URL relative to the API root against the org region", async () => {
+    respondWith({ ...BASE, url: "organizations/my-org/chunk-upload/" });
+
+    const result = await getChunkUploadOptions("my-org");
+
+    expect(result.url).toBe(
+      "https://us.sentry.io/api/0/organizations/my-org/chunk-upload/",
+    );
+  });
+
+  test("resolves a path-only URL against the org region", async () => {
+    respondWith({ ...BASE, url: "/api/0/organizations/my-org/chunk-upload/" });
+
+    const result = await getChunkUploadOptions("my-org");
+
+    expect(result.url).toBe(
+      "https://us.sentry.io/api/0/organizations/my-org/chunk-upload/",
+    );
+  });
+
   test("keeps maxWait, which the generated response type lacks", async () => {
     respondWith({ ...BASE, maxWait: 300 });
 

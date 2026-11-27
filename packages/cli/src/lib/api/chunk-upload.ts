@@ -49,6 +49,7 @@ import {
   destroyHttp1Dispatcher,
 } from "../http1-dispatcher.js";
 import { logger } from "../logger.js";
+import { resolveOrgRegion } from "../region.js";
 import { getSdkConfig } from "../sentry-client.js";
 import {
   getOrgSdkConfig,
@@ -188,18 +189,23 @@ export async function getChunkUploadOptions(
     `organizations/${orgSlug}/chunk-upload/`,
   );
 
-  // Self-hosted Sentry instances may return a chunk-upload URL that embeds
-  // DSN credentials (e.g. https://<token>@host/...). Node.js 25+ rejects
-  // constructing a fetch Request from such a URL per the Fetch spec. Strip
-  // them here — auth is already handled by the authFetch wrapper.
-  const parsedUrl = new URL(data.url);
-  if (parsedUrl.username || parsedUrl.password) {
-    parsedUrl.username = "";
-    parsedUrl.password = "";
-    return { ...data, url: parsedUrl.href };
-  }
+  // Self-hosted Sentry returns a relative chunk-upload URL when no upload or
+  // URL prefix is configured: either relative to the API root
+  // (`organizations/<org>/chunk-upload/`) or path-only (`/api/0/...`).
+  // Resolve it against the org's API root so chunk POSTs get an absolute URL.
+  const regionUrl = (await resolveOrgRegion(orgSlug)).replace(/\/+$/, "");
+  const parsedUrl = new URL(data.url, `${regionUrl}/api/0/`);
 
-  return data;
+  // Self-hosted Sentry instances may also return a chunk-upload URL that
+  // embeds DSN credentials (e.g. https://<token>@host/...). Node.js 25+
+  // rejects constructing a fetch Request from such a URL per the Fetch spec.
+  // Strip them here — auth is already handled by the authFetch wrapper.
+  parsedUrl.username = "";
+  parsedUrl.password = "";
+  if (parsedUrl.href === data.url) {
+    return data;
+  }
+  return { ...data, url: parsedUrl.href };
 }
 
 /**
