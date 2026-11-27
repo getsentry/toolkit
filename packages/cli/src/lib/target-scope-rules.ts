@@ -5,8 +5,7 @@
  *
  * Most rules come from Sentry's schema: endpoints declare how they stay in
  * a project with the `x-sentry-project-scope` OpenAPI extension, which the
- * `@sentry/api` catalog carries as `projectScope`, and
- * `script/generate-api-schema.ts` extracts at build time (see
+ * `@sentry/api` catalog carries as `projectScope` (see
  * {@link catalogRules}). The rest are written here ({@link OVERRIDES}).
  *
  * In a project scope, a request no rule matches is refused. When a command
@@ -14,10 +13,7 @@
  * when the schema can't say it.
  */
 
-import generatedProjectScopes from "../generated/project-scope-operations.json" with { type: "json" };
-// INTERIM: delete with the `@sentry/api` 3.x bump, along with
-// `projectScopeDeclarations` and the JSON file.
-import interimProjectScopes from "./interim-project-scope-operations.json" with { type: "json" };
+import { type ApiOperation, operations } from "@sentry/api/operations";
 
 /** How a matched request stays in the scope's project. */
 type ScopeEnforcement =
@@ -91,16 +87,6 @@ export const ACCOUNT_READS: readonly SimpleRule[] = [
   { pattern: "seer/models/" },
 ];
 
-/**
- * The operations of the `@sentry/api` catalog with an `x-sentry-project-scope`
- * other than `path`, as `script/generate-api-schema.ts` extracts them: by
- * uppercase method, then OpenAPI path template relative to `/api/0`
- * (`/organizations/{organization_id_or_slug}/issues/`), the scope:
- * `filter`, `org-metadata` or `response:<pointer>`. A table rather than a
- * list of objects keeps the `@sentry/mcp-server` bundle within its budget.
- */
-export type ProjectScopeTable = Record<string, Record<string, string>>;
-
 /** `value` as an object, or `{}` when it is not one. */
 export function record(value: unknown): Record<string, unknown> {
   return typeof value === "object" && value !== null
@@ -171,22 +157,17 @@ const RESPONSE_PREFIX = "response:";
  *   IDs at the pointer of its response. A request under its path (`PUT`
  *   of the same path, or any sub-resource) looks it up first.
  */
-export function catalogRules(entries: unknown): {
+function catalogRules(
+  catalog: readonly Pick<ApiOperation, "method" | "path" | "projectScope">[],
+): {
   orgReads: SimpleRule[];
   rules: ScopeRule[];
 } {
   const orgReads: SimpleRule[] = [];
   const checked: ScopeRule[] = [];
   const lookedUpFirst: ScopeRule[] = [];
-  const declared = Object.entries(record(entries)).flatMap(([method, paths]) =>
-    Object.entries(record(paths)).map(([path, scope]) => ({
-      method,
-      path,
-      scope,
-    })),
-  );
-  for (const { method, path, scope } of declared) {
-    if (typeof scope !== "string") {
+  for (const { method, path, projectScope: scope } of catalog) {
+    if (!scope) {
       continue;
     }
     const pattern = patternOf(path);
@@ -225,22 +206,7 @@ export function catalogRules(entries: unknown): {
   return { orgReads, rules: [...checked, ...lookedUpFirst] };
 }
 
-/**
- * The `x-sentry-project-scope` declarations to build rules from: the
- * installed `@sentry/api` catalog's, or, while it has none, an interim copy
- * of what getsentry/sentry#132722 declares. The copy keeps project scopes
- * working until the `@sentry/api` 3.x bump, which deletes it.
- */
-export function projectScopeDeclarations(
-  generated: unknown,
-  interim: unknown,
-): unknown {
-  return Object.keys(record(generated)).length > 0 ? generated : interim;
-}
-
-const CATALOG = catalogRules(
-  projectScopeDeclarations(generatedProjectScopes, interimProjectScopes),
-);
+const CATALOG = catalogRules(operations);
 
 /**
  * Read-only organization metadata a project scope may read: what Sentry

@@ -24,7 +24,6 @@ import { ROUTE_TREE_STUBS } from "./lib/route-tree-stub-files.mjs";
 const SCHEMA_OUTPUTS = [
   "src/generated/api-schema.json",
   "src/generated/idempotent-operations.json",
-  "src/generated/project-scope-operations.json",
 ];
 /** Produced by `generate:grammar`; imported by `src/lib/arg-parsing.ts`. */
 const GRAMMAR_OUTPUTS = [
