@@ -238,53 +238,39 @@ describe("findOutDir", () => {
 describe("getWranglerDeployCommand", () => {
   it.each([
     "npx wrangler deploy",
-    "npx -y wrangler@3 deploy",
-    "pnpm exec wrangler deploy",
+    "pnpm wrangler deploy",
     "yarn wrangler deploy",
     "bunx wrangler deploy",
-    "cross-env NODE_ENV=production wrangler deploy",
   ])("finds wrangler deploy run through a runner: %s", (command) => {
     expect(getWranglerDeployCommand(`tsc && ${command}`)?.trim()).toBe(command);
+    expect(safeInsertArgsToWranglerDeployCommand(command, "dist")).toBe(
+      `${command} --outdir 'dist' --upload-source-maps --var SENTRY_RELEASE:$(sentry release propose-version | head -n 1)`,
+    );
   });
 
   it.each([
     "wrangler pages deploy ./public",
     "npx wrangler pages deploy",
     "yarn wrangler versions deploy",
-    "pnpm exec wrangler --env production versions deploy",
-  ])("ignores non-Workers deploy commands: %s", (command) => {
+    "pnpm exec wrangler deploy",
+    "pnpm dlx wrangler deploy",
+    "bun x wrangler deploy",
+    "npx -y wrangler deploy",
+    "npx wrangler@3 deploy",
+    "npx -p wrangler wrangler deploy",
+    "pnpm -C wrangler deploy",
+    "pnpm --filter wrangler deploy",
+    "pnpm -w wrangler deploy",
+    "yarn --cwd wrangler deploy",
+    "yarn -p wrangler deploy",
+    "cross-env NODE_ENV=production wrangler deploy",
+    "cross-env NODE_ENV=production yarn --cwd wrangler deploy",
+    "FOO=1 wrangler deploy",
+  ])("leaves %s to the manual instructions", (command) => {
     expect(getWranglerDeployCommand(command)).toBeUndefined();
     expect(
       safeInsertArgsToWranglerDeployCommand(command, "dist"),
     ).toBeUndefined();
-  });
-
-  it.each([
-    "pnpm -C wrangler deploy",
-    "pnpm --filter wrangler deploy",
-    "yarn --cwd wrangler deploy",
-    "cross-env NODE_ENV=production yarn --cwd wrangler deploy",
-    "FOO=1 pnpm -C wrangler deploy",
-  ])("ignores a flag value named wrangler: %s", (command) => {
-    expect(getWranglerDeployCommand(command)).toBeUndefined();
-  });
-
-  it.each(["pnpm -w wrangler deploy", "yarn -p wrangler deploy"])(
-    "finds wrangler after a runner flag without a value: %s",
-    (command) => {
-      expect(getWranglerDeployCommand(command)).toBe(command);
-    },
-  );
-
-  it("finds wrangler after a flag value behind cross-env", () => {
-    const command = "cross-env FOO=1 npx -p wrangler wrangler deploy";
-    expect(getWranglerDeployCommand(command)).toBe(command);
-  });
-
-  it("finds wrangler after a flag value: npx -p wrangler wrangler deploy", () => {
-    expect(getWranglerDeployCommand("npx -p wrangler wrangler deploy")).toBe(
-      "npx -p wrangler wrangler deploy",
-    );
   });
 
   it("ignores commands that only mention wrangler deploy", () => {

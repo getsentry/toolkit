@@ -528,69 +528,21 @@ function splitShellCommands(script: string): { start: number; text: string }[] {
 }
 
 /**
- * Commands that run `wrangler` for a script, such as `npx wrangler deploy`,
- * `pnpm exec wrangler deploy`, or `cross-env FOO=1 wrangler deploy`.
+ * Package-manager runners that the wizard edits when they come straight
+ * before `wrangler`, as in `npx wrangler deploy`. Anything else, such as
+ * runner flags, `cross-env` or `FOO=1`, gets the manual instructions.
  */
-const WRANGLER_RUNNERS = new Set([
-  "npx",
-  "pnpx",
-  "bunx",
-  "pnpm",
-  "yarn",
-  "bun",
-  "exec",
-  "x",
-  "dlx",
-  "cross-env",
-]);
+const WRANGLER_RUNNERS = new Set(["npx", "pnpm", "yarn", "bunx"]);
 
 /**
- * Whether `arg`, before `wrangler`, only runs it: a runner from
- * {@link WRANGLER_RUNNERS}, a runner flag such as `-y`, or an environment
- * variable such as `FOO=1`.
- */
-function isWranglerRunnerArg(arg: string): boolean {
-  return (
-    WRANGLER_RUNNERS.has(arg) ||
-    arg.startsWith("-") ||
-    /^[A-Za-z_][A-Za-z0-9_]*=/.test(arg)
-  );
-}
-
-/**
- * Per runner, the flags whose value is the next arg, such as the directory
- * in `pnpm -C wrangler deploy`, so a `wrangler` there isn't the CLI. Keyed
- * by runner because short flags differ: `npx -p` takes a package, while
- * `pnpm -w` and `yarn -p` take no value.
- */
-const RUNNER_FLAGS_WITH_VALUE: Record<string, ReadonlySet<string>> = {
-  pnpm: new Set(["-C", "--dir", "-F", "--filter"]),
-  yarn: new Set(["--cwd"]),
-  bun: new Set(["--cwd"]),
-  npx: new Set(["-p", "--package", "-w", "--workspace", "--prefix"]),
-};
-
-/**
- * Where `argv` runs `wrangler`, after only runner args (see
- * {@link isWranglerRunnerArg}), or -1 when it doesn't.
+ * Where `argv` runs `wrangler`: bare, or right after a runner from
+ * {@link WRANGLER_RUNNERS}. -1 when it doesn't.
  */
 function findWranglerIndex(argv: string[]): number {
-  // The runner whose flags apply, which can follow `cross-env` or `FOO=1`.
-  let flagsWithValue: ReadonlySet<string> | undefined;
-  for (let i = 0; i < argv.length; i += 1) {
-    const arg = argv[i] ?? "";
-    if (arg === "wrangler" || arg.startsWith("wrangler@")) {
-      return i;
-    }
-    if (!isWranglerRunnerArg(arg)) {
-      return -1;
-    }
-    flagsWithValue = RUNNER_FLAGS_WITH_VALUE[arg] ?? flagsWithValue;
-    if (flagsWithValue?.has(arg)) {
-      i += 1;
-    }
+  if (argv[0] === "wrangler") {
+    return 0;
   }
-  return -1;
+  return WRANGLER_RUNNERS.has(argv[0] ?? "") && argv[1] === "wrangler" ? 1 : -1;
 }
 
 /**
@@ -600,9 +552,9 @@ function findWranglerIndex(argv: string[]): number {
 const NON_WORKER_DEPLOY_COMMANDS = new Set(["pages", "versions"]);
 
 /**
- * The command of `deployCommand` that runs `wrangler deploy`, directly or
- * through a runner such as `npx`. `wrangler pages deploy` and
- * `wrangler versions deploy` don't count.
+ * The command of `deployCommand` that runs `wrangler deploy`, bare or
+ * through `npx`, `pnpm`, `yarn` or `bunx` (see {@link findWranglerIndex}).
+ * `wrangler pages deploy` and `wrangler versions deploy` don't count.
  *
  * Exported for testing
  */
