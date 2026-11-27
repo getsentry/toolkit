@@ -161,15 +161,16 @@ describe("safeInsertArgsToWranglerDeployCommand", () => {
     );
   });
 
-  it("keeps an existing --var=SENTRY_RELEASE arg", () => {
+  it.each([
+    "--var=SENTRY_RELEASE:1.0.0",
+    "--var SENTRY_RELEASE=1.0.0",
+    "--var=SENTRY_RELEASE=1.0.0",
+    `--var "SENTRY_RELEASE:1.0.0"`,
+    "--var 'SENTRY_RELEASE=1.0.0'",
+  ])("keeps an existing %s arg", (arg) => {
     expect(
-      safeInsertArgsToWranglerDeployCommand(
-        "wrangler deploy --var=SENTRY_RELEASE:1.0.0",
-        "dist",
-      ),
-    ).toBe(
-      "wrangler deploy --var=SENTRY_RELEASE:1.0.0 --outdir 'dist' --upload-source-maps",
-    );
+      safeInsertArgsToWranglerDeployCommand(`wrangler deploy ${arg}`, "dist"),
+    ).toBe(`wrangler deploy ${arg} --outdir 'dist' --upload-source-maps`);
   });
 
   it.each([

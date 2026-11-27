@@ -35,6 +35,12 @@ const SENTRY_NPM_SCRIPT_NAME = "sentry:sourcemaps";
  */
 export const DIST_DIR = path.join(".", "dist");
 
+/**
+ * A `--var` that sets SENTRY_RELEASE, with `=` or `:` and optional quotes,
+ * like `SHELL_SPOTLIGHT_VAR_RE` in `lib/wrangler.ts`.
+ */
+const RELEASE_VAR_RE = /--var(?:=|\s+)["']?SENTRY_RELEASE(?::|=)/;
+
 export async function configureWrangler(
   options: SourceMapUploadToolConfigurationOptions,
 ) {
@@ -395,13 +401,7 @@ export function safeInsertArgsToWranglerDeployCommand(
   // This is how we inject the SENTRY_RELEASE variable,
   // which is picked up by the CloudFlare SDK.
   // Skip it when the script already sets SENTRY_RELEASE, e.g. on a rerun.
-  if (
-    !existingArgs.some(
-      (arg) =>
-        arg.startsWith("SENTRY_RELEASE:") ||
-        arg.startsWith("--var=SENTRY_RELEASE:"),
-    )
-  ) {
+  if (!RELEASE_VAR_RE.test(originalWranglerDeployCommand)) {
     newArgs.push("--var", `SENTRY_RELEASE:${PROPOSE_VERSION}`);
   }
 
