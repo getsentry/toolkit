@@ -19,6 +19,48 @@ function httpGetRegional(
   ];
 }
 
+const TRACE_ID = "b4d1aae7216b47ff8117cf4e09ce9d0b";
+const SPAN_ID = "aa8e7f3384ef4ff5";
+
+function mockTrace() {
+  return [
+    ...httpGetRegional(
+      `https://sentry.io/api/0/organizations/sentry-mcp-evals/trace-meta/${TRACE_ID}/`,
+      () =>
+        HttpResponse.json({
+          logs: 0,
+          errors: 2,
+          performance_issues: 0,
+          span_count: 4,
+          transaction_child_count_map: [],
+          span_count_map: {},
+        }),
+    ),
+    ...httpGetRegional(
+      `https://sentry.io/api/0/organizations/sentry-mcp-evals/trace/${TRACE_ID}/`,
+      () => HttpResponse.json(traceMixedFixture),
+    ),
+  ];
+}
+
+async function callGetSpanDetails() {
+  return await getSpanDetails.handler(
+    {
+      organizationSlug: "sentry-mcp-evals",
+      traceId: TRACE_ID,
+      spanId: SPAN_ID,
+      regionUrl: null,
+    },
+    {
+      constraints: {
+        organizationSlug: null,
+      },
+      accessToken: "access-token",
+      userId: "1",
+    },
+  );
+}
+
 describe("get_span_details", () => {
   it("renders a focused span with child snapshot and attributes", async () => {
     mswServer.use(
@@ -87,6 +129,12 @@ describe("get_span_details", () => {
       **Sentry URL**: https://sentry-mcp-evals.sentry.io/explore/traces/trace/b4d1aae7216b47ff8117cf4e09ce9d0b?node=span-aa8e7f3384ef4ff5
 
       ## Attributes
+
+      ### Recorded Attributes
+
+      \`\`\`json
+      {}
+      \`\`\`
 
       ### Core Fields
 
@@ -167,5 +215,58 @@ describe("get_span_details", () => {
       - **Search errors**: Use the Sentry tool \`search_errors\`
       - **Search logs**: Use the Sentry tool \`search_logs\`"
     `);
+  });
+
+  it("shows the attributes the span recorded, which the trace endpoint omits", async () => {
+    let requestedUrl: URL | undefined;
+    mswServer.use(
+      ...mockTrace(),
+      ...httpGetRegional(
+        `https://sentry.io/api/0/projects/sentry-mcp-evals/mcp-server/trace-items/${SPAN_ID}/`,
+        ({ request }) => {
+          requestedUrl = new URL(request.url);
+          return HttpResponse.json({
+            itemId: SPAN_ID,
+            timestamp: "2024-04-22T16:51:03.608875Z",
+            attributes: [
+              { name: "http.request.method", type: "str", value: "PUT" },
+              { name: "tags[retry_count,number]", type: "int", value: "3" },
+            ],
+            meta: {},
+            links: null,
+          });
+        },
+      ),
+    );
+
+    const result = await callGetSpanDetails();
+
+    expect(requestedUrl?.searchParams.get("trace_id")).toBe(TRACE_ID);
+    expect(requestedUrl?.searchParams.get("item_type")).toBe("spans");
+    expect(result).toContain(`### Recorded Attributes
+
+\`\`\`json
+{
+  "http.request.method": "PUT",
+  "tags[retry_count,number]": "3"
+}
+\`\`\``);
+  });
+
+  it("still returns the span when Sentry can't return its attributes", async () => {
+    mswServer.use(
+      ...mockTrace(),
+      ...httpGetRegional(
+        `https://sentry.io/api/0/projects/sentry-mcp-evals/mcp-server/trace-items/${SPAN_ID}/`,
+        () => HttpResponse.json({ detail: "Not found" }, { status: 404 }),
+      ),
+    );
+
+    const result = await callGetSpanDetails();
+
+    expect(result).toContain(`# Span \`${SPAN_ID}\``);
+    expect(result).toContain(
+      "*Sentry did not return this span's recorded attributes.",
+    );
   });
 });
