@@ -70,7 +70,7 @@ describe("addNuxtOverrides", () => {
   );
 
   it("does not prompt if the Nuxt version is unknown", async () => {
-    await addNuxtOverrides(packageManager, null);
+    await addNuxtOverrides(packageManager, undefined);
 
     expect(askShouldAddPackageOverrideMock).not.toHaveBeenCalled();
   });

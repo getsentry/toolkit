@@ -118,7 +118,21 @@ ${chalk.underline(
 
   Sentry.setTag("angular-app-config-found", true);
 
-  const appConfig = await loadFile(appConfigPath);
+  let appConfig: Awaited<ReturnType<typeof loadFile>>;
+  try {
+    appConfig = await loadFile(appConfigPath);
+  } catch (error: unknown) {
+    // Not fatal: the user gets the manual setup steps instead.
+    debug(error);
+    clack.log.error(`Could not read ${chalk.cyan(appConfigFilename)}.`);
+    clack.log.warn(
+      `Please refer to the documentation for manual setup:
+${chalk.underline(
+  "https://docs.sentry.io/platforms/javascript/guides/angular/#configure",
+)}`,
+    );
+    return;
+  }
 
   if (hasSentryContent(appConfig.$ast as t.Program)) {
     clack.log.warn(

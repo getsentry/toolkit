@@ -7,7 +7,7 @@
 
 import path from "node:path";
 import chalk from "chalk";
-import { gte, minVersion } from "semver";
+import { gte } from "semver";
 import { setupCI } from "../sourcemaps/ci.js";
 import { configureAngularSourcemapGenerationFlow } from "../sourcemaps/tools/angular.js";
 import { configureSentryCLI } from "../sourcemaps/tools/sentry-cli.js";
@@ -33,12 +33,12 @@ import {
   askShouldReduceDataCollection,
   sdkSupportsDataCollection,
 } from "../utils/data-collection.js";
-import { debug } from "../utils/debug.js";
 import { warnIfNodeVersionUnsupportedBySdkV11 } from "../utils/node-version.js";
 import {
   getPackageVersion,
   hasPackageInstalled,
 } from "../utils/package-json.js";
+import { safeMinVersion } from "../utils/semver.js";
 import type { WizardOptions } from "../utils/types.js";
 import { addSourcemapEntryToAngularJSON } from "./codemods/sourcemaps.js";
 import { createExampleComponent } from "./example-component.js";
@@ -96,13 +96,7 @@ async function runAngularWizardWithTelemetry(
             return "Angular version is required";
           }
 
-          try {
-            if (!minVersion(value)) {
-              return `Invalid Angular version provided: ${value}`;
-            }
-          } catch (error) {
-            // Not fatal: an unparsable version is reported as invalid input.
-            debug(error);
+          if (!safeMinVersion(value)) {
             return `Invalid Angular version provided: ${value}`;
           }
           return undefined;
@@ -113,7 +107,7 @@ async function runAngularWizardWithTelemetry(
 
   Sentry.setTag("angular-version", installedAngularVersion);
 
-  const installedMinVersion = minVersion(installedAngularVersion);
+  const installedMinVersion = safeMinVersion(installedAngularVersion);
   if (!installedMinVersion) {
     clack.log.warn(
       `Could not parse the Angular version ${chalk.cyan(installedAngularVersion)}.`,

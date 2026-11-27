@@ -1,7 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
 
 import { runAngularWizard } from "../../../../src/lib/wizard/angular/angular-wizard.js";
-import { installPackage } from "../../../../src/lib/wizard/utils/clack/index.js";
+import { WizardExitError } from "../../../../src/lib/errors.js";
+import {
+  getPackageDotJson,
+  installPackage,
+} from "../../../../src/lib/wizard/utils/clack/index.js";
 import { askShouldReduceDataCollection } from "../../../../src/lib/wizard/utils/data-collection.js";
 
 /** Thrown by the mocked install to stop the flow right after it. */
@@ -81,5 +85,18 @@ describe("runAngularWizard", () => {
     ).rejects.toBe(STOP);
 
     expect(askShouldReduceDataCollection).toHaveBeenCalled();
+  });
+
+  it("exits cleanly, without a raw semver error, when the installed Angular version does not parse", async () => {
+    vi.mocked(getPackageDotJson).mockResolvedValueOnce({
+      dependencies: { "@angular/core": "latest" },
+    });
+
+    await expect(
+      runAngularWizard({ telemetryEnabled: false, ignoreGitChanges: true }),
+    ).rejects.toBeInstanceOf(WizardExitError);
+    expect(installPackage).not.toHaveBeenCalledWith(
+      expect.objectContaining({ packageName: "@sentry/angular@^11" }),
+    );
   });
 });

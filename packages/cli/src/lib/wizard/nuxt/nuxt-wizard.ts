@@ -6,7 +6,7 @@
  */
 
 import chalk from "chalk";
-import { lt, minVersion } from "semver";
+import { lt } from "semver";
 import { Sentry, traceStep, withTelemetry } from "../telemetry.js";
 import { abortIfSpotlightNotSupported } from "../utils/abort-if-sportlight-not-supported.js";
 import {
@@ -36,6 +36,7 @@ import {
   getPackageVersion,
   hasPackageInstalled,
 } from "../utils/package-json.js";
+import { safeMinVersion } from "../utils/semver.js";
 import type { WizardOptions } from "../utils/types.js";
 import {
   createExampleComponent,
@@ -86,7 +87,7 @@ async function runNuxtWizardWithTelemetry(
   const nuxtVersion = getPackageVersion("nuxt", packageJson);
   Sentry.setTag("nuxt-version", nuxtVersion);
 
-  const minVer = minVersion(nuxtVersion || "0.0.0");
+  const minVer = safeMinVersion(nuxtVersion || "0.0.0");
 
   if (!nuxtVersion || !minVer || lt(minVer, "3.7.0")) {
     clack.log.warn(

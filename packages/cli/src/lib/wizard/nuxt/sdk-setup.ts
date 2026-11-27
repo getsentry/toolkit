@@ -296,7 +296,7 @@ export async function createConfigFiles(
  */
 export async function addNuxtOverrides(
   packageManager: PackageManager,
-  nuxtMinVer: SemVer | null,
+  nuxtMinVer: SemVer | undefined,
 ): Promise<void> {
   if (!nuxtMinVer || !lt(nuxtMinVer, "3.14.0")) {
     return;
