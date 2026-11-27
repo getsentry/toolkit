@@ -11,6 +11,27 @@ import { describe, expect, it } from "vitest";
 
 describe("react-native javascript", () => {
   describe("addSentryInitWithSdkImport", () => {
+    it("ignores import-like text after the last semicolon-less import", () => {
+      const input = `import React from 'react'
+import {
+  "default-export" as Thing,
+} from "./thing"
+
+// import this later "maybe"
+const label = "import 'x'"
+const App = () => <Thing label={label} />
+`;
+
+      const output = addSentryInitWithSdkImport(input, { dsn: "dsn" });
+
+      expect(output.indexOf("Sentry.init(")).toBeGreaterThan(
+        output.indexOf('} from "./thing"'),
+      );
+      expect(output.indexOf("Sentry.init(")).toBeLessThan(
+        output.indexOf("// import this later"),
+      );
+    });
+
     it("adds sentry init under the last import when imports have no semicolons", () => {
       const input = `import * as React from 'react'
 import {

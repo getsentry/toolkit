@@ -133,8 +133,9 @@ export function addSentryInitWithSdkImport(
   },
 ): string {
   return js.replace(
-    // The last import statement, with or without a trailing semicolon.
-    /^([^]*)(import\s+[^;]*?(?:;|['"])[ \t]*$)/m,
+    // The last import statement: one ending in `;`, or a line-start import
+    // whose module specifier ends the line (no semicolon).
+    /^([^]*)(import\s+[^;]*?;$|^import\s(?:[^;]*?\sfrom\s*)?['"][^'"\n]+['"][ \t]*$)/m,
     (match: string) => `${match}
 ${getSentryInitPlainTextSnippet(
   dsn,
