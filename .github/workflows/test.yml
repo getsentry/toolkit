@@ -85,6 +85,26 @@ jobs:
       - run: pnpm --filter '@sentry/mcp-core...' --filter @sentry/logger --if-present run build
       - run: pnpm run lint
       - run: pnpm run check:generated
+      # A merge queue run checks what two green pull requests can break
+      # together: builds, types and policies. scripts/ci-projects.mjs selects no
+      # projects on merge_group, so the matrix, npm-runtime and the macOS
+      # catalog skip, and `test` accepts that.
+      - name: Typecheck every workspace (merge queue)
+        if: github.event_name == 'merge_group'
+        run: pnpm run typecheck
+      - name: Build the CLI and docs (merge queue)
+        if: github.event_name == 'merge_group'
+        run: pnpm run build:cli
+      - name: Bundle the MCP server (merge queue)
+        if: github.event_name == 'merge_group'
+        run: pnpm --filter @sentry/mcp-server run bundle
+      - name: Check project policies (merge queue)
+        if: github.event_name == 'merge_group'
+        run: pnpm -r --if-present run ci:policy
+      # Puts untracked files in the index so the next step's diff reports them.
+      - name: Include untracked files in the generated files check (merge queue)
+        if: github.event_name == 'merge_group'
+        run: git add --intent-to-add --all
       - name: Check generated files
         run: git diff --exit-code
 

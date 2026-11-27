@@ -66,6 +66,7 @@
     "test:unit": "node --experimental-strip-types --import ./script/require-shim.mjs script/generate.ts docs sdk && vitest run test/lib test/commands test/types test/script --coverage",
     "test:changed": "node --experimental-strip-types --import ./script/require-shim.mjs script/generate.ts docs sdk && vitest run --changed",
     "test:e2e": "pnpm ts script/prepare-e2e-bundle.ts && vitest run test/e2e",
+    "test:wizard-e2e": "pnpm ts script/prepare-e2e-bundle.ts && vitest run -c test/wizard-e2e/vitest.config.ts",
     "generate": "node --experimental-strip-types --import ./script/require-shim.mjs script/generate.ts docs sdk",
     "generate:sdk": "node --experimental-strip-types --import ./script/require-shim.mjs script/generate.ts sdk",
     "generate:skill": "node --experimental-strip-types --import ./script/require-shim.mjs script/generate.ts skill",
@@ -154,6 +155,7 @@
     "valibot": "^1.4.2",
     "vitest": "catalog:",
     "wrap-ansi": "^10.0.0",
+    "xcode": "3.0.1",
     "yauzl": "3.4.0"
   }
 }

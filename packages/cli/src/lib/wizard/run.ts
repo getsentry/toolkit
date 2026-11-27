@@ -6,6 +6,7 @@
  * dependencies, such as magicast).
  */
 
+import { isatty } from "node:tty";
 import { ValidationError } from "../errors.js";
 import { abortIfCancelled } from "./utils/clack/index.js";
 import { clack } from "./utils/clack/prompts.js";
@@ -63,7 +64,36 @@ const WIZARD_RUNNERS: Partial<Record<WizardIntegration, WizardRunner>> = {
     const { runNuxtWizard } = await import("./nuxt/nuxt-wizard.js");
     await runNuxtWizard(options);
   },
+  android: async (options) => {
+    const { runAndroidWizard } = await import("./android/android-wizard.js");
+    await runAndroidWizard(options);
+  },
+  flutter: async (options) => {
+    const { runFlutterWizard } = await import("./flutter/flutter-wizard.js");
+    await runFlutterWizard(options);
+  },
+  ios: async (options) => {
+    const { runAppleWizard } = await import("./apple/apple-wizard.js");
+    await runAppleWizard(options);
+  },
+  appleSnapshots: async (options) => {
+    const { runAppleSnapshotsWizard } =
+      await import("./apple/snapshots/apple-snapshots-wizard.js");
+    // Without a terminal to prompt on, pick the only target or fail with
+    // the choices, as the CLI does for auto-login (`isatty(0)`).
+    await runAppleSnapshotsWizard({ ...options, nonInteractive: !isatty(0) });
+  },
+  reactNative: async (options) => {
+    const { runReactNativeWizard } =
+      await import("./react-native/react-native-wizard.js");
+    await runReactNativeWizard(options);
+  },
 };
+
+/** Whether `integration` has a flow in this version. */
+export function hasWizardRunner(integration: WizardIntegration): boolean {
+  return integration in WIZARD_RUNNERS;
+}
 
 /** What `sentry wizard` passes to {@link runWizard}. */
 export type RunWizardArgs = {
@@ -99,7 +129,7 @@ async function askForIntegration(): Promise<WizardIntegration> {
   const integration = await abortIfCancelled(
     clack.select<WizardIntegration>({
       message: "What do you want to set up?",
-      options: WIZARD_INTEGRATIONS.filter(({ id }) => id in WIZARD_RUNNERS).map(
+      options: WIZARD_INTEGRATIONS.filter(({ id }) => hasWizardRunner(id)).map(
         ({ id, label }) => ({ value: id, label }),
       ),
     }),

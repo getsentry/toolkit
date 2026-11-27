@@ -310,6 +310,10 @@ export function findProjectsByRole(projects, roles) {
 
 /** Select directly changed projects and every transitive workspace consumer. */
 export function selectAffectedProjects(projects, changedFiles, eventName) {
+  // Merge queue runs check the whole workspace in test.yml's quality job.
+  if (eventName === "merge_group") {
+    return [];
+  }
   if (eventName !== "pull_request") {
     return projects.filter((project) => project.enabled);
   }
