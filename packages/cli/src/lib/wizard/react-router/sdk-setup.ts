@@ -312,9 +312,13 @@ export async function updatePackageJsonScripts(): Promise<void> {
         nodeOptions[2] ?? nodeOptions[3] ?? nodeOptions[4] ?? "";
       const mergedOptions =
         `${existingOptions} --import ${instrumentPath}`.trim();
+      // Single-quote the result, unless that would close on a `'` inside a
+      // double-quoted value.
+      const quote = mergedOptions.includes("'") ? '"' : "'";
       return scriptCommand.replace(
         nodeOptions[0],
-        () => `${nodeOptions[1] ?? ""}NODE_OPTIONS='${mergedOptions}'`,
+        () =>
+          `${nodeOptions[1] ?? ""}NODE_OPTIONS=${quote}${mergedOptions}${quote}`,
       );
     }
 

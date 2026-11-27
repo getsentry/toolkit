@@ -800,6 +800,15 @@ describe("updatePackageJsonScripts keeps the project's commands", () => {
     expect((await updatedScripts({ start }))["start"]).toBe(expected);
   });
 
+  it("keeps a double-quoted NODE_OPTIONS with single quotes double-quoted", async () => {
+    const scripts = await updatedScripts({
+      start: `NODE_OPTIONS="--title='my app'" node ./server.js`,
+    });
+    expect(scripts["start"]).toBe(
+      `NODE_ENV=production NODE_OPTIONS="--title='my app' --import ./instrument.server.mjs" node ./server.js`,
+    );
+  });
+
   it("merges into an unquoted NODE_OPTIONS before any command", async () => {
     const scripts = await updatedScripts({
       start: "NODE_OPTIONS=--max-old-space-size=4096 pm2 start ./server.js",
