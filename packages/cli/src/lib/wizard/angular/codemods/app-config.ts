@@ -125,10 +125,13 @@ function addImports(
     addRouterImport(originalAppConfigMod);
   }
 
-  if (isAboveAngularV19) {
-    addMissingImportsV19(originalAppConfigMod);
-  } else if (isTracingEnabled) {
-    addAppInitializer(originalAppConfigMod);
+  // Both helpers import only what the tracing providers use.
+  if (isTracingEnabled) {
+    if (isAboveAngularV19) {
+      addMissingImportsV19(originalAppConfigMod);
+    } else {
+      addAppInitializer(originalAppConfigMod);
+    }
   }
 }
 

@@ -49,4 +49,18 @@ describe("updateAppConfigMod", () => {
     expect(code).toContain("provide: ErrorHandler");
     expect(code).not.toContain("TraceService");
   });
+
+  it.each(["19.0.0", "18.2.0"])(
+    "does not import the tracing helpers without tracing on Angular %s",
+    (version) => {
+      const mod = parseModule(APP_CONFIG);
+      const { code } = generateCode(
+        updateAppConfigMod(mod, new SemVer(version), false),
+      );
+
+      expect(code).not.toContain("provideAppInitializer");
+      expect(code).not.toContain("inject");
+      expect(code).not.toContain("APP_INITIALIZER");
+    },
+  );
 });

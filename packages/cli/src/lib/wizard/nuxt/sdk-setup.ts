@@ -12,6 +12,7 @@ import { addNuxtModule } from "magicast/helpers";
 import { lt, type SemVer } from "semver";
 import { Sentry, traceStep } from "../telemetry.js";
 import {
+  abort,
   abortIfCancelled,
   askShouldAddPackageOverride,
   featureSelectionPrompt,
@@ -95,7 +96,7 @@ export async function addSDKModule(
     );
 
     showFallbackInstructions(config, options);
-    throw e;
+    return await abort();
   }
 
   try {
@@ -114,7 +115,7 @@ export async function addSDKModule(
     );
 
     showFallbackInstructions(config, options);
-    throw e;
+    return await abort();
   }
 
   try {
@@ -131,7 +132,7 @@ export async function addSDKModule(
     );
 
     showFallbackInstructions(config, options);
-    throw e;
+    return await abort();
   }
 
   let code: string;
@@ -148,7 +149,7 @@ export async function addSDKModule(
     );
 
     showFallbackInstructions(config, options);
-    throw e;
+    return await abort();
   }
 
   try {
@@ -167,7 +168,7 @@ export async function addSDKModule(
     );
 
     showFallbackInstructions(config, options);
-    throw e;
+    return await abort();
   }
 }
 

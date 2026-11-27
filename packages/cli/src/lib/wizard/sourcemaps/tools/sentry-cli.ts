@@ -436,6 +436,8 @@ Current command: ${chalk.dim(oldCommand)}
 Would have injected: ${chalk.dim(newCommand)}`,
     );
 
+    // The build already runs the script, so CI needs no separate step.
+    addedToBuildCommand = true;
     return;
   }
 

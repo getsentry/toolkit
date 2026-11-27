@@ -23,6 +23,7 @@ vi.mock("@clack/prompts", () => {
       success: vi.fn(),
     },
     confirm: vi.fn().mockResolvedValue(true),
+    select: vi.fn().mockResolvedValue(true),
     isCancel: vi.fn().mockReturnValue(false),
   };
 });
@@ -75,6 +76,25 @@ describe("addSentryCommandToBuildCommand", () => {
     await addSentryCommandToBuildCommand();
 
     expect(writeFileSpy).not.toHaveBeenCalled();
+  });
+
+  it("skips the separate CI step prompt when the build already runs the script", async () => {
+    // `addedToBuildCommand` is module state, so start from a fresh module.
+    vi.resetModules();
+    const clackPrompts = await import("@clack/prompts");
+    const sentryCli =
+      await import("../../../../../src/lib/wizard/sourcemaps/tools/sentry-cli.js");
+    const clackHelpers =
+      await import("../../../../../src/lib/wizard/utils/clack/index.js");
+    vi.mocked(clackHelpers.getPackageDotJson).mockResolvedValue({
+      scripts: { build: "tsc && npm run sentry:sourcemaps" },
+      version: "1.0.0",
+    });
+
+    await sentryCli.addSentryCommandToBuildCommand();
+    await sentryCli.setupNpmScriptInCI();
+
+    expect(clackPrompts.select).not.toHaveBeenCalled();
   });
 });
 

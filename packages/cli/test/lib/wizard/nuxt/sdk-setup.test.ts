@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
@@ -6,8 +6,10 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { SemVer } from "semver";
 import {
   addNuxtOverrides,
+  addSDKModule,
   createConfigFiles,
 } from "../../../../src/lib/wizard/nuxt/sdk-setup.js";
+import { WizardExitError } from "../../../../src/lib/errors.js";
 import type { PackageManager } from "../../../../src/lib/wizard/utils/package-manager.js";
 
 const { askShouldAddPackageOverrideMock } = vi.hoisted(() => ({
@@ -15,7 +17,8 @@ const { askShouldAddPackageOverrideMock } = vi.hoisted(() => ({
 }));
 
 vi.mock("@clack/prompts", () => ({
-  log: { warn: vi.fn(), info: vi.fn() },
+  log: { warn: vi.fn(), info: vi.fn(), error: vi.fn() },
+  outro: vi.fn(),
   confirm: vi.fn().mockResolvedValue(false),
   isCancel: vi.fn().mockReturnValue(false),
 }));
@@ -92,6 +95,45 @@ describe("createConfigFiles", () => {
       for (const snippet of printed) {
         expect(snippet).toContain("dataCollection: {");
       }
+    } finally {
+      process.chdir(originalCwd);
+      write.mockRestore();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("addSDKModule", () => {
+  it("prints the manual steps and aborts cleanly before the config files when the config does not parse", async () => {
+    const dir = mkdtempSync(path.join(tmpdir(), "nuxt-module-"));
+    const originalCwd = process.cwd();
+    const write = vi
+      .spyOn(process.stdout, "write")
+      .mockImplementation(() => true);
+    const config = path.join(dir, "nuxt.config.ts");
+    writeFileSync(config, "export default defineNuxtConfig({ modules: [ ");
+    try {
+      process.chdir(dir);
+
+      // The same two steps, in order, as `runNuxtWizard`'s configure-sdk step.
+      const configureSdk = async () => {
+        await addSDKModule(config, {
+          org: "my-org",
+          project: "my-project",
+          url: "https://sentry.io/",
+          selfHosted: false,
+        });
+        await createConfigFiles("https://key@o1.ingest.sentry.io/2", false);
+      };
+
+      await expect(configureSdk()).rejects.toBeInstanceOf(WizardExitError);
+      expect(
+        write.mock.calls.some(([chunk]) =>
+          String(chunk).includes("@sentry/nuxt/module"),
+        ),
+      ).toBe(true);
+      expect(existsSync(path.join(dir, "sentry.client.config.ts"))).toBe(false);
+      expect(existsSync(path.join(dir, "sentry.server.config.ts"))).toBe(false);
     } finally {
       process.chdir(originalCwd);
       write.mockRestore();

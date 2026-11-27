@@ -28,7 +28,23 @@ export async function initializeSentryOnApplicationEntry(
   const appEntryFilename = "main.ts";
   const appEntryPath = path.join(process.cwd(), "src", appEntryFilename);
 
-  const originalAppEntry = await loadFile(appEntryPath);
+  let originalAppEntry: Awaited<ReturnType<typeof loadFile>>;
+  try {
+    originalAppEntry = await loadFile(appEntryPath);
+  } catch (error: unknown) {
+    // Not fatal: the user gets the manual setup steps instead.
+    debug(error);
+    clack.log.error(
+      `Could not read ${chalk.cyan(path.join("src", appEntryFilename))}.`,
+    );
+    clack.log.warn(
+      `Please refer to the documentation for manual setup:
+${chalk.underline(
+  "https://docs.sentry.io/platforms/javascript/guides/angular/#configure",
+)}`,
+    );
+    return;
+  }
 
   if (hasSentryContent(originalAppEntry.$ast as t.Program)) {
     clack.log.warn(
