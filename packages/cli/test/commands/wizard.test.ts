@@ -1,18 +1,24 @@
 /**
  * Tests for `sentry wizard`: its command line (`[<org>/<project>]
- * [<integration>]` and `--force`, nothing else), what it passes to a wizard
- * flow, and how a stopped wizard sets the exit code.
+ * [<integration>]`, `--force`, and the Apple Snapshots target flags), what it
+ * passes to a wizard flow, and how a stopped wizard sets the exit code.
  */
 
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
-const { runNextjsWizard, isTelemetryEnabled } = vi.hoisted(() => ({
-  runNextjsWizard: vi.fn<(options: unknown) => Promise<void>>(),
-  isTelemetryEnabled: vi.fn<() => boolean>(),
-}));
+const { runNextjsWizard, runAppleSnapshotsWizard, isTelemetryEnabled } =
+  vi.hoisted(() => ({
+    runNextjsWizard: vi.fn<(options: unknown) => Promise<void>>(),
+    runAppleSnapshotsWizard: vi.fn<(options: unknown) => Promise<void>>(),
+    isTelemetryEnabled: vi.fn<() => boolean>(),
+  }));
 vi.mock("../../src/lib/wizard/nextjs/nextjs-wizard.js", () => ({
   runNextjsWizard,
 }));
+vi.mock(
+  "../../src/lib/wizard/apple/snapshots/apple-snapshots-wizard.js",
+  () => ({ runAppleSnapshotsWizard }),
+);
 vi.mock("../../src/lib/telemetry.js", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../src/lib/telemetry.js")>()),
   isTelemetryEnabled,
@@ -81,7 +87,7 @@ describe("sentry wizard flags", () => {
     },
   }).parameters;
 
-  test("--force (-f) is the wizard's only flag, and it is not hidden", () => {
+  test("the wizard's flags are --force (-f) and the Apple Snapshots targets, none hidden", () => {
     const { flags = {}, aliases = {} } = wizardCommand.parameters as {
       flags?: Record<string, { hidden?: boolean }>;
       aliases?: Record<string, string>;
@@ -93,8 +99,10 @@ describe("sentry wizard flags", () => {
       ([alias]) => !(alias in (injected.aliases ?? {})),
     );
 
-    expect(ownFlags).toEqual(["force"]);
-    expect(flags["force"]?.hidden).toBeUndefined();
+    expect(ownFlags).toEqual(["force", "app-target", "hosted-test-target"]);
+    for (const name of ownFlags) {
+      expect(flags[name]?.hidden).toBeUndefined();
+    }
     expect(Object.fromEntries(ownAliases)).toEqual({ f: "force" });
   });
 });
@@ -205,6 +213,22 @@ describe("sentry wizard", () => {
       ignoreGitChanges: false,
       spotlight: false,
     });
+  });
+
+  test("--app-target and --hosted-test-target reach the Apple Snapshots flow", async () => {
+    runAppleSnapshotsWizard.mockResolvedValue(undefined);
+
+    await runWizardCommand(
+      { "app-target": "App", "hosted-test-target": "AppTests" },
+      "appleSnapshots",
+    );
+
+    expect(runAppleSnapshotsWizard).toHaveBeenCalledWith(
+      expect.objectContaining({
+        appTarget: "App",
+        hostedTestTarget: "AppTests",
+      }),
+    );
   });
 
   test("--force both force-installs and skips the uncommitted changes prompt", async () => {
