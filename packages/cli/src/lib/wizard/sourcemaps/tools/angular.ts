@@ -7,17 +7,24 @@ import { clack } from "../../utils/clack/prompts.js";
 import chalk from "chalk";
 import { abortIfCancelled, makeCodeSnippet } from "../../utils/clack/index.js";
 
-/** The `angular.json` change that turns on source maps. */
+/**
+ * The `angular.json` change that turns on source maps. It goes in the
+ * production configuration, like the automatic `angular.json` edit, because
+ * Angular's default production configuration sets `sourceMap: false`, which
+ * overrides `options`.
+ */
 const angularJsonTemplate = makeCodeSnippet(true, (unchanged, plus) =>
   unchanged(`{
   "projects": {
-    'your-project': {
+    "your-project": {
       "architect": {
         "build": {
-          "options": {
-            ${plus(`"sourceMap": true`)}
-          },
-        },
+          "configurations": {
+            "production": {
+              ${plus(`"sourceMap": true`)}
+            }
+          }
+        }
       }
     }
   }
