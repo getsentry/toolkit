@@ -54,6 +54,9 @@ function findSentryBin() {
   }
 }
 
+/** Old flags that `sentry wizard` takes unchanged, with their value. */
+const PASSED_THROUGH = ["app-target", "hosted-test-target"];
+
 /** Old flags with a `sentry wizard` equivalent, by name. */
 const TRANSLATED = new Map([
   ["i", "integration"],
@@ -62,6 +65,7 @@ const TRANSLATED = new Map([
   ["url", "url"],
   ["org", "org"],
   ["project", "project"],
+  ...PASSED_THROUGH.map((name) => /** @type {const} */ ([name, name])),
 ]);
 
 /** Flags that become `-f`, including `-f` itself. */
@@ -73,23 +77,17 @@ const FORCE_FLAGS = new Set([
 ]);
 
 /** Old flags without an equivalent that take a value, which is dropped too. */
-const VALUE_FLAGS = new Set([
-  "promo-code",
-  "coming-from",
-  "xcode-project-dir",
-  "app-target",
-  "hosted-test-target",
-]);
+const VALUE_FLAGS = new Set(["promo-code", "coming-from", "xcode-project-dir"]);
 
 /** Old flags that take every value up to the next flag. */
 const ARRAY_FLAGS = new Set(["p", "platform"]);
 
 /**
  * Translate `@sentry/wizard` arguments to `sentry wizard [<org>/<project>]
- * [<integration>] [-f]`, plus the CLI's environment variables for `--url` and
- * `--spotlight`. Other arguments, such as a target or integration already
- * written as positionals, pass through. Values are never printed: some old
- * flags carried tokens.
+ * [<integration>] [--app-target <name>] [--hosted-test-target <name>] [-f]`,
+ * plus the CLI's environment variables for `--url` and `--spotlight`. Other
+ * arguments, such as a target or integration already written as positionals,
+ * pass through. Values are never printed: some old flags carried tokens.
  *
  * @param {readonly string[]} args
  * @returns {{ args: string[], env: Record<string, string>, notices: string[] }}
@@ -161,11 +159,16 @@ function translateArgs(args) {
   }
   const integration = values.get("integration");
   const url = values.get("url");
+  const passedThrough = PASSED_THROUGH.flatMap((name) => {
+    const value = values.get(name);
+    return value === undefined ? [] : [`--${name}`, value];
+  });
   return {
     args: [
       ...(org === undefined ? [] : [`${org}/${project ?? ""}`]),
       ...positionals,
       ...(integration === undefined ? [] : [integration]),
+      ...passedThrough,
       ...(force ? ["-f"] : []),
       ...(help ? ["--help"] : []),
     ],
