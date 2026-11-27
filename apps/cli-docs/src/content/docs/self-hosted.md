@@ -54,7 +54,7 @@ If your instance is on an older version or you prefer not to create an OAuth app
 1. Go to **Settings → Developer Settings → Personal Tokens** in your Sentry instance (or visit `https://sentry.example.com/settings/account/api/auth-tokens/new-token/`)
 2. Create a new token with the following scopes:
 <!-- GENERATED:START oauth-scopes -->
-`project:read`, `project:write`, `project:admin`, `org:read`, `org:integrations`, `event:read`, `event:write`, `member:read`, `team:read`, `team:write`, `team:admin`, `alerts:read`, `alerts:write`
+`project:read`, `project:write`, `project:admin`, `org:read`, `org:integrations`, `event:read`, `event:write`, `member:read`, `team:read`, `team:write`, `team:admin`, `alerts:read`, `alerts:write`, `user_preference:read`, `user_preference:write`
 <!-- GENERATED:END oauth-scopes -->
 3. Pass it to the CLI:
 
@@ -92,6 +92,8 @@ If your proxy requires custom HTTP headers (e.g. an IAP token), set them with `S
 ```bash
 sentry cli defaults headers "X-IAP: token"
 ```
+
+Requests that send no auth token, such as resolving a share link with `sentry issue view <share-url>`, get these headers only on a host you logged in to with `sentry auth login --url`. A host that comes only from `SENTRY_HOST`/`SENTRY_URL` doesn't count, because in CI an earlier step can set those variables without access to your token. Authenticated requests are unchanged: they get the headers on the host your token is scoped to.
 
 ## Relevant Environment Variables
 

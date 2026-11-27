@@ -75,7 +75,9 @@ GitHub Actions workflow runs on every PR and push to main:
 
 **On Pull Requests:**
 
-- 📝 **PR Comment:** Automatic comment with full report (updated on each push)
+- 📝 **PR Comment:** Full report, posted only when the tool definitions or MCP
+  Apps views differ from main's last run. Once posted, it is updated on each push.
+  Lockfile-only changes that leave the MCP surface alone get no comment.
 - 📊 **Job Summary:** Detailed per-tool breakdown in Actions tab
 - 📦 **Artifact:** `token-stats-{sha}.json` stored for 90 days
 

@@ -34,6 +34,7 @@ import {
   DEBUG_FILES_MAX_WAIT_MS,
   type DebugFileUpload,
   type DebugFileUploadResult,
+  type DebugFilesUploadProgress,
   uploadDebugFiles,
 } from "../../lib/api/debug-files.js";
 import { buildCommand, numberParser } from "../../lib/command.js";
@@ -50,6 +51,10 @@ import {
   VALID_DIF_TYPES,
 } from "../../lib/dif/scan.js";
 import {
+  createUploadProgressReporter,
+  logFoundDebugFiles,
+} from "../../lib/dif/upload-progress.js";
+import {
   choiceParser,
   parseFilePath,
   parseText,
@@ -61,9 +66,16 @@ import {
   renderMarkdown,
 } from "../../lib/formatters/markdown.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
+import { getAuthToken } from "../../lib/db/auth.js";
 import { logger } from "../../lib/logger.js";
-import { resolveOrgAndProject } from "../../lib/resolve-target.js";
+import {
+  type ResolvedTarget,
+  resolveOrgAndProject,
+  resolveTargetSlugs,
+} from "../../lib/resolve-target.js";
 import { sentry } from "../../lib/app-identity.js";
+import { parseSntrysClaim } from "../../lib/token-claims.js";
+import { isAllDigits } from "../../lib/utils.js";
 
 const log = logger.withTag("debug-files.upload");
 
@@ -146,6 +158,7 @@ type UploadFlags = {
   "no-upload"?: boolean;
   wait?: boolean;
   "wait-for"?: number;
+  json?: boolean;
 };
 
 // ── Formatter ───────────────────────────────────────────────────────
@@ -177,6 +190,34 @@ function formatUploadResult(data: DebugFilesUploadResult): string {
 }
 
 // ── Helpers ─────────────────────────────────────────────────────────
+
+/**
+ * Swap the numeric org/project IDs that DSN or env resolution can yield for
+ * their slugs, so the summary names the target the way users know it.
+ *
+ * Best effort: the lookup needs `project:read`, which CI org auth tokens
+ * (`org:ci`) lack. On failure a numeric org falls back to the org slug
+ * embedded in such a token (the only org it can upload to), and the IDs are
+ * otherwise kept; both are valid API identifiers.
+ */
+async function withTargetSlugs(
+  target: ResolvedTarget,
+): Promise<ResolvedTarget> {
+  try {
+    return await resolveTargetSlugs(target);
+  } catch (err) {
+    log.debug(
+      `Could not resolve slugs for ${target.org}/${target.project}`,
+      err,
+    );
+    const tokenOrg = isAllDigits(target.org)
+      ? parseSntrysClaim(getAuthToken())?.org
+      : undefined;
+    return tokenOrg
+      ? { ...target, org: tokenOrg, orgDisplay: tokenOrg }
+      : target;
+  }
+}
 
 /** Build a stable dedupe key from a file's debug id and content hash. */
 function difKey(dif: DebugFileUpload): string {
@@ -459,6 +500,7 @@ async function* doUpload(
     oversizedCount: number;
     maxFileSize: number;
     serverOptions?: ChunkServerOptions | undefined;
+    onProgress?: ((event: DebugFilesUploadProgress) => void) | undefined;
   },
 ) {
   const results = await uploadDebugFiles(params);
@@ -730,17 +772,18 @@ export const uploadCommand = buildCommand({
     // options up front. The server's advertised `maxFileSize` then gates the
     // scan, so a file the server would reject is never read into memory.
     // `--no-upload` stays auth-free and uses the generous default cap.
-    let resolved: Awaited<ReturnType<typeof resolveOrgAndProject>> = null;
+    let resolved: ResolvedTarget | null = null;
     let serverOptions: ChunkServerOptions | undefined;
     let maxFileSize = DEFAULT_MAX_DIF_SIZE;
     if (!flags["no-upload"]) {
-      resolved = await resolveOrgAndProject({
+      const target = await resolveOrgAndProject({
         cwd: this.cwd,
         usageHint: usageHint(),
       });
-      if (!resolved) {
+      if (!target) {
         throw new ContextError("Organization and project", usageHint());
       }
+      resolved = await withTargetSlugs(target);
       serverOptions = await getChunkUploadOptions(resolved.org);
       if (serverOptions.maxFileSize && serverOptions.maxFileSize > 0) {
         maxFileSize = serverOptions.maxFileSize;
@@ -759,6 +802,11 @@ export const uploadCommand = buildCommand({
       }),
     );
     const missingIds = missingRequestedIds(flags.id, prepared);
+    // Progress goes to stderr; JSON mode keeps stderr quiet for agents.
+    const showProgress = !flags.json;
+    if (showProgress && prepared.length > 0) {
+      logFoundDebugFiles(prepared.length);
+    }
 
     // Dry-run is purely informational: report what would upload (and surface
     // size skips) without erroring.
@@ -786,17 +834,24 @@ export const uploadCommand = buildCommand({
       throw new ContextError("Organization and project", usageHint());
     }
 
-    return yield* doUpload(setExitCode, {
-      org: resolved.org,
-      project: resolved.project,
-      serverOptions,
-      difs,
-      wait,
-      maxWaitMs,
-      missingRequestedIds: missingIds,
-      requireAll,
-      oversizedCount,
-      maxFileSize,
-    });
+    const progress = showProgress ? createUploadProgressReporter() : undefined;
+    try {
+      return yield* doUpload(setExitCode, {
+        org: resolved.org,
+        project: resolved.project,
+        serverOptions,
+        difs,
+        wait,
+        maxWaitMs,
+        missingRequestedIds: missingIds,
+        requireAll,
+        oversizedCount,
+        maxFileSize,
+        onProgress: progress?.onProgress,
+      });
+    } finally {
+      // A failed upload can leave a spinner on screen.
+      progress?.stop();
+    }
   },
 });

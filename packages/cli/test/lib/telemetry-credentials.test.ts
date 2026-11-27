@@ -33,6 +33,10 @@ function captureTelemetry() {
     send,
     flush,
   });
+  // The root test script loads SENTRY_SPOTLIGHT=1 from .env.local. The SDK
+  // then sets up integrations in the disabled init too, so the init() below
+  // would register Dedupe twice and drop every error event.
+  vi.stubEnv("SENTRY_SPOTLIGHT", "false");
   client = initSentry(false, { libraryMode: true });
   if (!client) {
     throw new Error("Expected the telemetry client");
@@ -61,6 +65,7 @@ afterEach(async () => {
     scope.setContext("synthetic", null).clearBreadcrumbs();
   }
   vi.restoreAllMocks();
+  vi.unstubAllEnvs();
 });
 
 describe("telemetry credential boundaries", () => {

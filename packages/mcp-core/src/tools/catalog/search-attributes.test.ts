@@ -175,10 +175,12 @@ describe("search_attributes", () => {
   });
 
   describe("requests", () => {
-    it("requires a spans, logs, or metrics dataset", async () => {
-      await expect(search({})).rejects.toThrowErrorMatchingInlineSnapshot(
-        `[UserInputError: Choose a dataset: \`spans\` (requests, latency, database and AI calls), \`logs\` (log lines), or \`metrics\` (counters, gauges, distributions).]`,
-      );
+    it("requires a spans, logs, or metrics dataset", () => {
+      expect(() =>
+        z
+          .object(searchAttributes.inputSchema)
+          .parse({ organizationSlug: "sentry-mcp-evals" }),
+      ).toThrow();
       expect(() =>
         z
           .object(searchAttributes.inputSchema)
@@ -614,6 +616,72 @@ describe("search_attributes", () => {
       },
     );
 
+    it("keeps the note when every hint search fails", async () => {
+      vi.spyOn(logging, "logIssue").mockReturnValue(undefined);
+      // 501 isn't retried, which keeps the test fast.
+      serveAttributes((substring) =>
+        substring === null
+          ? FULL_PAGE
+          : HttpResponse.json({ detail: "Server error" }, { status: 501 }),
+      );
+      mockGenerateText
+        .mockResolvedValueOnce(mockAgentResponse({ hints: ["payment"] }))
+        .mockResolvedValueOnce(
+          mockAgentResponse({ best: null, candidates: [] }),
+        );
+
+      const output = await search({
+        query: "payment provider",
+        dataset: "spans",
+      });
+
+      // Only the cut-off list was searched, so a miss may not be real.
+      expect(output.notes).toContain(KEY_CAP_NOTE);
+    });
+
+    it("keeps the note when only some hint searches fail", async () => {
+      vi.spyOn(logging, "logIssue").mockReturnValue(undefined);
+      // 501 isn't retried, which keeps the test fast.
+      serveAttributes((substring) => {
+        if (substring === null) return FULL_PAGE;
+        if (substring === "processor") {
+          return HttpResponse.json({ detail: "Server error" }, { status: 501 });
+        }
+        return [userAttribute("payment.processor")];
+      });
+      mockGenerateText
+        .mockResolvedValueOnce(
+          mockAgentResponse({ hints: ["payment", "processor"] }),
+        )
+        .mockResolvedValueOnce(
+          mockAgentResponse({ best: "payment.processor", candidates: [] }),
+        );
+
+      const output = await search({
+        query: "payment provider",
+        dataset: "spans",
+      });
+
+      expect(output.best?.key).toBe("payment.processor");
+      // Keys only the failed hint would have found may be missing.
+      expect(output.notes).toContain(KEY_CAP_NOTE);
+    });
+
+    it("keeps the note when a hint search reaches the limit too", async () => {
+      serveAttributes((substring) =>
+        substring === null ? FULL_PAGE : manyAttributes(1000),
+      );
+      mockGenerateText
+        .mockResolvedValueOnce(mockAgentResponse({ hints: ["app"] }))
+        .mockResolvedValueOnce(
+          mockAgentResponse({ best: null, candidates: [] }),
+        );
+
+      const output = await search({ query: "app setting", dataset: "spans" });
+
+      expect(output.notes).toContain(KEY_CAP_NOTE);
+    });
+
     it("leaves the note out when the hint searches find nothing", async () => {
       // The hint search looked through every key, so a miss is a real miss.
       const substrings = serveAttributes((substring) =>
@@ -695,6 +763,57 @@ describe("search_attributes", () => {
           },
         }),
       );
+    });
+
+    it("passes the call's cancel signal to both agents", async () => {
+      const controller = new AbortController();
+      serveAttributes((substring) =>
+        substring === null ? FULL_PAGE : [userAttribute("payment.processor")],
+      );
+      mockGenerateText
+        .mockResolvedValueOnce(mockAgentResponse({ hints: ["payment"] }))
+        .mockResolvedValueOnce(
+          mockAgentResponse({ best: "payment.processor", candidates: [] }),
+        );
+
+      await searchAttributes.handler(
+        z.object(searchAttributes.inputSchema).parse({
+          organizationSlug: "sentry-mcp-evals",
+          query: "payment provider",
+          dataset: "spans",
+        }),
+        { ...getServerContext(), signal: controller.signal },
+      );
+
+      expect(
+        mockGenerateText.mock.calls.map(([options]) => options.abortSignal),
+      ).toEqual([controller.signal, controller.signal]);
+    });
+
+    it("stops without reporting hint searches when the call is cancelled", async () => {
+      const logIssue = vi.spyOn(logging, "logIssue").mockReturnValue(undefined);
+      const controller = new AbortController();
+      serveAttributes((substring) => {
+        if (substring === null) return FULL_PAGE;
+        // The client cancels while the hint search is in flight.
+        controller.abort();
+        return HttpResponse.json({ detail: "Server error" }, { status: 501 });
+      });
+      mockGenerateText.mockResolvedValueOnce(
+        mockAgentResponse({ hints: ["payment"] }),
+      );
+
+      await expect(
+        searchAttributes.handler(
+          z.object(searchAttributes.inputSchema).parse({
+            organizationSlug: "sentry-mcp-evals",
+            query: "payment provider",
+            dataset: "spans",
+          }),
+          { ...getServerContext(), signal: controller.signal },
+        ),
+      ).rejects.toThrow();
+      expect(logIssue).not.toHaveBeenCalled();
     });
 
     it("counts the cap per type, not across types", async () => {
