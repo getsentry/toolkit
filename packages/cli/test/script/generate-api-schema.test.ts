@@ -130,13 +130,11 @@ describe("project scope extraction", () => {
         },
         events,
       ]),
-    ).toEqual([
-      {
-        method: "GET",
-        path: "/api/0/organizations/{org}/a/{id}/",
-        scope: "response:/project/id",
+    ).toEqual({
+      GET: {
+        "/organizations/{org}/a/{id}/": "response:/project/id",
+        "/organizations/{org}/z/": "filter",
       },
-      { method: "GET", path: "/api/0/organizations/{org}/z/", scope: "filter" },
-    ]);
+    });
   });
 });

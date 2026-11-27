@@ -92,17 +92,14 @@ export const ACCOUNT_READS: readonly SimpleRule[] = [
 ];
 
 /**
- * An operation of the `@sentry/api` catalog with an `x-sentry-project-scope`
- * other than `path`, as `script/generate-api-schema.ts` extracts it.
+ * The operations of the `@sentry/api` catalog with an `x-sentry-project-scope`
+ * other than `path`, as `script/generate-api-schema.ts` extracts them: by
+ * uppercase method, then OpenAPI path template relative to `/api/0`
+ * (`/organizations/{organization_id_or_slug}/issues/`), the scope:
+ * `filter`, `org-metadata` or `response:<pointer>`. A table rather than a
+ * list of objects keeps the `@sentry/mcp-server` bundle within its budget.
  */
-export type ProjectScopeOperation = {
-  /** Uppercase HTTP method */
-  method: string;
-  /** OpenAPI path template, such as `/api/0/organizations/{org}/issues/` */
-  path: string;
-  /** `filter`, `org-metadata` or `response:<pointer>` */
-  scope: string;
-};
+export type ProjectScopeTable = Record<string, Record<string, string>>;
 
 /** `value` as an object, or `{}` when it is not one. */
 export function record(value: unknown): Record<string, unknown> {
@@ -139,7 +136,7 @@ function valuesAt(body: unknown, pointer: string): unknown[] {
 
 /** The rule pattern of a catalog path: `{name}` becomes `:name`. */
 function patternOf(path: string): string {
-  return path.replace(/^\/api\/0\//, "").replace(/\{([^}]+)\}/g, ":$1");
+  return path.replace(/^\//, "").replace(/\{([^}]+)\}/g, ":$1");
 }
 
 /**
@@ -181,13 +178,15 @@ export function catalogRules(entries: unknown): {
   const orgReads: SimpleRule[] = [];
   const checked: ScopeRule[] = [];
   const lookedUpFirst: ScopeRule[] = [];
-  for (const entry of Array.isArray(entries) ? entries : []) {
-    const { method, path, scope } = record(entry);
-    if (
-      typeof method !== "string" ||
-      typeof path !== "string" ||
-      typeof scope !== "string"
-    ) {
+  const declared = Object.entries(record(entries)).flatMap(([method, paths]) =>
+    Object.entries(record(paths)).map(([path, scope]) => ({
+      method,
+      path,
+      scope,
+    })),
+  );
+  for (const { method, path, scope } of declared) {
+    if (typeof scope !== "string") {
       continue;
     }
     const pattern = patternOf(path);
@@ -233,10 +232,10 @@ export function catalogRules(entries: unknown): {
  * working until the `@sentry/api` 3.x bump, which deletes it.
  */
 export function projectScopeDeclarations(
-  generated: readonly unknown[],
-  interim: readonly unknown[],
-): readonly unknown[] {
-  return generated.length > 0 ? generated : interim;
+  generated: unknown,
+  interim: unknown,
+): unknown {
+  return Object.keys(record(generated)).length > 0 ? generated : interim;
 }
 
 const CATALOG = catalogRules(

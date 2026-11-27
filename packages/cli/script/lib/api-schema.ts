@@ -3,7 +3,7 @@
 import { API_BASE_PATH } from "@sentry/api/client";
 import type { ApiOperation } from "@sentry/api/operations";
 import type { ApiEndpoint } from "../../src/lib/api-schema.js";
-import type { ProjectScopeOperation } from "../../src/lib/target-scope-rules.js";
+import type { ProjectScopeTable } from "../../src/lib/target-scope-rules.js";
 
 /**
  * Keep CLI grouping, output names and legacy deprecation detection local.
@@ -50,20 +50,21 @@ function deriveResource(url: string): string {
 /**
  * The operations Sentry declares an `x-sentry-project-scope` for, other
  * than `path` (the scope rules match project paths themselves), for
- * `target-scope-rules.ts`, with full request paths. `@sentry/api` carries
- * it as `projectScope`.
+ * `target-scope-rules.ts`, sorted. `@sentry/api` carries it as
+ * `projectScope`.
  */
 export function selectProjectScopeOperations(
   catalog: readonly { method: string; path: string; projectScope?: string }[],
-): ProjectScopeOperation[] {
-  return catalog
-    .flatMap(({ method, path, projectScope }) =>
-      projectScope && projectScope !== "path"
-        ? [{ method, path: `${API_BASE_PATH}${path}`, scope: projectScope }]
-        : [],
-    )
+): ProjectScopeTable {
+  const table: ProjectScopeTable = {};
+  const declared = catalog
+    .filter(({ projectScope }) => projectScope && projectScope !== "path")
     .sort(
       (a, b) =>
-        a.path.localeCompare(b.path) || a.method.localeCompare(b.method),
+        a.method.localeCompare(b.method) || a.path.localeCompare(b.path),
     );
+  for (const { method, path, projectScope } of declared) {
+    (table[method] ??= {})[path] = projectScope ?? "";
+  }
+  return table;
 }

@@ -46,13 +46,17 @@ export async function emit(): Promise<void> {
   );
 
   const projectScopeOperations = selectProjectScopeOperations(operations);
+  const projectScopeCount = Object.values(projectScopeOperations).reduce(
+    (count, paths) => count + Object.keys(paths).length,
+    0,
+  );
 
   await writeFile(
     PROJECT_SCOPE_OUTPUT_PATH,
     JSON.stringify(projectScopeOperations, null, 2),
   );
 
-  if (projectScopeOperations.length === 0) {
+  if (projectScopeCount === 0) {
     // Scoped sessions still work, but refuse every endpoint the catalog
     // would have covered.
     logger.warn(
@@ -60,7 +64,7 @@ export async function emit(): Promise<void> {
     );
   } else {
     logger.success(
-      `Generated ${PROJECT_SCOPE_OUTPUT_PATH} (${projectScopeOperations.length} operations)`,
+      `Generated ${PROJECT_SCOPE_OUTPUT_PATH} (${projectScopeCount} operations)`,
     );
   }
 }

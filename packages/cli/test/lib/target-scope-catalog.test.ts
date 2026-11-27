@@ -19,22 +19,27 @@ import { projectScopeDeclarations } from "../../src/lib/target-scope-rules.js";
 
 // A catalog that declares only the DSN lookup.
 vi.mock("../../src/generated/project-scope-operations.json", () => ({
-  default: [
-    {
-      method: "GET",
-      path: "/api/0/organizations/{organization_id_or_slug}/dsn-lookup/",
-      scope: "org-metadata",
+  default: {
+    GET: {
+      "/organizations/{organization_id_or_slug}/dsn-lookup/": "org-metadata",
     },
-  ],
+  },
 }));
 
 const GENERATED = new URL(
   "../../src/generated/project-scope-operations.json",
   import.meta.url,
 );
-const generated: unknown[] = existsSync(GENERATED)
+const generated: Record<string, Record<string, string>> = existsSync(GENERATED)
   ? JSON.parse(readFileSync(GENERATED, "utf8"))
-  : [];
+  : {};
+
+/** Each declaration of a table, as `METHOD path scope`. */
+function declarations(table: Record<string, Record<string, string>>) {
+  return Object.entries(table).flatMap(([method, paths]) =>
+    Object.entries(paths).map(([path, scope]) => `${method} ${path} ${scope}`),
+  );
+}
 
 const send = async () => Response.json({ id: "1", slug: "web" });
 
@@ -47,11 +52,11 @@ function scoped(path: string) {
 
 describe("the scope rules' declarations", () => {
   test("are the interim copy while the catalog has none", () => {
-    expect(projectScopeDeclarations([], interim)).toBe(interim);
+    expect(projectScopeDeclarations({}, interim)).toBe(interim);
   });
 
   test("are the catalog's once it has any", async () => {
-    const catalog = [interim[0]];
+    const catalog = { PUT: interim.PUT };
     expect(projectScopeDeclarations(catalog, interim)).toBe(catalog);
     // The mocked catalog declares the DSN lookup but not the upload
     // options, which only the interim copy has.
@@ -63,10 +68,12 @@ describe("the scope rules' declarations", () => {
     );
   });
 
-  test.skipIf(generated.length === 0)(
+  test.skipIf(Object.keys(generated).length === 0)(
     "in the interim copy are all in the @sentry/api catalog",
     () => {
-      expect(generated).toEqual(expect.arrayContaining(interim));
+      expect(declarations(generated)).toEqual(
+        expect.arrayContaining(declarations(interim)),
+      );
     },
   );
 });
