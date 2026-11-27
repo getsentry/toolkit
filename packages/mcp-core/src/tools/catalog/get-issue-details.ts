@@ -703,7 +703,6 @@ export default defineTool({
           organizationSlug: orgSlug,
           issue,
           seerEnabled: isSeerGranted(context),
-          includeRelatedIssues: context.experimentalMode ?? false,
           // same_trace follows the event's trace, so it must be the event shown
           eventId,
         }),
@@ -804,8 +803,6 @@ export default defineTool({
         organizationSlug: orgSlug,
         issue,
         seerEnabled: isSeerGranted(context),
-        // experimental only until the Seer load and rate limits are checked
-        includeRelatedIssues: context.experimentalMode ?? false,
       }),
     ]);
 
@@ -932,22 +929,19 @@ async function maybeFetchCommitters({
  * Fetches supplementary data for an issue in parallel: Seer analysis, external links, replays
  * and related issues. All calls are non-blocking -- failures are caught so they never
  * prevent the primary issue details from being returned. Seer analysis is
- * skipped entirely when the `seer` skill is not granted, and related issues unless
- * `includeRelatedIssues` is set.
+ * skipped entirely when the `seer` skill is not granted.
  */
 async function fetchIssueEnrichmentData({
   apiService,
   organizationSlug,
   issue,
   seerEnabled,
-  includeRelatedIssues,
   eventId,
 }: {
   apiService: SentryApiService;
   organizationSlug: string;
   issue: Issue;
   seerEnabled: boolean;
-  includeRelatedIssues: boolean;
   /** The event the response shows; related issues come from the latest event when omitted. */
   eventId?: string;
 }): Promise<{
@@ -975,14 +969,12 @@ async function fetchIssueEnrichmentData({
           dataSource: getReplayDataSource(issue),
         })
         .catch(() => undefined),
-      includeRelatedIssues
-        ? maybeFetchRelatedIssues({
-            apiService,
-            organizationSlug,
-            issueId,
-            eventId,
-          })
-        : undefined,
+      maybeFetchRelatedIssues({
+        apiService,
+        organizationSlug,
+        issueId,
+        eventId,
+      }),
     ]);
 
   return { autofixState, externalIssues, relatedReplayIds, relatedIssues };

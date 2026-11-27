@@ -1,0 +1,27 @@
+{
+  "name": "nextjs-16-test-app",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start -p 8086",
+    "lint": "biome check && eslint",
+    "format": "prettier --write . && biome format --write ."
+  },
+  "dependencies": {
+    "next": "16.4.1",
+    "react": "19.2.0",
+    "react-dom": "19.2.0"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.2.0",
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "eslint": "^9",
+    "eslint-config-next": "16.0.7",
+    "prettier": "^3",
+    "typescript": "^5"
+  }
+}

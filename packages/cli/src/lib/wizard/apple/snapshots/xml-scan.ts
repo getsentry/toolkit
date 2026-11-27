@@ -8,40 +8,15 @@
  * element it extracts not to nest inside itself (true for `TestAction`).
  */
 
+import { decodeXmlEntities } from "../../utils/xml.js";
+
 /** Matches comments, CDATA sections, and `<?…?>` / `<!…>` declarations. */
 const IGNORED_MARKUP_RE =
   /<!--[\s\S]*?-->|<!\[CDATA\[[\s\S]*?\]\]>|<[?!][^>]*>/g;
 
-/** The five predefined XML entities plus numeric character references. */
-const ENTITY_RE = /&(?:#(\d+)|#x([\da-f]+)|(amp|lt|gt|quot|apos));/gi;
-
-const NAMED_ENTITIES: Record<string, string> = {
-  amp: "&",
-  lt: "<",
-  gt: ">",
-  quot: '"',
-  apos: "'",
-};
-
 /** Escape `value` for use inside a regular expression. */
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
-/** Decode XML entity and character references in `value`. */
-export function decodeXmlEntities(value: string): string {
-  return value.replace(
-    ENTITY_RE,
-    (match, decimal?: string, hex?: string, named?: string) => {
-      if (decimal) {
-        return String.fromCodePoint(Number.parseInt(decimal, 10));
-      }
-      if (hex) {
-        return String.fromCodePoint(Number.parseInt(hex, 16));
-      }
-      return NAMED_ENTITIES[named?.toLowerCase() ?? ""] ?? match;
-    },
-  );
 }
 
 /**
