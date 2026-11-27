@@ -17,9 +17,15 @@ import {
 } from "./templates.js";
 
 function getSrcDirectory(isNuxtV4: boolean): string {
-  // In nuxt v4, the src directory is `app/` unless
-  // users already had a `pages` directory
-  return isNuxtV4 && !existsSync(path.resolve("pages")) ? "app" : ".";
+  if (!isNuxtV4 || existsSync(path.resolve("pages"))) {
+    return ".";
+  }
+  // Nuxt 4 defaults the src directory to `app/`. A root `app.vue` with no
+  // `app/` directory means the project keeps a root `srcDir`.
+  if (!existsSync(path.resolve("app")) && existsSync(path.resolve("app.vue"))) {
+    return ".";
+  }
+  return "app";
 }
 
 /** Whether the app renders pages, so an example page would be reachable. */

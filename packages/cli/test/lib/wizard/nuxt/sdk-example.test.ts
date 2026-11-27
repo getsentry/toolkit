@@ -107,3 +107,39 @@ describe("supportsExamplePage", () => {
     await expect(supportsExamplePage(false)).resolves.toBe(expected);
   });
 });
+
+describe("Nuxt 4 src directory", () => {
+  it("uses the root app.vue when there is no app/ directory", async () => {
+    writeFileSync("app.vue", "<template><NuxtLayout /></template>");
+
+    await expect(supportsExamplePage(true)).resolves.toBe(false);
+
+    await createExampleComponent(true);
+    expect(existsSync("components/SentryErrorButton.vue")).toBe(true);
+    expect(existsSync("app")).toBe(false);
+  });
+
+  it("uses app/ when it exists, even with a root app.vue", async () => {
+    mkdirSync("app");
+    writeFileSync("app.vue", "<template><NuxtLayout /></template>");
+
+    await expect(supportsExamplePage(true)).resolves.toBe(true);
+
+    await createExampleComponent(true);
+    expect(existsSync("app/components/SentryErrorButton.vue")).toBe(true);
+  });
+
+  it("defaults to app/ in a project with neither", async () => {
+    await createExamplePage(true, options);
+
+    expect(existsSync("app/pages/sentry-example-page.vue")).toBe(true);
+  });
+
+  it("keeps the root for Nuxt 3", async () => {
+    mkdirSync("app");
+
+    await createExampleComponent(false);
+
+    expect(existsSync("components/SentryErrorButton.vue")).toBe(true);
+  });
+});
