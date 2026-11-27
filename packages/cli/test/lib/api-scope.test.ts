@@ -144,6 +144,8 @@ describe("extractRequiredScopes", () => {
       "event:admin",
       "alerts:read",
       "alerts:write",
+      "user_preference:read",
+      "user_preference:write",
     ];
     expect(
       extractRequiredScopes(`Required scopes: ${allScopes.join(", ")}`),

@@ -99,7 +99,12 @@ function formatFlagRow(
   if (alias) {
     syntax = `-${alias}, ${syntax}`;
   }
-  if ((flag.kind === "parsed" || flag.kind === "enum") && !flag.variadic) {
+  if (flag.inlineOnly) {
+    syntax += `[=<${flag.name}>]`;
+  } else if (
+    (flag.kind === "parsed" || flag.kind === "enum") &&
+    !flag.variadic
+  ) {
     syntax += ` <${flag.name}>`;
   } else if (flag.variadic) {
     syntax += ` <${flag.name}>...`;

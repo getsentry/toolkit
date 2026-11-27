@@ -6,7 +6,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
-import { UPGRADE_SOURCES } from "../../src/lib/binary.js";
+import { UPGRADE_SOURCE } from "../../src/lib/binary.js";
 import { UpgradeError } from "../../src/lib/errors.js";
 import { extractInputUrl } from "../../src/lib/fetch-input.js";
 import {
@@ -105,7 +105,7 @@ describe("getAnonymousToken", () => {
       });
     });
 
-    await expect(getAnonymousToken(UPGRADE_SOURCES[0])).resolves.toBe(
+    await expect(getAnonymousToken(UPGRADE_SOURCE)).resolves.toBe(
       "toolkit-token",
     );
   });
@@ -253,7 +253,7 @@ describe("fetchNightlyManifest", () => {
     });
 
     await expect(
-      fetchNightlyManifest("token", undefined, UPGRADE_SOURCES[0]),
+      fetchNightlyManifest("token", undefined, UPGRADE_SOURCE),
     ).resolves.toEqual(manifest);
   });
 

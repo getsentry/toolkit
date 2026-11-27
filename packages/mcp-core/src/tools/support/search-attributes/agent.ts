@@ -26,15 +26,18 @@ type KeyHintsAgentOutput = z.output<typeof keyHintsAgentOutputSchema>;
 export async function generateKeyHintsAgent({
   query,
   dataset,
+  abortSignal,
 }: {
   query: string;
   dataset: SearchAttributesDataset;
+  abortSignal?: AbortSignal | undefined;
 }): Promise<string[]> {
   const { result } = await callEmbeddedAgent<KeyHintsAgentOutput>({
     system: keyHintsSystemPrompt,
     prompt: `Dataset: ${dataset}\nQuestion: ${query}`,
     tools: {},
     schema: keyHintsAgentOutputSchema,
+    abortSignal,
   });
   return cleanKeyHints(result.hints);
 }
@@ -86,6 +89,7 @@ export interface ShortlistAttributesAgentOptions {
   dataset: SearchAttributesDataset;
   attributes: TraceItemAttribute[];
   limit: number;
+  abortSignal?: AbortSignal | undefined;
 }
 
 /**
@@ -100,6 +104,7 @@ export async function shortlistAttributesAgent(
     prompt: buildShortlistPrompt(options),
     tools: {},
     schema: shortlistAttributesAgentOutputSchema,
+    abortSignal: options.abortSignal,
   });
   return toAttributeMatches(result, options.attributes, options.limit);
 }

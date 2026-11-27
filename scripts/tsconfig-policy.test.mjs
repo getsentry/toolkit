@@ -29,6 +29,11 @@ const UNCHECKED = [
       "upstream sentry-wizard Worker sources the Cloudflare wizard rewrites, read and compared as text",
   },
   {
+    pattern: /^packages\/http\/test\/package\/consumer\//,
+    reason:
+      "packed-package consumer, compiled against the tarball by test/package/check.sh",
+  },
+  {
     pattern: /^packages\/logger\/test\/package\/consumer\//,
     reason:
       "packed-package consumer, compiled against the tarball by test/package/check.sh",
