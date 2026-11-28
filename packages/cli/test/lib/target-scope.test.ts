@@ -173,6 +173,22 @@ describe("a project scope", () => {
       "organizations/acme/issues/?projectSlug=web",
       "organizations/acme/issues/?projectSlug=web&project=1",
     ],
+    // Sentry derives `filter` for these from their `project` parameter.
+    [
+      "GET",
+      "organizations/acme/stats_v2/",
+      "organizations/acme/stats_v2/?project=1",
+    ],
+    [
+      "GET",
+      "organizations/acme/sessions/",
+      "organizations/acme/sessions/?project=1",
+    ],
+    [
+      "GET",
+      "organizations/acme/agents/conversations/9/",
+      "organizations/acme/agents/conversations/9/?project=1",
+    ],
   ])("filters %s %s to its project", async (method, path, filtered) => {
     expect(await sentAs(WEB_SCOPE, method, path)).toBe(filtered);
   });
@@ -241,11 +257,9 @@ describe("a project scope", () => {
     ["GET", "organizations/acme/project-keys/", "every project's keys"],
     ["GET", "organizations/acme/org-auth-tokens/", "org auth tokens"],
     ["GET", "organizations/acme/scim/v2/Users", "SCIM members"],
-    ["GET", "organizations/acme/stats_v2/", "event counts"],
-    ["GET", "organizations/acme/sessions/", "session stats"],
     ["GET", "organizations/acme/preprodartifacts/1/size-analysis/", "preprod"],
-    ["GET", "organizations/acme/agents/conversations/9/", "a conversation"],
     ["POST", "organizations/acme/dashboards/", "an organization write"],
+    ["PUT", "organizations/acme/releases/1.0/", "a change to a release"],
     ["GET", "organizations/acme/brand-new-endpoint/", "an unknown endpoint"],
     ["GET", "sentry-app-installations/x/external-requests/", "an app install"],
   ])("refuses %s %s (%s)", async (method, path) => {

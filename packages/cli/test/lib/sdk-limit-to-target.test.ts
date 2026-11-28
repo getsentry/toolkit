@@ -24,6 +24,9 @@ function sentryApi(): typeof fetch {
     if (path === "/api/0/organizations/acme/") {
       return Response.json({ id: "9", slug: "acme", name: "Acme" });
     }
+    if (path === "/api/0/projects/acme/web/") {
+      return Response.json({ id: "1", slug: "web" });
+    }
     if (path === "/api/0/organizations/acme/issues/200/") {
       return Response.json(API_ISSUE);
     }
