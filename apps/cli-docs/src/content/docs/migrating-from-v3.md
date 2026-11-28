@@ -574,6 +574,12 @@ Two behavioral differences to be aware of:
   `--wait-for` (use `--wait=<seconds>`), `--no-sourcemap-reference`, `--debug-id-reference`,
   `--bundle`, `--bundle-sourcemap`, `--strict`. `sourcemap inject` also drops
   `--release`. Run `sentry sourcemap upload --help` for the current set.
+- **Strip flags also rename uploaded files:** as in v3, `--strip-prefix` and
+  `--strip-common-prefix` strip the `sources` paths inside each uploaded
+  sourcemap (the files on disk are left as they are), for example
+  `--strip-prefix ..` turns `../src/index.ts` into `src/index.ts`. In v4 they
+  also strip the prefix from the uploaded file paths. With `--no-rewrite`,
+  `sources` are uploaded unchanged.
 - **`--wait` is on by default in CI:** when a CI environment variable such as
   `CI` or `GITHUB_ACTIONS` is set, `sourcemap upload` waits up to five minutes
   for Sentry to process the upload and exits with an error if processing

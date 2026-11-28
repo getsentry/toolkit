@@ -61,9 +61,9 @@ Upload sourcemaps to Sentry
 - `--ext <value> - Comma-separated file extensions to process (default: .js,.cjs,.mjs)`
 - `--ignore <value> - Comma-separated glob patterns to exclude (gitignore-style)`
 - `--ignore-file <value> - Path to a file with gitignore-style patterns to exclude`
-- `--strip-prefix <value> - Strip a prefix from uploaded file paths (e.g. 'build/')`
-- `--strip-common-prefix - Automatically strip the longest common path prefix from all files`
-- `--no-rewrite - Upload files as-is without injecting debug IDs`
+- `--strip-prefix <value> - Strip a prefix from uploaded file paths and from the sources paths inside sourcemaps (e.g. 'build/')`
+- `--strip-common-prefix - Automatically strip the longest common path prefix from all files, and each sourcemap's common absolute sources prefix`
+- `--no-rewrite - Upload files as-is without injecting debug IDs or stripping sources paths`
 - `--allow-empty - Exit successfully when no JS + sourcemap pairs are found (default: error out to catch silent build misconfigurations)`
 - `--wait[=<value>] - Wait for the server to fully process the uploaded files, up to the given seconds (default: 300, 0 = no limit; on in CI)`
 - `--no-wait - Exit once Sentry accepts the upload, even in CI`
