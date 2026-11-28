@@ -8,7 +8,7 @@ import { existsSync, promises, unlinkSync } from "node:fs";
 import path from "node:path";
 import chalk from "chalk";
 import { generateCode, loadFile, type ProxifiedModule } from "magicast";
-import { addNuxtModule } from "magicast/helpers";
+import { addNuxtModule, getDefaultExportOptions } from "magicast/helpers";
 import { lt, type SemVer } from "semver";
 import { Sentry, traceStep } from "../telemetry.js";
 import {
@@ -119,6 +119,12 @@ export async function addSDKModule(
   }
 
   try {
+    const nuxtConfig = getDefaultExportOptions(module);
+    // `sourcemap: true` turns on server and client maps, but a boolean has no
+    // `client` key to hide, so spell it out before merging.
+    if (nuxtConfig["sourcemap"] === true) {
+      nuxtConfig["sourcemap"] = { server: true, client: true };
+    }
     addNuxtModule(module, "@sentry/nuxt/module", "sourcemap", {
       client: "hidden",
     });

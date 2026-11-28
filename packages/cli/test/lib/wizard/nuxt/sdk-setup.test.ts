@@ -1,4 +1,10 @@
-import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
@@ -17,7 +23,7 @@ const { askShouldAddPackageOverrideMock } = vi.hoisted(() => ({
 }));
 
 vi.mock("@clack/prompts", () => ({
-  log: { warn: vi.fn(), info: vi.fn(), error: vi.fn() },
+  log: { warn: vi.fn(), info: vi.fn(), error: vi.fn(), success: vi.fn() },
   outro: vi.fn(),
   confirm: vi.fn().mockResolvedValue(false),
   isCancel: vi.fn().mockReturnValue(false),
@@ -140,4 +146,33 @@ describe("addSDKModule", () => {
       rmSync(dir, { recursive: true, force: true });
     }
   });
+
+  it.each([
+    ["true", '{ server: true, client: "hidden" }'],
+    ["false", '{ client: "hidden" }'],
+    ["{ server: true }", '{ server: true, client: "hidden" }'],
+  ])(
+    "hides client source maps when the config sets sourcemap: %s",
+    async (sourcemap, expected) => {
+      const dir = mkdtempSync(path.join(tmpdir(), "nuxt-module-"));
+      const config = path.join(dir, "nuxt.config.ts");
+      writeFileSync(
+        config,
+        `export default defineNuxtConfig({ sourcemap: ${sourcemap} });`,
+      );
+      try {
+        await addSDKModule(config, {
+          org: "my-org",
+          project: "my-project",
+          url: "https://sentry.io/",
+          selfHosted: false,
+        });
+        const written = readFileSync(config, "utf8").replace(/\s+/g, " ");
+        expect(written).toContain(`sourcemap: ${expected}`);
+        expect(written).toContain('"@sentry/nuxt/module"');
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    },
+  );
 });
