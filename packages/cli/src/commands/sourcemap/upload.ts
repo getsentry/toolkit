@@ -6,6 +6,7 @@
  * env vars, config defaults) — no slash-separated arg parsing needed.
  */
 
+import { readFile } from "node:fs/promises";
 import { relative, resolve } from "node:path";
 import {
   dirname as posixDirname,
@@ -42,6 +43,10 @@ import {
   readExistingDebugIds,
   resolveUploadTarget,
 } from "../../lib/sourcemap/inject.js";
+import {
+  type SourcesStrip,
+  stripSourcemapSources,
+} from "../../lib/sourcemap/strip-sources.js";
 import { sentry } from "../../lib/app-identity.js";
 
 /** Result type for the upload command. */
@@ -232,6 +237,29 @@ function buildArtifactPair(
   ];
 }
 
+/**
+ * Strip a prefix from the `sources` inside every uploaded sourcemap, in the
+ * uploaded copy only (the map on disk is left as it is). Sets `content` on
+ * each `source_map` artifact whose sources changed.
+ */
+async function stripUploadedSources(
+  files: ArtifactFile[],
+  strip: SourcesStrip,
+): Promise<void> {
+  for (const file of files) {
+    if (file.type !== "source_map") {
+      continue;
+    }
+    const json = file.content
+      ? file.content.toString("utf-8")
+      : await readFile(file.path, "utf-8");
+    const stripped = stripSourcemapSources(json, strip);
+    if (stripped !== undefined) {
+      file.content = Buffer.from(stripped);
+    }
+  }
+}
+
 export const uploadCommand = buildCommand({
   docs: {
     brief: "Upload sourcemaps to Sentry",
@@ -349,19 +377,24 @@ export const uploadCommand = buildCommand({
       "strip-prefix": {
         kind: "parsed",
         parse: parseText,
-        brief: "Strip a prefix from uploaded file paths (e.g. 'build/')",
+        brief:
+          "Strip a prefix from uploaded file paths and from the sources " +
+          "paths inside sourcemaps (e.g. 'build/')",
         optional: true,
       },
       "strip-common-prefix": {
         kind: "boolean",
         brief:
-          "Automatically strip the longest common path prefix from all files",
+          "Automatically strip the longest common path prefix from all " +
+          "files, and each sourcemap's common absolute sources prefix",
         optional: true,
         default: false,
       },
       "no-rewrite": {
         kind: "boolean",
-        brief: "Upload files as-is without injecting debug IDs",
+        brief:
+          "Upload files as-is without injecting debug IDs or stripping " +
+          "sources paths",
         optional: true,
         default: false,
       },
@@ -534,6 +567,18 @@ export const uploadCommand = buildCommand({
         noRewrite: flags["no-rewrite"] ?? false,
       }),
     );
+
+    // As in sentry-cli v2 and v3, the strip flags also rewrite each map's `sources`,
+    // unless --no-rewrite asks for the files as they are.
+    if (!flags["no-rewrite"]) {
+      if (flags["strip-common-prefix"]) {
+        await stripUploadedSources(artifactFiles, { common: true });
+      } else if (pathPrefixToStrip) {
+        await stripUploadedSources(artifactFiles, {
+          prefix: pathPrefixToStrip,
+        });
+      }
+    }
 
     await uploadSourcemaps({
       org,

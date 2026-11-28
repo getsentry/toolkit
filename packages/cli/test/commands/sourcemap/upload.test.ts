@@ -945,6 +945,105 @@ describe("sourcemap upload command — --allow-empty behavior", () => {
     }
   });
 
+  /** Sources of the uploaded map, read the way the artifact bundle reads it. */
+  async function uploadedSources(
+    files: sourcemapsApi.ArtifactFile[] | undefined,
+  ): Promise<unknown> {
+    const mapFile = files?.find((f) => f.type === "source_map");
+    if (!mapFile) {
+      throw new Error("no source_map artifact uploaded");
+    }
+    const json = mapFile.content ?? (await readFile(mapFile.path));
+    return JSON.parse(json.toString("utf-8")).sources;
+  }
+
+  test("--strip-prefix: strips sources inside the uploaded map (Wrangler ../src)", async () => {
+    const mapPath = join(dir, "index.js.map");
+    await writeFile(join(dir, "index.js"), "console.log(1)\n");
+    await writeFile(
+      mapPath,
+      JSON.stringify({
+        version: 3,
+        sources: ["../src/index.ts", "../node_modules/hono/dist/index.js"],
+        names: [],
+        mappings: "AAAA",
+      }),
+    );
+
+    const uploadSpy = vi
+      .spyOn(sourcemapsApi, "uploadSourcemaps")
+      .mockResolvedValue(undefined);
+    try {
+      await func.call(makeContext(), { "strip-prefix": ".." }, dir);
+      const files = uploadSpy.mock.calls[0]?.[0]?.files;
+      expect(await uploadedSources(files)).toEqual([
+        "src/index.ts",
+        "node_modules/hono/dist/index.js",
+      ]);
+      // Only the uploaded copy changes, as in sentry-cli v2.
+      const onDisk = JSON.parse(await readFile(mapPath, "utf-8"));
+      expect(onDisk.sources).toEqual([
+        "../src/index.ts",
+        "../node_modules/hono/dist/index.js",
+      ]);
+    } finally {
+      uploadSpy.mockRestore();
+    }
+  });
+
+  test("--strip-common-prefix: strips the common absolute sources prefix of an inline map", async () => {
+    const map = {
+      version: 3,
+      sources: ["/home/ci/app/src/a.ts", "/home/ci/app/src/lib/b.ts"],
+      names: [],
+      mappings: "AAAA",
+    };
+    const dataUrl = `data:application/json;base64,${Buffer.from(JSON.stringify(map)).toString("base64")}`;
+    await writeFile(
+      join(dir, "inline.js"),
+      `console.log(1)\n//# sourceMappingURL=${dataUrl}\n`,
+    );
+
+    const uploadSpy = vi
+      .spyOn(sourcemapsApi, "uploadSourcemaps")
+      .mockResolvedValue(undefined);
+    try {
+      await func.call(makeContext(), { "strip-common-prefix": true }, dir);
+      const files = uploadSpy.mock.calls[0]?.[0]?.files;
+      expect(await uploadedSources(files)).toEqual(["a.ts", "lib/b.ts"]);
+    } finally {
+      uploadSpy.mockRestore();
+    }
+  });
+
+  test("--strip-prefix + --no-rewrite: uploads sources unchanged", async () => {
+    await writeFile(join(dir, "index.js"), "console.log(1)\n");
+    await writeFile(
+      join(dir, "index.js.map"),
+      JSON.stringify({
+        version: 3,
+        sources: ["../src/index.ts"],
+        names: [],
+        mappings: "AAAA",
+      }),
+    );
+
+    const uploadSpy = vi
+      .spyOn(sourcemapsApi, "uploadSourcemaps")
+      .mockResolvedValue(undefined);
+    try {
+      await func.call(
+        makeContext(),
+        { "strip-prefix": "..", "no-rewrite": true },
+        dir,
+      );
+      const files = uploadSpy.mock.calls[0]?.[0]?.files;
+      expect(await uploadedSources(files)).toEqual(["../src/index.ts"]);
+    } finally {
+      uploadSpy.mockRestore();
+    }
+  });
+
   test("--strip-prefix + --strip-common-prefix: mutually exclusive", async () => {
     await writeFile(join(dir, "app.js"), "console.log(1)\n");
     await writeFile(
