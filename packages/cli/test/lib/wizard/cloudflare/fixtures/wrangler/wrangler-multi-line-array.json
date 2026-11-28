@@ -1,0 +1,12 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "temp-cloudflare-starter",
+  "main": "src/index.ts",
+  "compatibility_date": "2025-12-02",
+  "compatibility_flags": [
+    "global_fetch_strictly_public"
+  ],
+  "assets": {
+    "directory": "./public"
+  }
+}

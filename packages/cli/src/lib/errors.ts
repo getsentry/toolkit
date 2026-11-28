@@ -792,6 +792,21 @@ export class VerifyFailedError extends CliError {
 }
 
 /**
+ * A setup wizard stopped: the user declined or cancelled a prompt (exit
+ * code 0), or the wizard can't continue (1). The wizard has already told the
+ * user why in its own output, so `sentry wizard` exits with `exitCode`
+ * without printing this error.
+ *
+ * @param exitCode - 0 when the user chose to stop, else the failure's code
+ */
+export class WizardExitError extends CliError {
+  constructor(exitCode: number) {
+    super("The setup wizard stopped.", exitCode);
+    this.name = "WizardExitError";
+  }
+}
+
+/**
  * OAuth device flow errors (RFC 8628).
  *
  * @param code - OAuth error code (e.g., "authorization_pending", "slow_down")

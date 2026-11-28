@@ -202,6 +202,13 @@ export const ENV_VAR_REGISTRY: readonly EnvVarEntry[] = [
     example: "1",
     installOnly: true,
   },
+  // -- Local development --
+  {
+    name: "SENTRY_SPOTLIGHT",
+    description:
+      "Turns on Spotlight, the local debugger, in Sentry SDKs. Set it to `1`, `true`, or a Spotlight URL when running `sentry wizard` to set up Spotlight for local development instead of a Sentry project, with no login. Empty, `0`, `false`, and `off` leave it off. `sentry local run` sets it for the app it runs.",
+    example: "1",
+  },
   // -- Games --
   {
     name: "SENTRY_GAMES_API_URL",

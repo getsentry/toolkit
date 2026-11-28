@@ -886,6 +886,75 @@ describe("buildServer", () => {
     });
   });
 
+  describe("listed output schemas", () => {
+    const createServer = () =>
+      buildServer({
+        context: baseContext,
+        tools: {
+          structured_tool: createMockTool("structured_tool", {
+            outputSchema: z.object({
+              status: z.string(),
+              details: z.object({ count: z.number() }),
+              totals: z.record(z.string(), z.number()),
+            }),
+            // `added` stands in for a field from a later deploy that a client's
+            // cached tools/list does not have yet.
+            handler: async () =>
+              structuredResult({
+                status: "ok",
+                details: { count: 2, added: true },
+                totals: { a: 1 },
+                added: "new",
+              }),
+          }),
+        },
+      });
+
+    it("leave objects open and keep record value schemas", async () => {
+      const [tool] = await listRegisteredTools(createServer());
+      expect(tool?.outputSchema).toEqual({
+        $schema: expect.any(String),
+        type: "object",
+        properties: {
+          status: { type: "string" },
+          details: {
+            type: "object",
+            properties: { count: { type: "number" } },
+            required: ["count"],
+          },
+          totals: {
+            type: "object",
+            propertyNames: { type: "string" },
+            additionalProperties: { type: "number" },
+          },
+        },
+        required: ["status", "details", "totals"],
+      });
+    });
+
+    it("let a client accept fields its listed schema lacks", async () => {
+      const server = createServer();
+      const [clientTransport, serverTransport] =
+        InMemoryTransport.createLinkedPair();
+      const client = new Client({ name: "cached-list", version: "1.0.0" });
+      await server.connect(serverTransport);
+      await client.connect(clientTransport);
+      let result: Awaited<ReturnType<typeof client.callTool>>;
+      try {
+        // the client validates results only against a schema it has listed
+        await client.listTools();
+        result = await client.callTool({ name: "structured_tool" });
+      } finally {
+        await client.close();
+        await server.close();
+      }
+      expect(getStructuredContent(result)).toMatchObject({
+        added: "new",
+        details: { count: 2, added: true },
+      });
+    });
+  });
+
   describe("telemetry context", () => {
     it("generates compatibility text for structured-only tool output", async () => {
       const server = buildServer({

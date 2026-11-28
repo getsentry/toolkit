@@ -113,3 +113,25 @@ export async function isRegularFile(
     return false;
   }
 }
+
+/**
+ * Find the first of `basePath` + each extension that is a regular file, for
+ * config files whose extension isn't known yet (`next.config` →
+ * `next.config.mjs`).
+ *
+ * @param basePath - Path without the extension
+ * @param extensions - Extensions to try, in order, each with its leading dot
+ * @returns The first matching path, or undefined when none is a regular file
+ */
+export async function findFile(
+  basePath: string,
+  extensions: readonly string[] = [".js", ".ts", ".mjs", ".cjs"],
+): Promise<string | undefined> {
+  for (const extension of extensions) {
+    const candidate = `${basePath}${extension}`;
+    if (await isRegularFile(candidate, "findFile")) {
+      return candidate;
+    }
+  }
+  return undefined;
+}

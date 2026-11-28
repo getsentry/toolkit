@@ -1,0 +1,40 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`updateWranglerConfig > JSON/JSONC format > adds new fields to JSONC in object 1`] = `
+"{
+  // This is a comment
+  "name": "my-worker",
+  "main": "src/index.ts",
+  "version_metadata": {
+    "existing_field": "existing_value",
+    "binding": "CF_VERSION_METADATA"
+  }
+}"
+`;
+
+exports[`updateWranglerConfig > JSON/JSONC format > preserves all comment types in JSONC 1`] = `
+"{
+  // Worker configuration
+  "name": "my-worker",
+
+  // Entry point
+  "main": "src/index.ts",
+
+  /* Block comment */
+  "compatibility_date": "2024-01-01",
+
+  "version_metadata": {
+    "binding": "CF_VERSION_METADATA"
+  }
+}"
+`;
+
+exports[`updateWranglerConfig > JSON/JSONC format > preserves comments in JSONC config 1`] = `
+"{
+  // This is a comment
+  "name": "my-worker",
+
+  "main": "src/index.ts",
+  "compatibility_flags": ["nodejs_als"]
+}"
+`;

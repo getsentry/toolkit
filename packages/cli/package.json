@@ -66,6 +66,7 @@
     "test:unit": "node --experimental-strip-types --import ./script/require-shim.mjs script/generate.ts docs sdk && vitest run test/lib test/commands test/types test/script --coverage",
     "test:changed": "node --experimental-strip-types --import ./script/require-shim.mjs script/generate.ts docs sdk && vitest run --changed",
     "test:e2e": "pnpm ts script/prepare-e2e-bundle.ts && vitest run test/e2e",
+    "test:wizard-e2e": "pnpm ts script/prepare-e2e-bundle.ts && vitest run -c test/wizard-e2e/vitest.config.ts",
     "generate": "node --experimental-strip-types --import ./script/require-shim.mjs script/generate.ts docs sdk",
     "generate:sdk": "node --experimental-strip-types --import ./script/require-shim.mjs script/generate.ts sdk",
     "generate:skill": "node --experimental-strip-types --import ./script/require-shim.mjs script/generate.ts skill",
@@ -121,6 +122,7 @@
     "@types/yauzl": "3.4.0",
     "@typescript/typescript6": "catalog:",
     "@vitest/coverage-v8": "catalog:",
+    "ast-types": "^0.16.3",
     "binpatch": "^0.4.2",
     "chalk": "^5.6.2",
     "cli-highlight": "^2.1.11",
@@ -132,6 +134,7 @@
     "http-cache-semantics": "^4.2.0",
     "ignore": "^7.0.5",
     "jpeg-js": "^0.4.4",
+    "magicast": "0.2.11",
     "marked": "catalog:",
     "node-sqlite3-wasm": "0.8.59",
     "p-limit": "^7.3.0",
@@ -141,6 +144,7 @@
     "pngjs": "^7.0.0",
     "pretty-ms": "^9.3.0",
     "qrcode-terminal": "^0.12.0",
+    "recast": "^0.23.21",
     "semver": "^7.8.5",
     "shell-quote": "^1.11.0",
     "string-width": "^8.2.1",
@@ -151,6 +155,7 @@
     "valibot": "^1.4.2",
     "vitest": "catalog:",
     "wrap-ansi": "^10.0.0",
+    "xcode": "3.0.1",
     "yauzl": "3.4.0"
   }
 }

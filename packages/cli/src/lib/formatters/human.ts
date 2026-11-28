@@ -1286,7 +1286,7 @@ function formatSpanSimple(span: TraceSpan, opts: FormatSpanOptions): void {
   if (currentDepth < maxDepth) {
     const children = span.children ?? [];
     const childCount = children.length;
-    children.forEach((child, i) => {
+    for (const [i, child] of children.entries()) {
       formatSpanSimple(child, {
         lines,
         prefix: childPrefix,
@@ -1294,7 +1294,7 @@ function formatSpanSimple(span: TraceSpan, opts: FormatSpanOptions): void {
         currentDepth: currentDepth + 1,
         maxDepth,
       });
-    });
+    }
   }
 }
 
@@ -1367,7 +1367,7 @@ export function formatSimpleSpanTree(
     const displaySpans = truncated ? spans.slice(0, MAX_ROOT_SPANS) : spans;
     const displayCount = displaySpans.length;
 
-    displaySpans.forEach((span, i) => {
+    for (const [i, span] of displaySpans.entries()) {
       formatSpanSimple(span, {
         lines,
         prefix: "",
@@ -1375,7 +1375,7 @@ export function formatSimpleSpanTree(
         currentDepth: 1,
         maxDepth: effectiveMaxDepth,
       });
-    });
+    }
 
     if (truncated) {
       const remaining = totalRootSpans - MAX_ROOT_SPANS;
