@@ -3,6 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
 import { updateWranglerConfig } from "../../../../src/lib/wizard/cloudflare/wrangler/update-wrangler-config.js";
+import { showCopyPasteInstructions } from "../../../../src/lib/wizard/utils/clack/index.js";
 
 const { clackMocks } = vi.hoisted(() => {
   return {
@@ -19,6 +20,10 @@ const { clackMocks } = vi.hoisted(() => {
 });
 
 vi.mock("@clack/prompts", () => clackMocks);
+vi.mock("../../../../src/lib/wizard/utils/clack/index.js", async () => ({
+  ...(await vi.importActual("../../../../src/lib/wizard/utils/clack/index.js")),
+  showCopyPasteInstructions: vi.fn(),
+}));
 
 describe("updateWranglerConfig", () => {
   const fixturesDir = path.join(__dirname, "fixtures", "wrangler");
@@ -93,6 +98,40 @@ describe("updateWranglerConfig", () => {
         initialParsed["compatibility_date"],
       );
       expect(parsed["compatibility_date"]).toEqual("1337-01-01");
+    });
+
+    it("keeps an existing compatibility_date when asked to", async () => {
+      fs.writeFileSync(
+        path.join(tmpDir, "wrangler.json"),
+        '{ "name": "w", "compatibility_date": "2024-01-01" }',
+      );
+
+      await updateWranglerConfig(
+        { compatibility_date: "1337-01-01", main: "src/index.ts" },
+        { keepCompatibilityDate: true },
+      );
+
+      const parsed = JSON.parse(readResult("wrangler.json")) as Record<
+        string,
+        unknown
+      >;
+      expect(parsed["compatibility_date"]).toBe("2024-01-01");
+      expect(parsed["main"]).toBe("src/index.ts");
+    });
+
+    it("adds compatibility_date when asked to keep one the config doesn't have", async () => {
+      fs.writeFileSync(path.join(tmpDir, "wrangler.json"), '{ "name": "w" }');
+
+      await updateWranglerConfig(
+        { compatibility_date: "1337-01-01" },
+        { keepCompatibilityDate: true },
+      );
+
+      const parsed = JSON.parse(readResult("wrangler.json")) as Record<
+        string,
+        unknown
+      >;
+      expect(parsed["compatibility_date"]).toBe("1337-01-01");
     });
 
     it("merges array fields in JSON config", async () => {
@@ -274,6 +313,46 @@ describe("updateWranglerConfig", () => {
       expect(clackMocks.log.warn).toHaveBeenCalledWith(
         "No wrangler config file found.",
       );
+    });
+  });
+
+  describe("TOML format", () => {
+    function shownSnippet(): string {
+      const [args] = vi.mocked(showCopyPasteInstructions).mock.calls[0] ?? [];
+      return args?.codeSnippet ?? "";
+    }
+
+    it("tells the user to set main when the update includes it", async () => {
+      fs.writeFileSync(path.join(tmpDir, "wrangler.toml"), 'name = "w"\n');
+
+      await updateWranglerConfig({
+        main: "src/index.ts",
+        compatibility_flags: ["nodejs_compat"],
+      });
+
+      expect(shownSnippet()).toContain('main = "src/index.ts"');
+    });
+
+    it("tells the user to keep their compatibility_date when asked to", async () => {
+      fs.writeFileSync(path.join(tmpDir, "wrangler.toml"), 'name = "w"\n');
+
+      await updateWranglerConfig(
+        { compatibility_flags: ["nodejs_compat"] },
+        { keepCompatibilityDate: true },
+      );
+
+      expect(shownSnippet()).toMatch(
+        /compatibility_date = .* # only if not set yet/,
+      );
+    });
+
+    it("leaves main out when the update doesn't include it", async () => {
+      fs.writeFileSync(path.join(tmpDir, "wrangler.toml"), 'name = "w"\n');
+
+      await updateWranglerConfig({ compatibility_flags: ["nodejs_compat"] });
+
+      expect(shownSnippet()).not.toContain("main =");
+      expect(shownSnippet()).toContain("compatibility_flags");
     });
   });
 });

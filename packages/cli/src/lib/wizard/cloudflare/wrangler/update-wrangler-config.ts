@@ -25,6 +25,7 @@ import { findWranglerConfig } from "./find-wrangler-config.js";
 const b = recast.types.builders;
 
 type WranglerConfigUpdates = {
+  main?: string;
   compatibility_date?: string;
   compatibility_flags?: string[];
   version_metadata?: {
@@ -39,10 +40,19 @@ type WranglerConfigUpdateOptions = {
    * e.g. flags superseded by one of the flags being added.
    */
   removeCompatibilityFlags?: string[] | undefined;
+  /**
+   * Set `compatibility_date` only when the config doesn't have one yet: the
+   * date pins the Worker's runtime behaviour.
+   */
+  keepCompatibilityDate?: boolean | undefined;
 };
 
-const getTomlConfigSnippet = (options: WranglerConfigUpdateOptions) => {
+const getTomlConfigSnippet = (
+  updates: WranglerConfigUpdates,
+  options: WranglerConfigUpdateOptions,
+) => {
   const superseded = options.removeCompatibilityFlags ?? [];
+  const { main } = updates;
 
   return makeCodeSnippet(true, (_unchanged, plus) =>
     plus(
@@ -52,8 +62,10 @@ const getTomlConfigSnippet = (options: WranglerConfigUpdateOptions) => {
               .map((flag) => `"${flag}"`)
               .join(", ")} from compatibility_flags if present\n`
           : ""
-      }compatibility_flags = ["nodejs_compat"]
-compatibility_date = "${new Date().toISOString().slice(0, 10)}"
+      }${main ? `main = "${main}"\n` : ""}compatibility_flags = ["nodejs_compat"]
+compatibility_date = "${new Date().toISOString().slice(0, 10)}"${
+        options.keepCompatibilityDate ? " # only if not set yet" : ""
+      }
 
 [version_metadata]
 binding = "CF_VERSION_METADATA"`,
@@ -98,7 +110,7 @@ export async function updateWranglerConfig(
       case ".toml":
         await showCopyPasteInstructions({
           filename: configFile,
-          codeSnippet: getTomlConfigSnippet(options),
+          codeSnippet: getTomlConfigSnippet(updates, options),
         });
         break;
     }
@@ -208,7 +220,13 @@ function updateJsoncObject(
   options: WranglerConfigUpdateOptions = {},
 ): void {
   for (const [key, value] of Object.entries(updates)) {
-    if (value === null || value === undefined) {
+    if (
+      value === null ||
+      value === undefined ||
+      (key === "compatibility_date" &&
+        options.keepCompatibilityDate &&
+        getObjectProperty(jsonObject, key))
+    ) {
       continue;
     }
 

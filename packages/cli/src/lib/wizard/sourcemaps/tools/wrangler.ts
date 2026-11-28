@@ -24,7 +24,7 @@ import {
 } from "../../utils/clack/index.js";
 import { clack } from "../../utils/clack/prompts.js";
 import { hasPackageInstalled } from "../../utils/package-json.js";
-import { NPM } from "../../utils/package-manager.js";
+import { NPM, YARN_V2 } from "../../utils/package-manager.js";
 import {
   addUploadTargetToSentryCliRc,
   SENTRY_CLI_PACKAGE_SPEC,
@@ -37,6 +37,12 @@ const SENTRY_NPM_SCRIPT_NAME = "sentry:sourcemaps";
  * only exported for testing
  */
 export const DIST_DIR = path.join(".", "dist");
+
+/**
+ * A `--var` that sets SENTRY_RELEASE, with `=` or `:` and optional quotes,
+ * like `SHELL_SPOTLIGHT_VAR_RE` in `lib/wrangler.ts`.
+ */
+const RELEASE_VAR_RE = /--var(?:=|\s+)["']?SENTRY_RELEASE(?::|=)/;
 
 export async function configureWrangler(
   options: SourceMapUploadToolConfigurationOptions,
@@ -89,17 +95,32 @@ Otherwise, let's proceed with the Wrangler setup.`,
   }
 
   const deployCommand = await getDeployCommand();
-  if (!deployCommand) {
-    return;
-  }
-
-  const outDir = await getWranglerOutDir(deployCommand);
+  const outDir = deployCommand
+    ? await getWranglerOutDir(deployCommand)
+    : DIST_DIR;
 
   await createAndAddSentrySourcemapsScript(outDir);
 
-  await writePostDeployCommand(deployCommand);
-
-  await modifyDeployCommand(deployCommand, outDir);
+  const packageManager = await getPackageManager(NPM);
+  const runUpload = `${packageManager.runScriptCommand} ${SENTRY_NPM_SCRIPT_NAME}`;
+  if (deployCommand) {
+    // Yarn 2+ gets the upload chained onto the deploy script, so a manual
+    // deploy command that replaces the script has to carry the upload too.
+    const chainUpload = packageManager === YARN_V2;
+    const modified = await modifyDeployCommand(
+      deployCommand,
+      outDir,
+      chainUpload ? runUpload : undefined,
+    );
+    if (modified || !chainUpload) {
+      await addUploadAfterDeploy(deployCommand);
+    }
+  } else {
+    await showCopyPasteInstructions({
+      codeSnippet: getManualDeployCommand(outDir, runUpload),
+      filename: "package.json",
+    });
+  }
 
   await addUploadTargetToSentryCliRc(options);
   await addSentryCliConfig({ authToken: options.authToken });
@@ -241,7 +262,7 @@ async function getDeployCommand(): Promise<string | undefined> {
       `We can only add the ${chalk.cyan(
         SENTRY_NPM_SCRIPT_NAME,
       )} script to another \`script\` in your ${chalk.cyan("package.json")}.
-Please add it manually to your prod build command.`,
+Please add it manually to your deploy command:`,
     );
     return undefined;
   }
@@ -249,12 +270,28 @@ Please add it manually to your prod build command.`,
   return deployCommand;
 }
 
-async function writePostDeployCommand(deployCommand: string): Promise<void> {
+/**
+ * Run `sentry:sourcemaps` after `deployCommand`: from its `post<deploy>`
+ * script, as the Sentry docs do, or chained onto the deploy script for Yarn
+ * 2+, which doesn't run `post` scripts. An existing `post<deploy>` script is
+ * kept, with the upload added after it.
+ */
+async function addUploadAfterDeploy(deployCommand: string): Promise<void> {
   const pkgJson = await getPackageDotJson();
   const packageManager = await getPackageManager(NPM);
   pkgJson.scripts = pkgJson.scripts ?? {};
-  pkgJson.scripts[`post${deployCommand}`] =
-    `${packageManager.runScriptCommand} ${SENTRY_NPM_SCRIPT_NAME}`;
+
+  const scriptName =
+    packageManager === YARN_V2 ? deployCommand : `post${deployCommand}`;
+  const existingScript = pkgJson.scripts[scriptName];
+  if (existingScript?.includes(SENTRY_NPM_SCRIPT_NAME)) {
+    return;
+  }
+
+  const runUpload = `${packageManager.runScriptCommand} ${SENTRY_NPM_SCRIPT_NAME}`;
+  pkgJson.scripts[scriptName] = existingScript
+    ? `${existingScript} && ${runUpload}`
+    : runUpload;
 
   await promises.writeFile(
     path.join(process.cwd(), "package.json"),
@@ -262,16 +299,34 @@ async function writePostDeployCommand(deployCommand: string): Promise<void> {
   );
 
   clack.log.success(
-    `Added a ${chalk.cyan(`post${deployCommand}`)} script to your ${chalk.cyan(
-      "package.json",
-    )}.`,
+    `${existingScript ? "Updated" : "Added"} the ${chalk.cyan(
+      scriptName,
+    )} script in your ${chalk.cyan("package.json")} to upload source maps after each deploy.`,
   );
 }
 
+/**
+ * The `wrangler deploy` command to show when the wizard can't edit it,
+ * followed by `thenRun` when given.
+ */
+function getManualDeployCommand(outDir: string, thenRun?: string): string {
+  const deploy = `wrangler deploy --outdir ${quoteShellArg(
+    outDir,
+  )} --var SENTRY_RELEASE:${PROPOSE_VERSION} --upload-source-maps`;
+  return thenRun ? `${deploy} && ${thenRun}` : deploy;
+}
+
+/**
+ * Add the source map flags to the `deployCommand` script, or show a manual
+ * deploy command, ending with `thenRun` when given, if it can't.
+ *
+ * @returns Whether it edited the script
+ */
 async function modifyDeployCommand(
   deployCommand: string,
   outDir: string,
-): Promise<void> {
+  thenRun?: string,
+): Promise<boolean> {
   const pkgJson = await getPackageDotJson();
   pkgJson.scripts = pkgJson.scripts ?? {};
   const oldDeployCommand = pkgJson.scripts[deployCommand];
@@ -284,13 +339,11 @@ async function modifyDeployCommand(
     );
 
     await showCopyPasteInstructions({
-      codeSnippet: `wrangler deploy --outdir ${quoteShellArg(
-        outDir,
-      )} --var SENTRY_RELEASE:${PROPOSE_VERSION} --upload-source-maps`,
+      codeSnippet: getManualDeployCommand(outDir, thenRun),
       filename: "package.json",
     });
 
-    return;
+    return false;
   }
 
   const newDeployCommand = safeInsertArgsToWranglerDeployCommand(
@@ -308,11 +361,11 @@ async function modifyDeployCommand(
     );
 
     await showCopyPasteInstructions({
-      codeSnippet: oldDeployCommand,
+      codeSnippet: getManualDeployCommand(outDir, thenRun),
       filename: "package.json",
     });
 
-    return;
+    return false;
   }
 
   pkgJson.scripts[deployCommand] = newDeployCommand;
@@ -327,6 +380,7 @@ async function modifyDeployCommand(
       deployCommand,
     )} script to enable uploading source maps.`,
   );
+  return true;
 }
 
 /**
@@ -341,11 +395,12 @@ export function safeInsertArgsToWranglerDeployCommand(
   outDir: string,
 ): string | undefined {
   // split deployCommand into individual bash commands (potentially separated by &&, ||, >> etc.)
-  const originalWranglerDeployCommand = getWranglerDeployCommand(deployCommand);
+  const wranglerDeployCommand = findWranglerDeployCommand(deployCommand);
 
-  if (!originalWranglerDeployCommand) {
+  if (!wranglerDeployCommand) {
     return undefined;
   }
+  const originalWranglerDeployCommand = wranglerDeployCommand.text;
 
   const existingArgs = originalWranglerDeployCommand
     .split(" ")
@@ -368,15 +423,22 @@ export function safeInsertArgsToWranglerDeployCommand(
 
   // This is how we inject the SENTRY_RELEASE variable,
   // which is picked up by the CloudFlare SDK.
-  // multiple --var arguments are allowed, so no need to check for existing --var arguments.
-  newArgs.push("--var", `SENTRY_RELEASE:${PROPOSE_VERSION}`);
+  // Skip it when the script already sets SENTRY_RELEASE, e.g. on a rerun.
+  if (!RELEASE_VAR_RE.test(originalWranglerDeployCommand)) {
+    newArgs.push("--var", `SENTRY_RELEASE:${PROPOSE_VERSION}`);
+  }
 
-  return deployCommand
-    .replace(
-      originalWranglerDeployCommand,
-      `${originalWranglerDeployCommand} ${newArgs.join(" ")} `,
-    )
-    .trim();
+  if (newArgs.length === 0) {
+    return deployCommand;
+  }
+
+  // Insert at the deploy command's own position: the same text can appear
+  // earlier in the script, such as in `echo wrangler deploy`.
+  const end =
+    wranglerDeployCommand.start + originalWranglerDeployCommand.length;
+  return `${deployCommand.slice(0, end)} ${newArgs.join(" ")} ${deployCommand.slice(
+    end,
+  )}`.trim();
 }
 
 /**
@@ -439,10 +501,11 @@ const COMMAND_SEPARATORS = ["&&", "||", ">>", ">", "<", "|", ";"];
  * Split a package script into its individual commands at the operators in
  * {@link COMMAND_SEPARATORS}. Operators inside quotes or a `$(…)` command
  * substitution (such as the `| head -n 1` of the release version this
- * wizard adds) don't split. The commands are substrings of `script`.
+ * wizard adds) don't split. Each command is a substring of `script` that
+ * starts at `start`.
  */
-function splitShellCommands(script: string): string[] {
-  const commands: string[] = [];
+function splitShellCommands(script: string): { start: number; text: string }[] {
+  const commands: { start: number; text: string }[] = [];
   let start = 0;
   let depth = 0;
   let quote: string | undefined;
@@ -476,29 +539,74 @@ function splitShellCommands(script: string): string[] {
         ? COMMAND_SEPARATORS.find((op) => script.startsWith(op, i))
         : undefined;
     if (separator) {
-      commands.push(script.slice(start, i));
+      commands.push({ start, text: script.slice(start, i) });
       i += separator.length;
       start = i;
       continue;
     }
     i += 1;
   }
-  commands.push(script.slice(start));
+  commands.push({ start, text: script.slice(start) });
   return commands;
 }
 
 /**
+ * Package-manager runners that the wizard edits when they come straight
+ * before `wrangler`, as in `npx wrangler deploy`. Anything else, such as
+ * runner flags, `cross-env` or `FOO=1`, gets the manual instructions.
+ */
+const WRANGLER_RUNNERS = new Set(["npx", "pnpm", "yarn", "bunx"]);
+
+/**
+ * Where `argv` runs `wrangler`: bare, or right after a runner from
+ * {@link WRANGLER_RUNNERS}. -1 when it doesn't.
+ */
+function findWranglerIndex(argv: string[]): number {
+  if (argv[0] === "wrangler") {
+    return 0;
+  }
+  return WRANGLER_RUNNERS.has(argv[0] ?? "") && argv[1] === "wrangler" ? 1 : -1;
+}
+
+/**
+ * Wrangler commands with their own `deploy` subcommand, which doesn't take
+ * the Workers flags this wizard adds.
+ */
+const NON_WORKER_DEPLOY_COMMANDS = new Set(["pages", "versions"]);
+
+/**
+ * The command of `deployCommand` that runs `wrangler deploy`, bare or
+ * through `npx`, `pnpm`, `yarn` or `bunx` (see {@link findWranglerIndex}).
+ * `wrangler pages deploy` and `wrangler versions deploy` don't count.
+ *
  * Exported for testing
  */
 export function getWranglerDeployCommand(
   deployCommand: string,
 ): string | undefined {
-  return splitShellCommands(deployCommand).find((cmd) => {
-    const argv = cmd
+  return findWranglerDeployCommand(deployCommand)?.text;
+}
+
+/** {@link getWranglerDeployCommand}, with where it starts in `deployCommand`. */
+function findWranglerDeployCommand(
+  deployCommand: string,
+): { start: number; text: string } | undefined {
+  return splitShellCommands(deployCommand).find(({ text }) => {
+    const argv = text
       .split(" ")
       .map((arg) => arg.trim())
       .filter(Boolean);
 
-    return argv[0] === "wrangler" && argv.includes("deploy");
+    const wranglerIndex = findWranglerIndex(argv);
+    if (wranglerIndex === -1) {
+      return false;
+    }
+    const deployIndex = argv.indexOf("deploy", wranglerIndex + 1);
+    return (
+      deployIndex !== -1 &&
+      !argv
+        .slice(wranglerIndex + 1, deployIndex)
+        .some((arg) => NON_WORKER_DEPLOY_COMMANDS.has(arg))
+    );
   });
 }

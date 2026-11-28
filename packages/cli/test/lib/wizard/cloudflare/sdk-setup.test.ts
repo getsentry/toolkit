@@ -73,38 +73,63 @@ describe("createSentryInitFile", () => {
     vi.restoreAllMocks();
   });
 
-  it("creates a new default entry point file", async () => {
+  it("creates a default entry point and wraps it with Sentry", async () => {
     const template =
       'export default { async fetch() { return new Response("ᕕ(⌐■_■)ᕗ ♪♬"); } }';
-    const getCloudflareWorkerTemplateWithHandlerSpy = vi
-      .spyOn(templates, "getCloudflareWorkerTemplateWithHandler")
-      .mockReturnValue(template);
+    vi.spyOn(
+      templates,
+      "getCloudflareWorkerTemplateWithHandler",
+    ).mockReturnValue(template);
 
     await createSentryInitFile(testDsn, testFeatures, false);
 
     const expectedPath = path.join(tmpDir, "src/index.ts");
     const content = fs.readFileSync(expectedPath, "utf-8");
 
-    expect(clackMocks.info).toHaveBeenCalledWith(
-      "No entry point found in wrangler config, creating a new one.",
-    );
-    expect(fs.existsSync(expectedPath)).toBe(true);
-    expect(content).toBe(template);
     expect(clackMocks.success).toHaveBeenCalledWith("Created src/index.ts.");
-    expect(getCloudflareWorkerTemplateWithHandlerSpy).toHaveBeenCalled();
+    expect(content).toContain("Sentry.withSentry(");
+    expect(content).toContain(testDsn);
+    expect(content).toContain("ᕕ(⌐■_■)ᕗ ♪♬");
+  });
+
+  it("wraps the starter worker template", async () => {
+    await createSentryInitFile(testDsn, testFeatures, false);
+
+    const content = fs.readFileSync(path.join(tmpDir, "src/index.ts"), "utf-8");
+
+    expect(content).toContain('from "@sentry/cloudflare"');
+    expect(content).toContain("Sentry.withSentry(");
+    expect(clackMocks.warn).not.toHaveBeenCalled();
+  });
+
+  it("wraps an existing default entry point instead of overwriting it", async () => {
+    const existing =
+      'export default { async fetch() { return new Response("mine"); } }';
+    fs.mkdirSync(path.join(tmpDir, "src"));
+    fs.writeFileSync(path.join(tmpDir, "src/index.ts"), existing);
+
+    await createSentryInitFile(testDsn, testFeatures, false);
+
+    const content = fs.readFileSync(path.join(tmpDir, "src/index.ts"), "utf-8");
+    expect(content).toContain('"mine"');
+    expect(content).toContain("Sentry.withSentry(");
   });
 
   describe("when entry point is found in wrangler config", () => {
     describe("and the entry point file exists", () => {
-      beforeEach(async () => {
-        await createSentryInitFile(testDsn, testFeatures, false);
+      beforeEach(() => {
+        fs.mkdirSync(path.join(tmpDir, "src"));
+        fs.writeFileSync(
+          path.join(tmpDir, defaultEntryPoint),
+          "export default { async fetch() { return new Response(); } }",
+        );
         getEntryPointFromWranglerConfigMock.mockReturnValue(defaultEntryPoint);
       });
 
       it("wraps the worker with Sentry when wrapping succeeds", async () => {
         const wrapWorkerWithSentrySpy = vi
           .spyOn(wrapWorker, "wrapWorkerWithSentry")
-          .mockResolvedValue(undefined);
+          .mockResolvedValue(true);
 
         await createSentryInitFile(testDsn, testFeatures, false);
 
@@ -113,6 +138,16 @@ describe("createSentryInitFile", () => {
           testDsn,
           testFeatures,
           false,
+        );
+      });
+
+      it("doesn't report a wrap when Sentry is already set up", async () => {
+        vi.spyOn(wrapWorker, "wrapWorkerWithSentry").mockResolvedValue(false);
+
+        await createSentryInitFile(testDsn, testFeatures, false);
+
+        expect(clackMocks.success).not.toHaveBeenCalledWith(
+          expect.stringContaining("Wrapped"),
         );
       });
 
@@ -155,7 +190,7 @@ describe("createSentryInitFile", () => {
       it("passes performance feature flag correctly", async () => {
         const wrapWorkerWithSentrySpy = vi
           .spyOn(wrapWorker, "wrapWorkerWithSentry")
-          .mockResolvedValue(undefined);
+          .mockResolvedValue(true);
 
         await createSentryInitFile(testDsn, { performance: false }, false);
 
@@ -170,7 +205,7 @@ describe("createSentryInitFile", () => {
       it("passes performance feature flag when enabled", async () => {
         const wrapWorkerWithSentrySpy = vi
           .spyOn(wrapWorker, "wrapWorkerWithSentry")
-          .mockResolvedValue(undefined);
+          .mockResolvedValue(true);
 
         await createSentryInitFile(testDsn, { performance: true }, false);
 
@@ -185,7 +220,7 @@ describe("createSentryInitFile", () => {
       it("passes reduceDataCollection through to the worker wrapper", async () => {
         const wrapWorkerWithSentrySpy = vi
           .spyOn(wrapWorker, "wrapWorkerWithSentry")
-          .mockResolvedValue(undefined);
+          .mockResolvedValue(true);
 
         await createSentryInitFile(testDsn, testFeatures, true);
 
@@ -198,25 +233,41 @@ describe("createSentryInitFile", () => {
       });
     });
 
-    describe("and the entry point file does not exist", () => {
-      it("does not throw an error", async () => {
-        vi.spyOn(wrapWorker, "wrapWorkerWithSentry").mockResolvedValue(
-          undefined,
-        );
+    it("writes a JavaScript starter worker to a missing .js entry point", async () => {
+      getEntryPointFromWranglerConfigMock.mockReturnValue("src/worker.js");
 
-        await expect(
-          createSentryInitFile(testDsn, testFeatures, false),
-        ).resolves.not.toThrow();
+      await createSentryInitFile(testDsn, testFeatures, false);
+
+      const content = fs.readFileSync(
+        path.join(tmpDir, "src/worker.js"),
+        "utf-8",
+      );
+      expect(content).toContain("Sentry.withSentry(");
+      expect(content).not.toContain("satisfies");
+      expect(content).not.toContain("Promise<Response>");
+    });
+
+    describe("and the entry point file does not exist", () => {
+      beforeEach(() => {
+        getEntryPointFromWranglerConfigMock.mockReturnValue("src/worker.ts");
       });
 
-      it("does not call wrapWorkerWithSentry", async () => {
+      it("creates the configured entry point and wraps it", async () => {
         const wrapWorkerWithSentrySpy = vi
           .spyOn(wrapWorker, "wrapWorkerWithSentry")
-          .mockResolvedValue(undefined);
+          .mockResolvedValue(true);
 
         await createSentryInitFile(testDsn, testFeatures, false);
 
-        expect(wrapWorkerWithSentrySpy).not.toHaveBeenCalled();
+        const createdPath = path.join(tmpDir, "src/worker.ts");
+        expect(fs.existsSync(createdPath)).toBe(true);
+        expect(fs.existsSync(path.join(tmpDir, defaultEntryPoint))).toBe(false);
+        expect(wrapWorkerWithSentrySpy).toHaveBeenCalledWith(
+          createdPath,
+          testDsn,
+          testFeatures,
+          false,
+        );
       });
     });
   });

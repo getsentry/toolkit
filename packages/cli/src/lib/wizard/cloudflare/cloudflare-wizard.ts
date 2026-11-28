@@ -154,7 +154,10 @@ async function runCloudflareWizardWithTelemetry(
           binding: "CF_VERSION_METADATA",
         },
       },
-      { removeCompatibilityFlags: ["nodejs_als"] },
+      {
+        removeCompatibilityFlags: ["nodejs_als"],
+        keepCompatibilityDate: true,
+      },
     ),
   );
 

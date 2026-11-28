@@ -212,14 +212,16 @@ describe("wrapWorkerWithSentry", () => {
         "utf-8",
       );
 
-      await wrapWorkerWithSentry(
-        filePath,
-        "new-dsn",
-        {
-          performance: true,
-        },
-        false,
-      );
+      await expect(
+        wrapWorkerWithSentry(
+          filePath,
+          "new-dsn",
+          {
+            performance: true,
+          },
+          false,
+        ),
+      ).resolves.toBe(false);
 
       const result = readResult();
 
@@ -288,8 +290,9 @@ describe("wrapWorkerWithSentry", () => {
       expect(result).toMatchSnapshot();
     });
 
-    it("handles files with no default export gracefully", async () => {
+    it("throws and leaves a file with no default export unchanged", async () => {
       const filePath = copyFixture("no-default-export.ts");
+      const originalContent = fs.readFileSync(filePath, "utf-8");
 
       await expect(
         wrapWorkerWithSentry(
@@ -300,11 +303,9 @@ describe("wrapWorkerWithSentry", () => {
           },
           false,
         ),
-      ).resolves.not.toThrow();
+      ).rejects.toThrow("No default export to wrap");
 
-      const result = readResult();
-
-      expect(result).toMatchSnapshot();
+      expect(readResult()).toBe(originalContent);
     });
   });
 });

@@ -46,6 +46,8 @@ const b = recast.types.builders;
  * @param dsn - Sentry DSN for initialization
  * @param selectedFeatures - Feature flags for optional Sentry features
  * @param reduceDataCollection - Whether to add the PII-reducing `dataCollection` preset
+ * @returns Whether it wrapped the export: false when Sentry is already set up
+ * @throws When the file has no default export to wrap, leaving it unchanged
  */
 export async function wrapWorkerWithSentry(
   workerFilePath: string,
@@ -54,7 +56,7 @@ export async function wrapWorkerWithSentry(
     performance: boolean;
   },
   reduceDataCollection: boolean,
-): Promise<void> {
+): Promise<boolean> {
   const workerAst = await loadFile(workerFilePath);
 
   if (hasSentryContent(workerAst.$ast as t.Program)) {
@@ -63,7 +65,12 @@ export async function wrapWorkerWithSentry(
         workerFilePath,
       )}. Skipping wrapping with Sentry.`,
     );
-    return;
+    return false;
+  }
+
+  const program = workerAst.$ast as t.Program;
+  if (!program.body.some((node) => node.type === "ExportDefaultDeclaration")) {
+    throw new Error(`No default export to wrap in ${workerFilePath}`);
   }
 
   workerAst.imports.$add({
@@ -92,6 +99,7 @@ export async function wrapWorkerWithSentry(
   });
 
   await writeFile(workerAst.$ast, workerFilePath);
+  return true;
 }
 
 /**

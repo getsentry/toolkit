@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { runCloudflareWizard } from "../../../../src/lib/wizard/cloudflare/cloudflare-wizard.js";
+import { updateWranglerConfig } from "../../../../src/lib/wizard/cloudflare/wrangler/update-wrangler-config.js";
 import { askShouldReduceDataCollection } from "../../../../src/lib/wizard/utils/data-collection.js";
 import { getPackageVersion } from "../../../../src/lib/wizard/utils/package-json.js";
 import type { WizardOptions } from "../../../../src/lib/wizard/utils/types.js";
@@ -94,5 +95,14 @@ describe("runCloudflareWizard", () => {
     await runCloudflareWizard(options);
 
     expect(askShouldReduceDataCollection).not.toHaveBeenCalled();
+  });
+
+  it("keeps the Worker's existing compatibility_date", async () => {
+    await runCloudflareWizard(options);
+
+    expect(updateWranglerConfig).toHaveBeenCalledWith(
+      expect.objectContaining({ compatibility_date: expect.any(String) }),
+      expect.objectContaining({ keepCompatibilityDate: true }),
+    );
   });
 });

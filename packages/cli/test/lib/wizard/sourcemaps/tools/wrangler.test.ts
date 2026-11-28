@@ -51,6 +51,17 @@ describe("getSentryCliCommand", () => {
 });
 
 describe("safeInsertArgsToWranglerDeployCommand", () => {
+  it("adds the args to the deploy command, not to earlier text that matches it", () => {
+    const result = safeInsertArgsToWranglerDeployCommand(
+      "echo Running wrangler deploy && wrangler deploy",
+      "dist",
+    );
+
+    expect(result).toMatch(
+      /^echo Running wrangler deploy && wrangler deploy --outdir 'dist' --upload-source-maps --var SENTRY_RELEASE:/,
+    );
+  });
+
   it("correctly inserts args into default command", () => {
     const newCommand = safeInsertArgsToWranglerDeployCommand(
       "wrangler deploy",
@@ -138,6 +149,30 @@ describe("safeInsertArgsToWranglerDeployCommand", () => {
     );
   });
 
+  it("leaves a deploy command that already has every arg unchanged on a rerun", () => {
+    const once = safeInsertArgsToWranglerDeployCommand(
+      "wrangler deploy && echo done",
+      "dist",
+    );
+
+    expect(once).toBeDefined();
+    expect(safeInsertArgsToWranglerDeployCommand(once ?? "", "dist")).toBe(
+      once,
+    );
+  });
+
+  it.each([
+    "--var=SENTRY_RELEASE:1.0.0",
+    "--var SENTRY_RELEASE=1.0.0",
+    "--var=SENTRY_RELEASE=1.0.0",
+    `--var "SENTRY_RELEASE:1.0.0"`,
+    "--var 'SENTRY_RELEASE=1.0.0'",
+  ])("keeps an existing %s arg", (arg) => {
+    expect(
+      safeInsertArgsToWranglerDeployCommand(`wrangler deploy ${arg}`, "dist"),
+    ).toBe(`wrangler deploy ${arg} --outdir 'dist' --upload-source-maps`);
+  });
+
   it.each([
     "notwrangler deploy",
     "wrangler dev",
@@ -201,6 +236,47 @@ describe("findOutDir", () => {
 });
 
 describe("getWranglerDeployCommand", () => {
+  it.each([
+    "npx wrangler deploy",
+    "pnpm wrangler deploy",
+    "yarn wrangler deploy",
+    "bunx wrangler deploy",
+  ])("finds wrangler deploy run through a runner: %s", (command) => {
+    expect(getWranglerDeployCommand(`tsc && ${command}`)?.trim()).toBe(command);
+    expect(safeInsertArgsToWranglerDeployCommand(command, "dist")).toBe(
+      `${command} --outdir 'dist' --upload-source-maps --var SENTRY_RELEASE:$(sentry release propose-version | head -n 1)`,
+    );
+  });
+
+  it.each([
+    "wrangler pages deploy ./public",
+    "npx wrangler pages deploy",
+    "yarn wrangler versions deploy",
+    "pnpm exec wrangler deploy",
+    "pnpm dlx wrangler deploy",
+    "bun x wrangler deploy",
+    "npx -y wrangler deploy",
+    "npx wrangler@3 deploy",
+    "npx -p wrangler wrangler deploy",
+    "pnpm -C wrangler deploy",
+    "pnpm --filter wrangler deploy",
+    "pnpm -w wrangler deploy",
+    "yarn --cwd wrangler deploy",
+    "yarn -p wrangler deploy",
+    "cross-env NODE_ENV=production wrangler deploy",
+    "cross-env NODE_ENV=production yarn --cwd wrangler deploy",
+    "FOO=1 wrangler deploy",
+  ])("leaves %s to the manual instructions", (command) => {
+    expect(getWranglerDeployCommand(command)).toBeUndefined();
+    expect(
+      safeInsertArgsToWranglerDeployCommand(command, "dist"),
+    ).toBeUndefined();
+  });
+
+  it("ignores commands that only mention wrangler deploy", () => {
+    expect(getWranglerDeployCommand("echo wrangler deploy")).toBeUndefined();
+  });
+
   it("returns the deploy command", () => {
     const deployCommand = getWranglerDeployCommand(
       "wrangler deploy --outdir someplace",
