@@ -5,6 +5,7 @@
 import {
   major,
   minVersion,
+  type SemVer,
   satisfies,
   subset,
   valid,
@@ -23,9 +24,18 @@ export function getMajorVersion(
   if (!version) {
     return undefined;
   }
+  const minVer = safeMinVersion(version);
+  return minVer ? major(minVer) : undefined;
+}
+
+/**
+ * The lowest version that `range` permits, like semver's `minVersion`, but
+ * `undefined` instead of a throw for specifiers that are not ranges, such as
+ * `latest` or `workspace:*`.
+ */
+export function safeMinVersion(range: string): SemVer | undefined {
   try {
-    const minVer = minVersion(version);
-    return minVer ? major(minVer) : undefined;
+    return minVersion(range) ?? undefined;
   } catch (error) {
     debug(error);
     return undefined;

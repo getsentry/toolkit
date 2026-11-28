@@ -62,9 +62,17 @@ type WizardRunner = (
  * moved over from sentry-wizard.
  */
 const WIZARD_RUNNERS: Partial<Record<WizardIntegration, WizardRunner>> = {
+  angular: async (options) => {
+    const { runAngularWizard } = await import("./angular/angular-wizard.js");
+    await runAngularWizard(options);
+  },
   nextjs: async (options) => {
     const { runNextjsWizard } = await import("./nextjs/nextjs-wizard.js");
     await runNextjsWizard(options);
+  },
+  nuxt: async (options) => {
+    const { runNuxtWizard } = await import("./nuxt/nuxt-wizard.js");
+    await runNuxtWizard(options);
   },
   cloudflare: async (options) => {
     const { runCloudflareWizard } =
