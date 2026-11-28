@@ -31,6 +31,7 @@ import {
 } from "../custom-ca.js";
 import { applyCustomHeaders } from "../custom-headers.js";
 import { ApiError, ValidationError } from "../errors.js";
+import { getSdkConfig } from "../sentry-client.js";
 import { withTargetScope } from "../target-scope.js";
 
 import {
@@ -750,11 +751,13 @@ export async function getSharedIssue(
   // The share URL's host may not be the logged-in one, so this goes out
   // without the authenticated transport and its bearer token.
   let response: Response | undefined;
-  // It still applies the invocation's target scope (`limitToTarget`).
+  // It still applies the invocation's target scope (`limitToTarget`), whose
+  // own project lookups need the token, so they go through the
+  // authenticated transport, which refuses an untrusted host.
   const fetchUnauthenticated = withTargetScope(async (input, init) => {
     response = await customFetch(input, init);
     return response;
-  });
+  }, getSdkConfig(normalizedBase).fetch);
 
   let result: Awaited<ReturnType<typeof getOrganizationSharedIssue>>;
   try {

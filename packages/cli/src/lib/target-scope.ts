@@ -430,13 +430,15 @@ export async function scopeRequest(
  * Wrap a fetch that sends requests outside the authenticated transport
  * (a share link's) so the invocation's scope applies to it too. The
  * scope's lookups go out with the request's headers, so an authenticated
- * download's lookups carry its token.
+ * download's lookups carry its token. A fetch without the token passes
+ * `lookup`, which sends them instead.
  */
 export function withTargetScope(
   fetchFn: (
     input: Request | string | URL,
     init?: RequestInit,
   ) => Promise<Response>,
+  lookup?: Send,
 ): (input: Request | string | URL, init?: RequestInit) => Promise<Response> {
   const scoped = async (
     input: Request | string | URL,
@@ -444,8 +446,10 @@ export function withTargetScope(
   ): Promise<Response> => {
     const headers =
       init?.headers ?? (input instanceof Request ? input.headers : undefined);
-    const request = await scopeRequest(input, init, (lookup) =>
-      scoped(lookup, headers ? { headers } : undefined),
+    const request = await scopeRequest(
+      input,
+      init,
+      lookup ?? ((path) => scoped(path, headers ? { headers } : undefined)),
     );
     if (request.response) {
       return request.response;
