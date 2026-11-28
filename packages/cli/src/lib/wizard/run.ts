@@ -66,6 +66,16 @@ const WIZARD_RUNNERS: Partial<Record<WizardIntegration, WizardRunner>> = {
     const { runNextjsWizard } = await import("./nextjs/nextjs-wizard.js");
     await runNextjsWizard(options);
   },
+  cloudflare: async (options) => {
+    const { runCloudflareWizard } =
+      await import("./cloudflare/cloudflare-wizard.js");
+    await runCloudflareWizard(options);
+  },
+  sourcemaps: async (options) => {
+    const { runSourcemapsWizard } =
+      await import("./sourcemaps/sourcemaps-wizard.js");
+    await runSourcemapsWizard(options);
+  },
   remix: async (options) => {
     const { runRemixWizard } = await import("./remix/remix-wizard.js");
     await runRemixWizard(options);

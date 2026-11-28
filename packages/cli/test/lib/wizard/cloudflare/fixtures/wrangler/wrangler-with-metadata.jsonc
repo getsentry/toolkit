@@ -1,0 +1,8 @@
+{
+  // This is a comment
+  "name": "my-worker",
+  "main": "src/index.ts",
+  "version_metadata": {
+    "existing_field": "existing_value"
+  }
+}
