@@ -26,9 +26,9 @@ describe("positionals", () => {
     fcAssert(
       property(valuesArb, (values) => {
         const result = positionals(...values);
-        result.forEach((token, i) => {
+        for (const [i, token] of result.entries()) {
           expect(token).toBe(values[i] ?? "");
-        });
+        }
       }),
       { numRuns: DEFAULT_NUM_RUNS },
     );

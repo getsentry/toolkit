@@ -601,9 +601,9 @@ export function encodeImageToSixel(
   // DCS: P1=0 aspect, P2=1 (unpainted = transparent), P3=0 grid; then raster
   // attributes "1;1;W;H so the terminal reserves the right pixel box.
   let out = `\x1bP0;1;0q"1;1;${width};${height}`;
-  palette.forEach(([r, g, b], i) => {
+  for (const [i, [r, g, b]] of palette.entries()) {
     out += `#${i};2;${to100(r)};${to100(g)};${to100(b)}`;
-  });
+  }
 
   const totalBands = Math.ceil(height / 6);
   for (let band = 0; band < totalBands; band++) {

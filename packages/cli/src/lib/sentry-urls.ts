@@ -236,6 +236,24 @@ export function buildEventSearchUrl(orgSlug: string, eventId: string): string {
   return `${getSentryBaseUrl()}/organizations/${orgSlug}/issues/?query=event.id:${eventId}`;
 }
 
+/**
+ * Build URL to a project's issue stream in Sentry.
+ *
+ * @param orgSlug - Organization slug
+ * @param projectId - Numeric project ID
+ * @returns Full URL to the issues list filtered to the project
+ */
+export function buildProjectIssuesUrl(
+  orgSlug: string,
+  projectId: string,
+): string {
+  const project = encodeURIComponent(projectId);
+  if (isSaaS()) {
+    return `${getOrgBaseUrl(orgSlug)}/issues/?project=${project}`;
+  }
+  return `${getSentryBaseUrl()}/organizations/${orgSlug}/issues/?project=${project}`;
+}
+
 // Settings URLs
 
 /**

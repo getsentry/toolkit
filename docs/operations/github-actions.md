@@ -15,9 +15,10 @@ Runs on pushes to `main` and release branches, pull requests, and merge queue
 entries. Discovery
 reads pnpm workspace projects and their package scripts. Pull requests check
 changed projects, their workspace consumers, and semantic dependencies (the CLI
-docs depend on `sentry`). Root-level changes and non-PR events check every
-enabled project. Each project has its own build, lint, typecheck, test, policy,
-and E2E steps when those scripts exist. The always-present `test` job checks
+docs depend on `sentry`). Root-level changes and pushes check every enabled
+project. Merge queue entries select no projects; the quality job typechecks,
+builds, and policy-checks the whole workspace instead. Each project has its own
+build, lint, typecheck, test, policy, and E2E steps when those scripts exist. The always-present `test` job checks
 discovery, installation, repository quality, and every selected project.
 It is the required status check for `main` and `release/**`, so no other
 job may use the check name `test`: GitHub would accept that check in its place.
