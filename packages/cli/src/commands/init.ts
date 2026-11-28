@@ -50,7 +50,9 @@ export const initCommand = buildCommand({
       "project already uses Sentry, the guide covers upgrading the SDKs and " +
       "turning on more features instead.\n\n" +
       "The command changes nothing and needs no login. The same guide is " +
-      "published at https://cli.sentry.dev/get-started-with-sentry.md.",
+      "published at https://cli.sentry.dev/get-started-with-sentry.md.\n\n" +
+      "To set up Sentry yourself with an interactive wizard that changes " +
+      "your project's files, run `sentry wizard` instead.",
     examples: [
       {
         description: "Print the setup guide",

@@ -3,6 +3,7 @@ import { setAuthToken } from "../../src/lib/db/auth.js";
 import { resetEnvTokenHostForTesting } from "../../src/lib/env-token-host.js";
 import {
   buildOrgUrl,
+  buildProjectIssuesUrl,
   buildProjectUrl,
   getSentryBaseUrl,
   isSaaS,
@@ -39,6 +40,9 @@ describe("web URLs for active credential hosts", () => {
     );
     expect(buildProjectUrl("acme", "site")).toBe(
       "https://sentry.example.com/settings/acme/projects/site/",
+    );
+    expect(buildProjectIssuesUrl("acme", "42")).toBe(
+      "https://sentry.example.com/organizations/acme/issues/?project=42",
     );
   });
 

@@ -99,8 +99,6 @@ export const OAUTH_SCOPES: readonly string[] = [
   "team:admin",
   "alerts:read",
   "alerts:write",
-  "user_preference:read",
-  "user_preference:write",
 ];
 
 /** Space-joined scope string for OAuth requests (full default set). */
