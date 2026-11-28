@@ -37,6 +37,14 @@ const WITHOUT_SENTRY_CREDENTIAL = [
   "commands/local/daemon.ts",
   "commands/local/server.ts",
   "commands/react-native/xcode.ts",
+  // `sentry wizard`: Sentry's public release registry, and example code
+  // it writes into the user's project.
+  "lib/wizard/utils/release-registry.ts",
+  "lib/wizard/cloudflare/templates.ts",
+  "lib/wizard/nextjs/templates.ts",
+  "lib/wizard/react-router/sdk-example.ts",
+  "lib/wizard/remix/sdk-example.ts",
+  "lib/wizard/sveltekit/templates.ts",
 ];
 
 /** A `fetch(` or `customFetch(` call, outside comments. */
