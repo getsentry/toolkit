@@ -3,8 +3,12 @@ import { promises } from "node:fs";
 import { describe, expect, it, vi } from "vitest";
 
 import { WizardExitError } from "../../../../../src/lib/errors.js";
+import { SENTRY_CLI_PACKAGE_SPEC } from "../../../../../src/lib/wizard/sourcemaps/tools/sentry-cli.js";
 import { configureWrangler } from "../../../../../src/lib/wizard/sourcemaps/tools/wrangler.js";
-import { getPackageDotJson } from "../../../../../src/lib/wizard/utils/clack/index.js";
+import {
+  getPackageDotJson,
+  installPackage,
+} from "../../../../../src/lib/wizard/utils/clack/index.js";
 
 const { selectMock } = vi.hoisted(() => ({
   selectMock: vi.fn(),
@@ -51,5 +55,17 @@ describe("configureWrangler", () => {
 
     await expect(configureWrangler(options)).rejects.toThrow(WizardExitError);
     expect(writeFileSpy).not.toHaveBeenCalled();
+  });
+
+  it("installs the sentry CLI major the wizard runs on", async () => {
+    vi.mocked(getPackageDotJson).mockResolvedValue({
+      scripts: { "sentry:sourcemaps": "echo existing" },
+    });
+    selectMock.mockResolvedValueOnce(false);
+
+    await expect(configureWrangler(options)).rejects.toThrow(WizardExitError);
+    expect(installPackage).toHaveBeenCalledWith(
+      expect.objectContaining({ packageName: SENTRY_CLI_PACKAGE_SPEC }),
+    );
   });
 });
