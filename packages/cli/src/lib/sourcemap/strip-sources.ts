@@ -40,9 +40,14 @@ function isAbsolutePath(path: string): boolean {
 }
 
 /**
- * The longest common directory prefix of the absolute paths in `sources`, or
- * `undefined` when there is none (or it is only `/`). Relative sources do not
- * take part.
+ * The longest common prefix of the absolute paths in `sources`, compared by
+ * path component, as rust-sourcemap's `find_common_prefix` computes it.
+ * Returns `undefined` when there is none (or it is only `/`). Relative
+ * sources do not take part.
+ *
+ * With only one absolute source the prefix is that whole path, file name
+ * included, so the strip (which needs the prefix plus `/`) leaves it alone.
+ * sentry-cli behaves the same way.
  */
 function findCommonSourcesPrefix(sources: string[]): string | undefined {
   const split = sources.filter(isAbsolutePath).map(splitPath);
@@ -123,8 +128,10 @@ function foldSourceRoot(map: SourcemapJson): boolean {
  *
  * Matches sentry-cli v2: a source that starts with the prefix plus `/` loses
  * it, others stay as they are. A non-empty `sourceRoot` is folded into
- * `sources` first. With `common`, the prefix is the common directory of the
- * map's absolute sources; for an index map, of all its sections' sources.
+ * `sources` first. With `common`, the prefix is the common prefix of the
+ * map's absolute sources (see {@link findCommonSourcesPrefix}); for an index
+ * map, of all its sections' sources. When only one absolute source takes
+ * part, nothing is stripped.
  *
  * @param json - Sourcemap JSON text
  * @param strip - The prefix to strip, or `{ common: true }`
