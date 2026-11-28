@@ -49,6 +49,7 @@ import {
   destroyHttp1Dispatcher,
 } from "../http1-dispatcher.js";
 import { logger } from "../logger.js";
+import { resolveOrgRegion } from "../region.js";
 import { getSdkConfig } from "../sentry-client.js";
 import {
   getOrgSdkConfig,
@@ -188,18 +189,46 @@ export async function getChunkUploadOptions(
     `organizations/${orgSlug}/chunk-upload/`,
   );
 
-  // Self-hosted Sentry instances may return a chunk-upload URL that embeds
-  // DSN credentials (e.g. https://<token>@host/...). Node.js 25+ rejects
-  // constructing a fetch Request from such a URL per the Fetch spec. Strip
-  // them here — auth is already handled by the authFetch wrapper.
-  const parsedUrl = new URL(data.url);
-  if (parsedUrl.username || parsedUrl.password) {
-    parsedUrl.username = "";
-    parsedUrl.password = "";
-    return { ...data, url: parsedUrl.href };
-  }
+  // Self-hosted Sentry returns a relative chunk-upload URL when no upload or
+  // URL prefix is configured: either relative to the API root
+  // (`organizations/<org>/chunk-upload/`) or path-only (`/api/0/...`).
+  // Resolve it against the org's API root so chunk POSTs get an absolute URL.
+  const regionUrl = (await resolveOrgRegion(orgSlug)).replace(/\/+$/, "");
+  const parsedUrl = resolveChunkUploadUrl(data.url, regionUrl);
 
-  return data;
+  // Self-hosted Sentry instances may also return a chunk-upload URL that
+  // embeds DSN credentials (e.g. https://<token>@host/...). Node.js 25+
+  // rejects constructing a fetch Request from such a URL per the Fetch spec.
+  // Strip them here — auth is already handled by the authFetch wrapper.
+  parsedUrl.username = "";
+  parsedUrl.password = "";
+  if (parsedUrl.href === data.url) {
+    return data;
+  }
+  return { ...data, url: parsedUrl.href };
+}
+
+/**
+ * Resolve a server-returned chunk-upload URL against the org's region URL.
+ *
+ * A path-absolute value (`/api/0/...`) would otherwise replace the region
+ * URL's whole path, dropping the install prefix of a self-hosted Sentry
+ * served under a subpath (e.g. `https://host/sentry`). Keep that prefix
+ * unless the server already included it.
+ *
+ * Exported for testing.
+ */
+export function resolveChunkUploadUrl(url: string, regionUrl: string): URL {
+  const base = regionUrl.replace(/\/+$/, "");
+  if (url.startsWith("/") && !url.startsWith("//")) {
+    const prefix = new URL(`${base}/`).pathname.replace(/\/+$/, "");
+    const path =
+      prefix && url !== prefix && !url.startsWith(`${prefix}/`)
+        ? `${prefix}${url}`
+        : url;
+    return new URL(path, `${base}/`);
+  }
+  return new URL(url, `${base}/api/0/`);
 }
 
 /**

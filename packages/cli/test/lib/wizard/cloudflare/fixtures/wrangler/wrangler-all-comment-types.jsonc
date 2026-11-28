@@ -1,0 +1,8 @@
+{
+  // Worker configuration
+  "name": "my-worker",
+  // Entry point
+  "main": "src/index.ts",
+  /* Block comment */
+  "compatibility_date": "2024-01-01"
+}

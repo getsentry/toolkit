@@ -17,6 +17,7 @@ import {
   ChunkServerOptionsSchema,
   getChunkUploadOptions,
   pollAssembly,
+  resolveChunkUploadUrl,
 } from "../../../src/lib/api/chunk-upload.js";
 import { setAuthToken } from "../../../src/lib/db/auth.js";
 import { setOrgRegion } from "../../../src/lib/db/regions.js";
@@ -94,6 +95,26 @@ describe("getChunkUploadOptions", () => {
     expect(result.url).toBe(BASE.url);
   });
 
+  test("resolves a URL relative to the API root against the org region", async () => {
+    respondWith({ ...BASE, url: "organizations/my-org/chunk-upload/" });
+
+    const result = await getChunkUploadOptions("my-org");
+
+    expect(result.url).toBe(
+      "https://us.sentry.io/api/0/organizations/my-org/chunk-upload/",
+    );
+  });
+
+  test("resolves a path-only URL against the org region", async () => {
+    respondWith({ ...BASE, url: "/api/0/organizations/my-org/chunk-upload/" });
+
+    const result = await getChunkUploadOptions("my-org");
+
+    expect(result.url).toBe(
+      "https://us.sentry.io/api/0/organizations/my-org/chunk-upload/",
+    );
+  });
+
   test("keeps maxWait, which the generated response type lacks", async () => {
     respondWith({ ...BASE, maxWait: 300 });
 
@@ -117,6 +138,44 @@ describe("getChunkUploadOptions", () => {
     expect(error).toBeInstanceOf(ApiError);
     expect((error as ApiError).status).toBe(404);
     expect((error as ApiError).detail).toBe("Organization not found");
+  });
+});
+
+describe("resolveChunkUploadUrl", () => {
+  const SUBPATH = "https://sentry.example.com/sentry";
+
+  test("keeps the install prefix for a path-absolute URL", () => {
+    expect(
+      resolveChunkUploadUrl("/api/0/organizations/o/chunk-upload/", SUBPATH)
+        .href,
+    ).toBe(
+      "https://sentry.example.com/sentry/api/0/organizations/o/chunk-upload/",
+    );
+  });
+
+  test("does not duplicate a prefix the server already included", () => {
+    expect(
+      resolveChunkUploadUrl(
+        "/sentry/api/0/organizations/o/chunk-upload/",
+        `${SUBPATH}/`,
+      ).href,
+    ).toBe(
+      "https://sentry.example.com/sentry/api/0/organizations/o/chunk-upload/",
+    );
+  });
+
+  test("resolves an API-root-relative URL under the install prefix", () => {
+    expect(
+      resolveChunkUploadUrl("organizations/o/chunk-upload/", SUBPATH).href,
+    ).toBe(
+      "https://sentry.example.com/sentry/api/0/organizations/o/chunk-upload/",
+    );
+  });
+
+  test("leaves an absolute URL unchanged", () => {
+    expect(
+      resolveChunkUploadUrl("https://other.example.com/x/", SUBPATH).href,
+    ).toBe("https://other.example.com/x/");
   });
 });
 

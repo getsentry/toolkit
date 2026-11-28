@@ -21,12 +21,12 @@ const CLI_BASED_FLOW_TOOLS: readonly string[] = [
   "tsc",
   "angular",
   "create-react-app",
+  "wrangler",
 ];
 
 /**
- * Where `sentry sourcemap upload` sends source maps. On sentry.io v4
- * resolves the org and project from the DSN, so CI needs only the token.
- * Self-hosted CI also needs `SENTRY_ORG`, `SENTRY_PROJECT` and `SENTRY_URL`.
+ * Where `sentry sourcemap upload` sends source maps. On self-hosted Sentry,
+ * CI gets it from `SENTRY_ORG`, `SENTRY_PROJECT` and `SENTRY_URL`.
  */
 export type SentryCliUploadTarget = {
   org: string;
@@ -42,7 +42,7 @@ export type SentryCliUploadTarget = {
  * @param selectedTool - The build tool the wizard configured, such as `nextjs`
  * @param authToken - The token written to the local config file
  * @param uploadTarget - For tools that upload with `sentry` commands, the
- *   org, project, and self-hosted URL to upload to
+ *   org, project, and URL that CI needs as well on self-hosted Sentry
  */
 export async function setupCI(
   selectedTool: string,
@@ -96,7 +96,8 @@ async function configureCI(
     return;
   }
 
-  if (isCliBasedFlowTool) {
+  // Wrangler's `post<deploy>` script already runs `sentry:sourcemaps`
+  if (isCliBasedFlowTool && selectedTool !== "wrangler") {
     await traceStep("ci-npm-script-setup", setupNpmScriptInCI);
   }
 
@@ -108,15 +109,14 @@ async function configureCI(
   );
 }
 
-/**
- * The `NAME=value` lines to add to the CI environment: the auth token, plus
- * the org, project, and URL for a self-hosted upload target.
- */
+/** The `NAME=value` lines to add to the CI environment. */
 export function getCIEnvVars(
   authToken: string,
   uploadTarget: SentryCliUploadTarget | undefined,
 ): string[] {
   const lines = [`SENTRY_AUTH_TOKEN=${authToken}`];
+  // On sentry.io the auth token is enough. Self-hosted Sentry also needs
+  // the org, project and URL.
   if (uploadTarget?.url) {
     lines.push(
       `SENTRY_ORG=${uploadTarget.org}`,

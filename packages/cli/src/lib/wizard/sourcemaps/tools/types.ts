@@ -9,3 +9,7 @@ export type SourceMapUploadToolConfigurationOptions = {
   orgSlug: string;
   projectSlug: string;
 };
+
+export type SourceMapUploadToolConfigurationFunction = (
+  options: SourceMapUploadToolConfigurationOptions,
+) => Promise<void>;

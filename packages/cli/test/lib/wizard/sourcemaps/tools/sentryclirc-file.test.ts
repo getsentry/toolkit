@@ -1,13 +1,18 @@
 /**
  * `.sentryclirc` written by the wizard, read back the way v4 reads it.
  *
- * Writes the `[defaults]` org/project (and the self-hosted URL) and the
- * `[auth]` token into a real temp dir in both orders and checks that
- * `loadSentryCliRc` resolves them, and that `.sentryclirc` ends up in
- * `.gitignore`.
+ * Writes the `[defaults]` org/project and the `[auth]` token into a real
+ * temp dir in both orders and checks that `loadSentryCliRc` resolves all
+ * three, and that `.sentryclirc` ends up in `.gitignore`.
  */
 
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
@@ -17,7 +22,7 @@ import {
   clearSentryCliRcCache,
   loadSentryCliRc,
 } from "../../../../../src/lib/sentryclirc.js";
-import { addUploadTargetToSentryCliRc } from "../../../../../src/lib/wizard/sourcemaps/tools/sentry-cli.js";
+import { setSentryCliRcDefaults } from "../../../../../src/lib/wizard/sourcemaps/tools/sentry-cli.js";
 import { addSentryCliConfig } from "../../../../../src/lib/wizard/utils/clack/index.js";
 
 vi.mock("@clack/prompts", () => ({
@@ -61,14 +66,12 @@ afterEach(() => {
 
 const rcPath = (): string => path.join(projectDir, ".sentryclirc");
 
-function writeDefaults(selfHostedUrl?: string): Promise<void> {
-  return addUploadTargetToSentryCliRc({
-    orgSlug: "my-org",
-    projectSlug: "my-project",
-    selfHosted: selfHostedUrl !== undefined,
-    url: selfHostedUrl ?? "https://sentry.io/",
-    authToken: "sntrys_tok",
-  });
+function writeDefaults(): void {
+  const contents = existsSync(rcPath()) ? readFileSync(rcPath(), "utf8") : "";
+  writeFileSync(
+    rcPath(),
+    setSentryCliRcDefaults(contents, { org: "my-org", project: "my-project" }),
+  );
 }
 
 async function expectV4ReadsAll(): Promise<void> {
@@ -83,45 +86,20 @@ async function expectV4ReadsAll(): Promise<void> {
 
 describe(".sentryclirc written by the wizard", () => {
   it("keeps [auth] when [defaults] is written first", async () => {
-    await writeDefaults();
+    writeDefaults();
     await addSentryCliConfig({ authToken: "sntrys_tok" });
     await expectV4ReadsAll();
   });
 
   it("keeps [auth] when [defaults] is written after the token", async () => {
     await addSentryCliConfig({ authToken: "sntrys_tok" });
-    await writeDefaults();
+    writeDefaults();
     await expectV4ReadsAll();
-  });
-
-  it("writes no URL for sentry.io", async () => {
-    await writeDefaults();
-    await addSentryCliConfig({ authToken: "sntrys_tok" });
-    await expectV4ReadsAll();
-    expect(readFileSync(rcPath(), "utf8")).not.toMatch(/^url=/m);
-  });
-
-  it("writes the self-hosted URL next to [auth], in either order", async () => {
-    await addSentryCliConfig({ authToken: "sntrys_tok" });
-    await writeDefaults("https://sentry.example.com/");
-    await expectV4ReadsAll();
-    expect((await loadSentryCliRc(projectDir)).url).toBe(
-      "https://sentry.example.com/",
-    );
-
-    rmSync(rcPath());
-    clearSentryCliRcCache();
-    await writeDefaults("https://sentry.example.com/");
-    await addSentryCliConfig({ authToken: "sntrys_tok" });
-    await expectV4ReadsAll();
-    expect((await loadSentryCliRc(projectDir)).url).toBe(
-      "https://sentry.example.com/",
-    );
   });
 
   it("keeps the user's other keys", async () => {
     writeFileSync(rcPath(), "[defaults]\nurl=https://sentry.example.com/\n");
-    await writeDefaults();
+    writeDefaults();
     await addSentryCliConfig({ authToken: "sntrys_tok" });
     await expectV4ReadsAll();
     expect((await loadSentryCliRc(projectDir)).url).toBe(

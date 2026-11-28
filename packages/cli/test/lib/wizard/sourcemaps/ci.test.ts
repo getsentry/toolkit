@@ -7,13 +7,13 @@ describe("getCIEnvVars", () => {
     expect(getCIEnvVars("tok", undefined)).toEqual(["SENTRY_AUTH_TOKEN=tok"]);
   });
 
-  it("lists only the auth token for sentry.io, which resolves the DSN", () => {
+  it("lists only the auth token for sentry.io", () => {
     expect(
       getCIEnvVars("tok", { org: "my-org", project: "my-project" }),
     ).toEqual(["SENTRY_AUTH_TOKEN=tok"]);
   });
 
-  it("adds the org, project, and URL for self-hosted Sentry", () => {
+  it("adds the org, project and SENTRY_URL for self-hosted Sentry", () => {
     expect(
       getCIEnvVars("tok", {
         org: "my-org",
