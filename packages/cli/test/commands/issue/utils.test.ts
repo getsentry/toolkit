@@ -2331,7 +2331,13 @@ describe("resolveIssue with share URLs", () => {
 });
 
 describe("resolveIssue with search text", () => {
-  useEnvSandbox(["SENTRY_ORG", "SENTRY_PROJECT", "SENTRY_DSN"]);
+  useEnvSandbox([
+    "SENTRY_ORG",
+    "SENTRY_PROJECT",
+    "SENTRY_DSN",
+    "SENTRY_CLI_SCOPE_ORG",
+    "SENTRY_CLI_SCOPE_PROJECT",
+  ]);
 
   /** Issues the search returns, and the queries it got */
   function mockSearch(
@@ -2340,6 +2346,9 @@ describe("resolveIssue with search text", () => {
     const queries: URLSearchParams[] = [];
     globalThis.fetch = mockFetch(async (input, init) => {
       const url = new URL(new Request(input, init).url);
+      if (url.pathname === "/api/0/projects/my-org/web/") {
+        return Response.json({ id: "7", slug: "web" });
+      }
       if (url.pathname === "/api/0/organizations/my-org/issues/") {
         queries.push(url.searchParams);
         return Response.json(
@@ -2375,6 +2384,21 @@ describe("resolveIssue with search text", () => {
     );
     expect((error as ResolutionError).hint).toBe(
       "sentry issue list my-org/ --query 'login timeout'",
+    );
+  });
+
+  test("in a project scope, no match names the project it searched", async () => {
+    process.env["SENTRY_CLI_SCOPE_ORG"] = "my-org";
+    process.env["SENTRY_CLI_SCOPE_PROJECT"] = "web";
+    const queries = mockSearch([]);
+    const error = await resolve("login timeout").catch((e: unknown) => e);
+    expect(queries[0]?.getAll("project")).toEqual(["7"]);
+    expect(error).toBeInstanceOf(ResolutionError);
+    expect((error as ResolutionError).message).toContain(
+      "matched no issues in 'my-org/web'",
+    );
+    expect((error as ResolutionError).hint).toBe(
+      "sentry issue list my-org/web --query 'login timeout'",
     );
   });
 
