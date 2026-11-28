@@ -3,12 +3,16 @@ import { promises } from "node:fs";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { WizardExitError } from "../../../../../src/lib/errors.js";
-import { addUploadTargetToSentryCliRc } from "../../../../../src/lib/wizard/sourcemaps/tools/sentry-cli.js";
+import {
+  addUploadTargetToSentryCliRc,
+  SENTRY_CLI_PACKAGE_SPEC,
+} from "../../../../../src/lib/wizard/sourcemaps/tools/sentry-cli.js";
 import { configureWrangler } from "../../../../../src/lib/wizard/sourcemaps/tools/wrangler.js";
 import {
   addSentryCliConfig,
   getPackageDotJson,
   getPackageManager,
+  installPackage,
   showCopyPasteInstructions,
 } from "../../../../../src/lib/wizard/utils/clack/index.js";
 import type { PackageDotJson } from "../../../../../src/lib/wizard/utils/package-json.js";
@@ -41,9 +45,15 @@ vi.mock("../../../../../src/lib/wizard/utils/clack/index.js", async () => ({
   getPackageManager: vi.fn(),
   showCopyPasteInstructions: vi.fn().mockResolvedValue(undefined),
 }));
-vi.mock("../../../../../src/lib/wizard/sourcemaps/tools/sentry-cli.js", () => ({
-  addUploadTargetToSentryCliRc: vi.fn().mockResolvedValue(undefined),
-}));
+vi.mock(
+  "../../../../../src/lib/wizard/sourcemaps/tools/sentry-cli.js",
+  async () => ({
+    ...(await vi.importActual(
+      "../../../../../src/lib/wizard/sourcemaps/tools/sentry-cli.js",
+    )),
+    addUploadTargetToSentryCliRc: vi.fn().mockResolvedValue(undefined),
+  }),
+);
 
 const options = {
   authToken: "token",
@@ -145,6 +155,16 @@ describe("configureWrangler", () => {
           /^wrangler deploy --outdir .* --upload-source-maps && npm run sentry:sourcemaps$/,
         ),
       }),
+    );
+  });
+
+  it("installs the sentry CLI major the wizard runs on", async () => {
+    usePackageJson({ "sentry:sourcemaps": "echo existing" });
+    selectMock.mockResolvedValueOnce(false);
+
+    await expect(configureWrangler(options)).rejects.toThrow(WizardExitError);
+    expect(installPackage).toHaveBeenCalledWith(
+      expect.objectContaining({ packageName: SENTRY_CLI_PACKAGE_SPEC }),
     );
   });
 });

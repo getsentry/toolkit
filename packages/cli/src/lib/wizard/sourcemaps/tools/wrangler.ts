@@ -25,7 +25,10 @@ import {
 import { clack } from "../../utils/clack/prompts.js";
 import { hasPackageInstalled } from "../../utils/package-json.js";
 import { NPM, YARN_V2 } from "../../utils/package-manager.js";
-import { addUploadTargetToSentryCliRc } from "./sentry-cli.js";
+import {
+  addUploadTargetToSentryCliRc,
+  SENTRY_CLI_PACKAGE_SPEC,
+} from "./sentry-cli.js";
 import type { SourceMapUploadToolConfigurationOptions } from "./types.js";
 
 const SENTRY_NPM_SCRIPT_NAME = "sentry:sourcemaps";
@@ -81,7 +84,7 @@ Otherwise, let's proceed with the Wrangler setup.`,
   }
 
   await installPackage({
-    packageName: "sentry@^4",
+    packageName: SENTRY_CLI_PACKAGE_SPEC,
     alreadyInstalled: hasPackageInstalled("sentry", await getPackageDotJson()),
     devDependency: true,
   });
