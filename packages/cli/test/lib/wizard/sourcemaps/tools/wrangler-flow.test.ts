@@ -127,6 +127,23 @@ describe("configureWrangler", () => {
     );
   });
 
+  it("puts the Yarn 2+ upload in the manual deploy command when it can't edit the script", async () => {
+    vi.mocked(getPackageManager).mockResolvedValue(YARN_V2);
+    usePackageJson({ build: "tsc" });
+    selectMock.mockResolvedValueOnce("build");
+
+    await configureWrangler(options);
+
+    expect(pkg.scripts?.["build"]).toBe("tsc");
+    expect(showCopyPasteInstructions).toHaveBeenCalledWith(
+      expect.objectContaining({
+        codeSnippet: expect.stringMatching(
+          /^wrangler deploy --outdir .* --upload-source-maps && yarn sentry:sourcemaps$/,
+        ),
+      }),
+    );
+  });
+
   it("edits a deploy script that runs wrangler through npx", async () => {
     usePackageJson({ deploy: "npx wrangler deploy" });
 

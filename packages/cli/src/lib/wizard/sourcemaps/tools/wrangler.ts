@@ -101,15 +101,23 @@ Otherwise, let's proceed with the Wrangler setup.`,
 
   await createAndAddSentrySourcemapsScript(outDir);
 
+  const packageManager = await getPackageManager(NPM);
+  const runUpload = `${packageManager.runScriptCommand} ${SENTRY_NPM_SCRIPT_NAME}`;
   if (deployCommand) {
-    await modifyDeployCommand(deployCommand, outDir);
-    await addUploadAfterDeploy(deployCommand);
+    // Yarn 2+ gets the upload chained onto the deploy script, so a manual
+    // deploy command that replaces the script has to carry the upload too.
+    const chainUpload = packageManager === YARN_V2;
+    const modified = await modifyDeployCommand(
+      deployCommand,
+      outDir,
+      chainUpload ? runUpload : undefined,
+    );
+    if (modified || !chainUpload) {
+      await addUploadAfterDeploy(deployCommand);
+    }
   } else {
-    const packageManager = await getPackageManager(NPM);
     await showCopyPasteInstructions({
-      codeSnippet: `${getManualDeployCommand(outDir)} && ${
-        packageManager.runScriptCommand
-      } ${SENTRY_NPM_SCRIPT_NAME}`,
+      codeSnippet: getManualDeployCommand(outDir, runUpload),
       filename: "package.json",
     });
   }
@@ -297,17 +305,28 @@ async function addUploadAfterDeploy(deployCommand: string): Promise<void> {
   );
 }
 
-/** The `wrangler deploy` command to show when the wizard can't edit it. */
-function getManualDeployCommand(outDir: string): string {
-  return `wrangler deploy --outdir ${quoteShellArg(
+/**
+ * The `wrangler deploy` command to show when the wizard can't edit it,
+ * followed by `thenRun` when given.
+ */
+function getManualDeployCommand(outDir: string, thenRun?: string): string {
+  const deploy = `wrangler deploy --outdir ${quoteShellArg(
     outDir,
   )} --var SENTRY_RELEASE:${PROPOSE_VERSION} --upload-source-maps`;
+  return thenRun ? `${deploy} && ${thenRun}` : deploy;
 }
 
+/**
+ * Add the source map flags to the `deployCommand` script, or show a manual
+ * deploy command, ending with `thenRun` when given, if it can't.
+ *
+ * @returns Whether it edited the script
+ */
 async function modifyDeployCommand(
   deployCommand: string,
   outDir: string,
-): Promise<void> {
+  thenRun?: string,
+): Promise<boolean> {
   const pkgJson = await getPackageDotJson();
   pkgJson.scripts = pkgJson.scripts ?? {};
   const oldDeployCommand = pkgJson.scripts[deployCommand];
@@ -320,11 +339,11 @@ async function modifyDeployCommand(
     );
 
     await showCopyPasteInstructions({
-      codeSnippet: getManualDeployCommand(outDir),
+      codeSnippet: getManualDeployCommand(outDir, thenRun),
       filename: "package.json",
     });
 
-    return;
+    return false;
   }
 
   const newDeployCommand = safeInsertArgsToWranglerDeployCommand(
@@ -342,11 +361,11 @@ async function modifyDeployCommand(
     );
 
     await showCopyPasteInstructions({
-      codeSnippet: getManualDeployCommand(outDir),
+      codeSnippet: getManualDeployCommand(outDir, thenRun),
       filename: "package.json",
     });
 
-    return;
+    return false;
   }
 
   pkgJson.scripts[deployCommand] = newDeployCommand;
@@ -361,6 +380,7 @@ async function modifyDeployCommand(
       deployCommand,
     )} script to enable uploading source maps.`,
   );
+  return true;
 }
 
 /**
