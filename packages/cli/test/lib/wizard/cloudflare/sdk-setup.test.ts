@@ -129,7 +129,7 @@ describe("createSentryInitFile", () => {
       it("wraps the worker with Sentry when wrapping succeeds", async () => {
         const wrapWorkerWithSentrySpy = vi
           .spyOn(wrapWorker, "wrapWorkerWithSentry")
-          .mockResolvedValue(undefined);
+          .mockResolvedValue(true);
 
         await createSentryInitFile(testDsn, testFeatures, false);
 
@@ -138,6 +138,16 @@ describe("createSentryInitFile", () => {
           testDsn,
           testFeatures,
           false,
+        );
+      });
+
+      it("doesn't report a wrap when Sentry is already set up", async () => {
+        vi.spyOn(wrapWorker, "wrapWorkerWithSentry").mockResolvedValue(false);
+
+        await createSentryInitFile(testDsn, testFeatures, false);
+
+        expect(clackMocks.success).not.toHaveBeenCalledWith(
+          expect.stringContaining("Wrapped"),
         );
       });
 
@@ -180,7 +190,7 @@ describe("createSentryInitFile", () => {
       it("passes performance feature flag correctly", async () => {
         const wrapWorkerWithSentrySpy = vi
           .spyOn(wrapWorker, "wrapWorkerWithSentry")
-          .mockResolvedValue(undefined);
+          .mockResolvedValue(true);
 
         await createSentryInitFile(testDsn, { performance: false }, false);
 
@@ -195,7 +205,7 @@ describe("createSentryInitFile", () => {
       it("passes performance feature flag when enabled", async () => {
         const wrapWorkerWithSentrySpy = vi
           .spyOn(wrapWorker, "wrapWorkerWithSentry")
-          .mockResolvedValue(undefined);
+          .mockResolvedValue(true);
 
         await createSentryInitFile(testDsn, { performance: true }, false);
 
@@ -210,7 +220,7 @@ describe("createSentryInitFile", () => {
       it("passes reduceDataCollection through to the worker wrapper", async () => {
         const wrapWorkerWithSentrySpy = vi
           .spyOn(wrapWorker, "wrapWorkerWithSentry")
-          .mockResolvedValue(undefined);
+          .mockResolvedValue(true);
 
         await createSentryInitFile(testDsn, testFeatures, true);
 
@@ -245,7 +255,7 @@ describe("createSentryInitFile", () => {
       it("creates the configured entry point and wraps it", async () => {
         const wrapWorkerWithSentrySpy = vi
           .spyOn(wrapWorker, "wrapWorkerWithSentry")
-          .mockResolvedValue(undefined);
+          .mockResolvedValue(true);
 
         await createSentryInitFile(testDsn, testFeatures, false);
 

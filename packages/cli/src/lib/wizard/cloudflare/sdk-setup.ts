@@ -53,15 +53,17 @@ export async function createSentryInitFile(
   }
 
   try {
-    await wrapWorkerWithSentry(
+    const wrapped = await wrapWorkerWithSentry(
       entryPointPath,
       dsn,
       selectedFeatures,
       reduceDataCollection,
     );
-    clack.log.success(
-      `Wrapped ${chalk.cyan(entryPoint)} with Sentry initialization.`,
-    );
+    if (wrapped) {
+      clack.log.success(
+        `Wrapped ${chalk.cyan(entryPoint)} with Sentry initialization.`,
+      );
+    }
   } catch (error) {
     debug(error);
     clack.log.warn("Failed to wrap worker automatically.");

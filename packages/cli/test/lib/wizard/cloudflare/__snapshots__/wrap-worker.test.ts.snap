@@ -87,12 +87,6 @@ export default Sentry.withSentry(env => ({
 });"
 `;
 
-exports[`wrapWorkerWithSentry > edge cases > handles files with no default export gracefully 1`] = `
-"import * as Sentry from "@sentry/cloudflare";
-const helper = () => 'test';
-export { helper };"
-`;
-
 exports[`wrapWorkerWithSentry > edge cases > handles worker without satisfies clause 1`] = `
 "import * as Sentry from "@sentry/cloudflare";
 export default Sentry.withSentry(env => ({
