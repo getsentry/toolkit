@@ -680,11 +680,13 @@ async function resolveIssueSearch(
     return { org, issue };
   }
 
-  const listCommand = sentry`issue list ${org}/ --query ${shellQuote(query)}`;
+  // In a project scope, the search ran in that project alone.
+  const searched = scopeProject ? `${org}/${scopeProject}` : org;
+  const listCommand = sentry`issue list ${org}/${scopeProject ?? ""} --query ${shellQuote(query)}`;
   if (!issue) {
     throw new ResolutionError(
       `Search ${shellQuote(query)}`,
-      `matched no issues in '${org}'`,
+      `matched no issues in '${searched}'`,
       listCommand,
       ["Pass an issue ID or short ID instead, e.g. CLI-G or 123456789"],
     );
@@ -692,7 +694,7 @@ async function resolveIssueSearch(
   const count = nextCursor ? `${issues.length}+` : String(issues.length);
   throw new ResolutionError(
     `Search ${shellQuote(query)}`,
-    `matched ${count} issues in '${org}'`,
+    `matched ${count} issues in '${searched}'`,
     listCommand,
     issues.map(
       (candidate) =>
