@@ -65,6 +65,7 @@ import {
   lookupCachedResponse,
   storeCachedResponse,
 } from "./response-cache.js";
+import { scopeRequest } from "./target-scope.js";
 import { isManualHttpTracing, withTracingSpan } from "./telemetry.js";
 import {
   assertCredentialScope,
@@ -504,17 +505,26 @@ function createAuthenticatedFetch(
     const method =
       init?.method ?? (input instanceof Request ? input.method : "GET");
     const path = extractUrlPath(input);
-    const response = await transport.request(input, init, {
+    // Keyed by the SDK's Request, so read from `input` itself.
+    const responseBody =
+      method.toUpperCase() !== "GET"
+        ? "stream"
+        : ((input instanceof Request
+            ? sdkResponseBodyModes.get(input)
+            : undefined) ?? (options.bufferResponseBody ? "buffer" : "stream"));
+    // A target-scoped invocation (`limitToTarget`) refuses a request
+    // outside its scope here, for every caller. Its own lookups come back
+    // through this fetch.
+    const scoped = await scopeRequest(input, init, (lookup) =>
+      scopedFetch(lookup),
+    );
+    if (scoped.response) {
+      return scoped.response;
+    }
+    const response = await transport.request(scoped.input, init, {
       validateRedirects: options.validatedRedirects === true,
       idempotent: options.idempotent === true,
-      // Keyed by the SDK's Request, so read from `input` itself.
-      responseBody:
-        method.toUpperCase() !== "GET"
-          ? "stream"
-          : ((input instanceof Request
-              ? sdkResponseBodyModes.get(input)
-              : undefined) ??
-            (options.bufferResponseBody ? "buffer" : "stream")),
+      responseBody,
     });
     if (response.status === 429) {
       throw new RateLimitError(
@@ -523,16 +533,21 @@ function createAuthenticatedFetch(
         await readErrorDetail(response),
       );
     }
+    await scoped.verify(response);
     return response;
   };
   // Every API response, fresh or cached, seeds shell completion, so no API
   // function has to remember to. Awaited so a command that exits right
   // after its request still stores the entities.
-  return async (input, init) =>
+  const scopedFetch = async (
+    input: Request | string | URL,
+    init?: RequestInit,
+  ): Promise<Response> =>
     await seedCompletions(
       extractInputUrl(input),
       await authenticatedFetch(input, init),
     );
+  return scopedFetch;
 }
 
 /** Singleton authenticated fetch instance - reused across all requests */

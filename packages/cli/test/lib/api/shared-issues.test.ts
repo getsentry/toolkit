@@ -5,7 +5,13 @@
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import { getSharedIssue } from "../../../src/lib/api/issues.js";
 import { setAuthToken } from "../../../src/lib/db/auth.js";
+import {
+  SCOPE_ORG_ENV_VAR,
+  SCOPE_PROJECT_ENV_VAR,
+  withEnv,
+} from "../../../src/lib/env.js";
 import { ApiError } from "../../../src/lib/errors.js";
+import { __resetScopeLookupsForTests } from "../../../src/lib/target-scope.js";
 import { mockFetch, useEnvSandbox, useTestConfigDir } from "../../helpers.js";
 
 describe("getSharedIssue", () => {
@@ -52,6 +58,41 @@ describe("getSharedIssue", () => {
     );
     expect(request?.method).toBe("GET");
     expect(request?.headers.has("Authorization")).toBe(false);
+  });
+
+  test("looks up a scope's project with the token when the share names it the other way", async () => {
+    setAuthToken("test-token");
+    __resetScopeLookupsForTests();
+    const requests: Request[] = [];
+    globalThis.fetch = mockFetch(async (input, init) => {
+      const request = new Request(input, init);
+      requests.push(request);
+      if (new URL(request.url).pathname === "/api/0/projects/example-org/42/") {
+        return request.headers.has("Authorization")
+          ? Response.json({ id: "42", slug: "example-project" })
+          : Response.json({ detail: "Unauthorized" }, { status: 401 });
+      }
+      return Response.json({
+        id: "12345",
+        project: { slug: "example-project" },
+      });
+    });
+
+    // The session names its project by ID; the share payload by slug.
+    const result = await withEnv(
+      {
+        ...process.env,
+        [SCOPE_ORG_ENV_VAR]: "example-org",
+        [SCOPE_PROJECT_ENV_VAR]: "42",
+      },
+      () => getSharedIssue("https://sentry.io", "example-org", "share-id"),
+    );
+
+    expect(result.id).toBe("12345");
+    const share = requests.find((request) =>
+      request.url.includes("/shared/issues/"),
+    );
+    expect(share?.headers.has("Authorization")).toBe(false);
   });
 
   test.each([
