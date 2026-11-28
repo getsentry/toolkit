@@ -46,6 +46,10 @@ import {
 } from "../../lib/resolve-target.js";
 import { applySentryUrlContext } from "../../lib/sentry-url-parser.js";
 import { buildReplayUrl } from "../../lib/sentry-web-urls.js";
+import {
+  assertProjectInScope,
+  getTargetScope,
+} from "../../lib/target-scope.js";
 import type {
   ReplayActivityEvent,
   ReplayDetails,
@@ -161,7 +165,8 @@ type ReplayProjectScope = {
 };
 
 /**
- * Reject a replay that is not in the project the user named.
+ * Reject a replay that is not in the project the user named, or outside the
+ * invocation's target scope (`limitToTarget`).
  *
  * Replays are looked up org-wide, so an explicit `<org>/<project>/<id>` target
  * has to be checked against the replay's own project.
@@ -171,6 +176,7 @@ export async function validateReplayProjectScope(
 ): Promise<void> {
   const { expectedProjectId, org, project, replay, replayId } = scope;
   const command = scope.command ?? "view";
+  await assertReplayInTargetScope(org, replayId, replay);
   if (!project) {
     return;
   }
@@ -201,6 +207,24 @@ export async function validateReplayProjectScope(
       ],
     );
   }
+}
+
+/**
+ * Refuse a replay outside the invocation's target scope. A replay without a
+ * project, such as an archived one, is refused in a project scope.
+ */
+async function assertReplayInTargetScope(
+  org: string,
+  replayId: string,
+  replay: ReplayDetails,
+): Promise<void> {
+  const scopeProject = getTargetScope()?.project;
+  let project: string | undefined;
+  if (scopeProject && replay.project_id) {
+    const { id } = await getProject(org, scopeProject);
+    project = String(id) === replay.project_id ? scopeProject : undefined;
+  }
+  assertProjectInScope(org, project, `Replay ${replayId}`);
 }
 
 async function fetchReplayActivity(
@@ -397,11 +421,6 @@ export const viewCommand = buildCommand({
       throw error;
     }
 
-    if (flags.web) {
-      await openInBrowser(buildReplayUrl(resolved.org, replay.id), "replay");
-      return;
-    }
-
     await validateReplayProjectScope({
       org: resolved.org,
       project: resolved.project,
@@ -409,6 +428,11 @@ export const viewCommand = buildCommand({
       replayId,
       replay,
     });
+
+    if (flags.web) {
+      await openInBrowser(buildReplayUrl(resolved.org, replay.id), "replay");
+      return;
+    }
 
     const enrichment = await enrichReplayView(resolved.org, replay);
     const data: ReplayViewData = {

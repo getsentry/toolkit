@@ -37,6 +37,11 @@ export type { TraceItemAttribute, TraceItemDetail } from "../../types/index.js";
 import { logger } from "../logger.js";
 import { resolveOrgRegion } from "../region.js";
 import { getSdkClientConfig } from "../sentry-sdk-client.js";
+import {
+  assertOrgInScope,
+  assertProjectInScope,
+  getTargetScope,
+} from "../target-scope.js";
 import { isAllDigits } from "../utils.js";
 
 import {
@@ -158,15 +163,48 @@ async function requestTrace(
  * - Known event `timestamp` → one query around that instant (no retry).
  * - Unknown time → `statsPeriod=14d`, then `90d` if the first response is empty.
  *
+ * In a project-limited invocation (`limitToTarget`), a trace with no span
+ * in that project is refused. A trace that has one keeps the spans of every
+ * project it calls into.
+ *
  * @param orgSlug - Organization slug
  * @param traceId - The trace ID (from event.contexts.trace.trace_id)
  * @param options - Optional timestamp and additional attributes
  * @returns Array of root spans with nested children
+ * @throws {ResolutionError} When the trace is outside the invocation's
+ *   target scope
  */
 export async function getDetailedTrace(
   orgSlug: string,
   traceId: string,
   options: GetDetailedTraceOptions = {},
+): Promise<TraceSpan[]> {
+  assertOrgInScope(orgSlug, `Trace ${traceId}`);
+  const spans = await fetchDetailedTrace(orgSlug, traceId, options);
+  const scopeProject = getTargetScope()?.project;
+  if (scopeProject && spans.length > 0) {
+    assertProjectInScope(
+      orgSlug,
+      hasSpanInProject(spans, scopeProject) ? scopeProject : undefined,
+      `Trace ${traceId}`,
+    );
+  }
+  return spans;
+}
+
+/** Whether a span of the tree, at any depth, is in `projectSlug`. */
+function hasSpanInProject(spans: TraceSpan[], projectSlug: string): boolean {
+  return spans.some(
+    (span) =>
+      span.project_slug === projectSlug ||
+      hasSpanInProject(span.children ?? [], projectSlug),
+  );
+}
+
+async function fetchDetailedTrace(
+  orgSlug: string,
+  traceId: string,
+  options: GetDetailedTraceOptions,
 ): Promise<TraceSpan[]> {
   const regionUrl = await resolveOrgRegion(orgSlug);
   const shared = { additionalAttributes: options.additionalAttributes };
