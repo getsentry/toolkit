@@ -37,6 +37,11 @@ const BODIES: Record<string, unknown> = {
   ],
   "organizations/acme/trace/b/": [{ project_slug: "api", children: [] }],
   "organizations/acme/trace/empty/": [],
+  // Trace `old` has spans in `web` only past the default 14 days.
+  "organizations/acme/trace/old/": [],
+  "organizations/acme/trace/old/?statsPeriod=90d": [
+    { project_slug: "web", children: [] },
+  ],
   "organizations/acme/trace/mixed/": [
     { project_slug: "api", children: [{ project_id: 1 }] },
   ],
@@ -63,7 +68,8 @@ async function send(
     const url = new URL(request.url);
     const relative = url.pathname.replace("/api/0/", "") + url.search;
     sent.push({ method: request.method, path: relative });
-    const body = BODIES[url.pathname.replace("/api/0/", "")];
+    const body =
+      BODIES[relative] ?? BODIES[url.pathname.replace("/api/0/", "")];
     return body === undefined
       ? Response.json({ detail: "Not found" }, { status: 404 })
       : Response.json(body);
@@ -202,6 +208,19 @@ describe("a project scope", () => {
   ])("looks up what %s %s names first", async (method, path, lookup) => {
     const sent = await send(WEB_SCOPE, method, path);
     expect(sent.map((request) => request.path)).toEqual([lookup, path]);
+  });
+
+  test("widens a trace lookup that is empty in the request's period", async () => {
+    const sent = await send(
+      WEB_SCOPE,
+      "GET",
+      "organizations/acme/trace-meta/old/",
+    );
+    expect(sent.map((request) => request.path)).toEqual([
+      "organizations/acme/trace/old/?statsPeriod=14d",
+      "organizations/acme/trace/old/?statsPeriod=90d",
+      "organizations/acme/trace-meta/old/",
+    ]);
   });
 
   test("looks up an issue once", async () => {

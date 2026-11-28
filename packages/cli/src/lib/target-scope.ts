@@ -27,7 +27,7 @@
  *   ({@link ORG_READS}).
  */
 
-import type { ScopeRule } from "./target-scope-rules.js";
+import type { ScopeLookup, ScopeRule } from "./target-scope-rules.js";
 import { sentry } from "./app-identity.js";
 import { getEnv, SCOPE_ORG_ENV_VAR, SCOPE_PROJECT_ENV_VAR } from "./env.js";
 import { ResolutionError } from "./errors.js";
@@ -276,25 +276,28 @@ async function readJson(response: Response): Promise<unknown> {
  */
 async function lookUpFirst(
   context: RequestContext,
-  { path, query }: { path: string; query?: string },
+  { path, query, widerQuery }: ScopeLookup,
 ): Promise<Response | undefined> {
-  if (foundInScope.has(lookupKey(context, path))) {
+  const key = lookupKey(context, path);
+  if (foundInScope.has(key)) {
     return;
   }
-  const response = await context.send(
-    `${context.url.origin}/api/0/${path}${query ? `?${query}` : ""}`,
-  );
-  if (!response.ok) {
-    return response;
-  }
-  if (!foundInScope.has(lookupKey(context, path))) {
-    // The lookup named no project (an empty trace): nothing to read.
-    throw outsideScope(
-      `${context.method} ${context.url.pathname}`,
-      context.scope,
+  for (const attempt of widerQuery ? [query, widerQuery] : [query]) {
+    const response = await context.send(
+      `${context.url.origin}/api/0/${path}${attempt ? `?${attempt}` : ""}`,
     );
+    if (!response.ok) {
+      return response;
+    }
+    if (foundInScope.has(key)) {
+      return;
+    }
   }
-  return;
+  // The lookup named no project (an empty trace): nothing to read.
+  throw outsideScope(
+    `${context.method} ${context.url.pathname}`,
+    context.scope,
+  );
 }
 
 /** Remember that `path` is in scope, so later requests skip the lookup. */

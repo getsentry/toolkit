@@ -37,11 +37,14 @@ type ScopeEnforcement =
  */
 type LookUpFirst = {
   kind: "look-up-first";
-  lookups: (
-    params: Record<string, string>,
-    url: URL,
-  ) => { path: string; query?: string }[];
+  lookups: (params: Record<string, string>, url: URL) => ScopeLookup[];
 };
+
+/**
+ * A lookup to send, with its query; `widerQuery` is tried when the first
+ * names no project (an empty trace).
+ */
+export type ScopeLookup = { path: string; query?: string; widerQuery?: string };
 
 export type ScopeRule = {
   pattern: string;
@@ -169,11 +172,15 @@ const monitorPath = orgPath("monitors", "monitor");
 const detectorPath = orgPath("detectors", "detector");
 const releasePath = orgPath("releases", "version");
 
-/** A trace lookup for `trace-meta` and `trace-logs`, over the same period. */
-function traceLookup(
-  params: Record<string, string>,
-  url: URL,
-): { path: string; query: string } {
+/** The widest relative window a trace lookup tries, as `trace view` does. */
+const WIDEST_TRACE_PERIOD = "90d";
+
+/**
+ * A trace lookup for `trace-meta` and `trace-logs`, over the same period.
+ * A relative period is widened to {@link WIDEST_TRACE_PERIOD} when the trace
+ * is empty in it, so a trace whose spans are older still proves in scope.
+ */
+function traceLookup(params: Record<string, string>, url: URL): ScopeLookup {
   const query = new URLSearchParams();
   for (const name of ["statsPeriod", "start", "end"]) {
     const value = url.searchParams.get(name);
@@ -181,10 +188,17 @@ function traceLookup(
       query.set(name, value);
     }
   }
-  if (!query.has("statsPeriod") && !query.has("start")) {
-    query.set("statsPeriod", "14d");
+  if (query.has("start")) {
+    return { path: tracePath(params), query: query.toString() };
   }
-  return { path: tracePath(params), query: query.toString() };
+  const period = query.get("statsPeriod") ?? "14d";
+  return {
+    path: tracePath(params),
+    query: `statsPeriod=${period}`,
+    ...(period === WIDEST_TRACE_PERIOD
+      ? {}
+      : { widerQuery: `statsPeriod=${WIDEST_TRACE_PERIOD}` }),
+  };
 }
 
 const PROJECT_FILTERED = [
